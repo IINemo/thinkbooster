@@ -376,6 +376,11 @@ def _build_strategy_config(request: ChatCompletionRequest) -> Dict[str, Any]:
         "max_tokens": request.max_tokens or 4096,
         "num_paths": request.num_paths or 5,
         "budget": request.num_paths or 5,
+        # New fields from HEAD
+        "quantization": request.quantization,
+        "kv_cache_dtype": request.kv_cache_dtype,
+        "reasoning_effort": request.reasoning_effort,
+        "seed": request.seed,
         # vLLM TTS params
         "scorer_type": request.tts_scorer or "entropy",
         "num_trajectories": request.tts_num_trajectories,
