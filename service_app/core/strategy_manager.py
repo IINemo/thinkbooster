@@ -43,7 +43,6 @@ class StrategyManager:
         self._vllm_model = None
         self._step_generator = None
         self._confidence_scorer = None  # For entropy/perplexity/sequence_prob
-        self._prm_scorer = None  # For PRM scoring
 
     def _init_vllm_backend(self):
         """Load vLLM model, wrap with uncertainty, create step generator.
@@ -100,20 +99,28 @@ class StrategyManager:
 
         log.info("vLLM backend initialized successfully")
 
+    _VALID_SCORER_TYPES = {"entropy", "perplexity", "sequence_prob", "prm"}
+
     def _get_scorer(self, scorer_type: str):
         """
         Get scorer instance based on scorer type.
 
         Args:
-            scorer_type: Type of scorer ('entropy', 'perplexity', 'sequence_prob', 'prm')
+            scorer_type: One of 'entropy', 'perplexity', 'sequence_prob', 'prm'
 
         Returns:
             Scorer instance (StepScorerConfidence or StepScorerPRM)
+
+        Raises:
+            ValueError: If scorer_type is not recognised
         """
+        if scorer_type not in self._VALID_SCORER_TYPES:
+            raise ValueError(
+                f"Unknown scorer type: {scorer_type!r}. "
+                f"Available types: {', '.join(sorted(self._VALID_SCORER_TYPES))}"
+            )
         if scorer_type == "prm":
-            if self._prm_scorer is None:
-                self._prm_scorer = prm_scorer_factory.get_scorer()
-            return self._prm_scorer
+            return prm_scorer_factory.get_scorer()
         else:
             # For entropy, perplexity, sequence_prob - use confidence scorer
             if self._confidence_scorer is None:
@@ -355,9 +362,7 @@ class StrategyManager:
                 f"Available strategies: self_consistency, offline_bon, online_bon, beam_search"
             )
 
-    def _create_vllm_strategy(
-        self, strategy_type: str, config: Dict[str, Any]
-    ):
+    def _create_vllm_strategy(self, strategy_type: str, config: Dict[str, Any]):
         """Create a vLLM-backed TTS strategy instance."""
         if self._step_generator is None:
             self._init_vllm_backend()
@@ -723,7 +728,6 @@ class StrategyManager:
         self._vllm_model = None
         self._step_generator = None
         self._confidence_scorer = None
-        # Also cleanup PRM scorer
         prm_scorer_factory.cleanup()
         log.info("Client cache cleared")
 
