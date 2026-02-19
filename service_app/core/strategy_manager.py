@@ -42,7 +42,8 @@ class StrategyManager:
         self._client_cache: Dict[str, OpenAI] = {}
         self._vllm_model = None
         self._step_generator = None
-        self._scorer = None
+        self._confidence_scorer = None  # For entropy/perplexity/sequence_prob
+        self._prm_scorer = None  # For PRM scoring
 
     def _init_vllm_backend(self):
         """Load vLLM model, wrap with uncertainty, create step generator.
@@ -95,13 +96,34 @@ class StrategyManager:
             disable_thinking_mode=None if settings.default_thinking_mode else True,
         )
 
-        self._scorer = StepScorerConfidence()
+        self._confidence_scorer = StepScorerConfidence()
 
         log.info("vLLM backend initialized successfully")
 
-    # ------------------------------------------------------------------
-    # vLLM backend
-    # ------------------------------------------------------------------
+    def _get_scorer(self, scorer_type: str):
+        """
+        Get scorer instance based on scorer type.
+
+        Args:
+            scorer_type: Type of scorer ('entropy', 'perplexity', 'sequence_prob', 'prm')
+
+        Returns:
+            Scorer instance (StepScorerConfidence or StepScorerPRM)
+        """
+        if scorer_type == "prm":
+            if self._prm_scorer is None:
+                self._prm_scorer = prm_scorer_factory.get_scorer()
+            return self._prm_scorer
+        else:
+            # For entropy, perplexity, sequence_prob - use confidence scorer
+            if self._confidence_scorer is None:
+                self._init_vllm_backend()
+            return self._confidence_scorer
+
+    def _get_or_create_client(self, provider: str = "openrouter") -> OpenAI:
+        """Get cached OpenAI client or create new one."""
+        if provider in self._client_cache:
+            return self._client_cache[provider]
 
     def _init_vllm_backend(self):
         """Load vLLM model, wrap with uncertainty, create step generator.
@@ -340,13 +362,16 @@ class StrategyManager:
         if self._step_generator is None:
             self._init_vllm_backend()
 
+        scorer_type = config.get("scorer_type", "entropy")
+        scorer = self._get_scorer(scorer_type)
+
         if strategy_type == "offline_bon":
             from llm_tts.strategies.strategy_offline_best_of_n import (
                 StrategyOfflineBestOfN,
             )
 
             strategy = StrategyOfflineBestOfN(
-                scorer=self._scorer,
+                scorer=scorer,
                 num_trajectories=config.get("num_trajectories", 8),
                 max_steps=config.get("max_steps", 100),
                 step_generator=self._step_generator,
@@ -359,7 +384,7 @@ class StrategyManager:
             )
 
             strategy = StrategyOnlineBestOfN(
-                scorer=self._scorer,
+                scorer=scorer,
                 candidates_per_step=config.get("candidates_per_step", 4),
                 max_steps=config.get("max_steps", 100),
                 step_generator=self._step_generator,
@@ -370,13 +395,13 @@ class StrategyManager:
 
             strategy = StrategyBeamSearch(
                 step_generator=self._step_generator,
-                scorer=self._scorer,
+                scorer=scorer,
                 beam_size=config.get("beam_size", 4),
                 candidates_per_beam=config.get("candidates_per_beam", 4),
                 max_steps=config.get("max_steps", 100),
             )
 
-        log.info(f"Created vLLM strategy: {strategy_type}")
+        log.info(f"Created vLLM strategy: {strategy_type} with scorer: {scorer_type}")
         return strategy
 
     def _create_self_consistency_strategy(
@@ -697,7 +722,9 @@ class StrategyManager:
         self._client_cache.clear()
         self._vllm_model = None
         self._step_generator = None
-        self._scorer = None
+        self._confidence_scorer = None
+        # Also cleanup PRM scorer
+        prm_scorer_factory.cleanup()
         log.info("Client cache cleared")
 
 

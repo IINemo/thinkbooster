@@ -42,7 +42,6 @@ class PRMScorerFactory:
                 "PRM model path not configured. "
                 "Set PRM_MODEL_PATH environment variable or prm_model_path in settings."
             )
-
         # Warn if PRM + vLLM models share a device and would oversubscribe GPU memory
         if (
             settings.prm_use_vllm
