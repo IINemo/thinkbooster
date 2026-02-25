@@ -90,7 +90,6 @@ class ChatCompletionRequest(BaseModel):
     tts_window_size: Optional[int] = Field(
         default=None, description="Window size for scoring (1-N steps)", ge=1, le=50
     )
-
     # Debugger / verbose mode
     tts_verbose: Optional[bool] = Field(
         default=False,
