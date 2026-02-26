@@ -2431,6 +2431,39 @@ def main(config):
             }
             serializable_data.append(serializable_item)
         dataset = Dataset.from_list(serializable_data)
+    # Special handling for KernelBench dataset to use KernelAct prompts
+    elif data_name == "kernelbench" or "kernelbench" in config.dataset.dataset_path.lower():
+        from llm_tts.datasets.kernelbench import load_kernelbench_with_prompts
+
+        # Get prompt_type and trial from config or use defaults
+        kb_prompt_type = config.dataset.get("prompt_type", "improve")
+        kb_trial = config.dataset.get("trial", 1)
+        kb_level = config.dataset.get("level", 1)
+
+        log.info(
+            f"Using KernelAct prompt generator for KernelBench: "
+            f"level={kb_level}, prompt_type={kb_prompt_type}, trial={kb_trial}"
+        )
+
+        kb_data = load_kernelbench_with_prompts(
+            level=kb_level,
+            prompt_type=kb_prompt_type,
+            trial=kb_trial,
+            subset_size=None,  # Load all, subset later
+        )
+        # Convert to HuggingFace Dataset format
+        serializable_data = []
+        for item in kb_data:
+            serializable_item = {
+                "question": item["question"],
+                "answer": item["answer"],
+                "problem_id": item["problem_id"],
+                "name": item["name"],
+                "level": item["level"],
+                "prompt_category": item.get("prompt_category", ""),
+            }
+            serializable_data.append(serializable_item)
+        dataset = Dataset.from_list(serializable_data)
     # Support loading local JSON/JSONL files via data_files parameter
     elif config.dataset.get("data_files", None):
         data_files = config.dataset.get("data_files", None)

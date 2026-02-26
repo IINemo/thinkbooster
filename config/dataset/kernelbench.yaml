@@ -1,0 +1,31 @@
+# @package dataset
+# KernelBench dataset configuration
+#
+# KernelBench is a dataset for CUDA kernel optimization tasks.
+# Contains PyTorch reference implementations that need to be optimized using CUDA.
+#
+# Dataset: https://huggingface.co/datasets/ai-nikolai/KernelBench
+# - 3 levels with varying complexity
+# - Each problem: PyTorch reference code -> optimized CUDA kernel
+
+dataset_path: "ai-nikolai/KernelBench"
+dataset_split: "level_1"  # Options: level_1, level_2, level_3
+subset: null  # Only process first N samples (null for all)
+prompt_file: null  # No prompt template - KernelAct API provides correct format
+answer_format: "code"  # Code generation format
+question_field: "question"  # KernelAct loader uses "question" field with generated prompts
+answer_field: "answer"  # KernelAct loader uses "answer" field (reference code)
+data_name: "kernelbench"  # Used for evaluation routing and KernelAct loader
+
+# KernelBench specific settings (used by llm_tts/datasets/kernelbench.py)
+level: 1  # Dataset level (1, 2, or 3)
+prompt_type: "improve"  # Prompt type: "improve", "kernelbench", "normal"
+trial: 1  # Trial number (affects prompt generation for TTS iterations)
+
+# Fields from KernelAct loader (llm_tts/datasets/kernelbench.py):
+# - question: Generated prompt using KernelAct's choose_prompt()
+# - answer: Reference PyTorch implementation
+# - problem_id: Unique identifier (e.g., 1, 2, 3, ...)
+# - name: Problem name (e.g., "1_Standard_matrix_multiplication_")
+# - level: Dataset level (1, 2, or 3)
+# - prompt_category: Category of prompt used (e.g., "kb_improve", "kb_debug_error")
