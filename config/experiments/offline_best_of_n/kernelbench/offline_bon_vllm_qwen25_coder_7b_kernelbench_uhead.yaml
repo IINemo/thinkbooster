@@ -1,0 +1,85 @@
+# @package _global_
+# Run: python scripts/run_tts_eval.py --config-path=../config --config-name=experiments/offline_best_of_n/kernelbench/offline_bon_vllm_qwen25_coder_7b_kernelbench_uhead
+# Note: Do NOT specify CUDA_VISIBLE_DEVICES when submitting via scripts/slurm/submit.sh - SLURM assigns GPUs automatically
+# Offline Best-of-N with Qwen2.5-Coder-7B-Instruct (vLLM) + uhead scorer on KernelBench
+# Generates N complete trajectories, splits post-hoc, selects best based on min step uhead score
+
+defaults:
+  - /config
+  - /model/vllm_qwen3
+  - /generation/default
+  - /system/default
+  - /strategy/offline_bon
+  - /scorer/uhead_vllm
+  - /evaluation/default
+  - _self_
+
+# Run naming
+run_name: "offline_bon_vllm_qwen25_coder_7b_kernelbench_uhead_seed${system.seed}_${now:%H-%M-%S}"
+
+# Main configuration
+verbose: true
+report_to: wandb
+wandb_project: llm-tts-kernelbench
+wandb_group: "offline_bon_qwen25_coder_7b_kernelbench_uhead"
+
+# Model configuration (vLLM backend)
+model:
+  type: "vllm"
+  model_path: "Qwen/Qwen2.5-Coder-7B-Instruct"
+  model_short_name: "qwen25_coder_7b_instruct"
+  gpu_memory_utilization: 0.7
+  tensor_parallel_size: 1
+  enable_prefix_caching: true
+  trust_remote_code: true
+  max_context_budget: 32768
+  disable_thinking_mode: true
+
+# System configuration
+system:
+  device: cuda
+  seed: 42
+
+scorer:
+  type: uhead
+  uq_head_path: "rediska0123/uhead_Qwen2.5-7B-Instruct_prm12k_10epochs"
+  max_model_len: 32000
+  gpu_memory_utilization: 0.2
+  tensor_parallel_size: 1
+  device: cuda:0
+
+# Generation configuration
+generation:
+  max_new_tokens: 32000
+  temperature: 0.65
+  top_p: 0.95
+  top_k: 20
+  batch_size: 1
+  max_length: 65536
+
+# Strategy - Offline Best-of-N
+strategy:
+  max_steps: 100
+  # Step boundary detector settings - used for post-hoc step splitting
+  max_step_tokens: 4096
+
+# Dataset configuration - KernelBench
+dataset:
+  data_name: "kernelbench"
+  dataset_path: "ai-nikolai/KernelBench"
+  dataset_split: "level_1"  # Options: level_1, level_2, level_3
+  subset: 3
+  offset: 1
+  question_field: "question"  # KernelAct loader provides correct prompt format
+  answer_field: "answer"  # Reference PyTorch implementation
+  answer_format: "code"
+  prompt_file: null  # KernelAct API provides correct prompt format
+  # KernelBench-specific settings
+  level: 1  # Dataset level (1, 2, or 3)
+  prompt_type: "improve"  # KernelAct prompt type: "improve", "kernelbench", "normal"
+  trial: 1  # Trial number for TTS iteration
+
+# Evaluation configuration (KernelBench uses custom evaluation)
+evaluation:
+  evaluators: []
+  batch_evaluators: []
