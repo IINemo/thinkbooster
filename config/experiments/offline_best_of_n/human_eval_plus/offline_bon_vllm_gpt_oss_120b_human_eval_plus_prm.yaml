@@ -1,0 +1,86 @@
+# @package _global_
+# Run: WANDB_MODE=offline python scripts/run_tts_eval.py --config-path=../config --config-name=experiments/offline_best_of_n/human_eval_plus/offline_bon_vllm_gpt_oss_120b_human_eval_plus_prm
+# Offline Best-of-N with GPT-OSS-120B (vLLM) + PRM scorer on HumanEval+
+# Generates N complete trajectories, splits post-hoc, selects best based on min step PRM
+
+defaults:
+  - /config
+  - /model/vllm_qwen3
+  - /generation/default
+  - /system/default
+  - /strategy/offline_bon
+  - /scorer/prm
+  - /evaluation/human_eval_plus/default
+  - _self_
+
+# Run naming
+run_name: "offline_bon_vllm_gpt_oss_120b_human_eval_plus_prm_seed${system.seed}_${now:%H-%M-%S}"
+
+# Main configuration
+verbose: true
+report_to: wandb
+wandb_project: llm-tts-human-eval-plus
+wandb_group: "offline_bon_vllm_gpt_oss_120b_human_eval_plus_prm"
+
+# Model configuration (vLLM backend)
+model:
+  type: "vllm"
+  model_path: "openai/gpt-oss-120b"
+  model_short_name: "vllm_gpt_oss_120b"
+  gpu_memory_utilization: 0.7
+  tensor_parallel_size: 1
+  enable_prefix_caching: true
+  trust_remote_code: true
+  max_context_budget: 32768
+  disable_thinking_mode: false
+
+# System configuration
+system:
+  device: cuda
+  seed: 0
+
+# Generation configuration
+generation:
+  max_new_tokens: 32000
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+  batch_size: 1
+  max_length: 65536
+
+# Strategy - Offline Best-of-N with linguistic step boundaries
+strategy:
+  type: offline_best_of_n
+  max_step_tokens: 1024
+  max_steps: 100
+
+# PRM scorer configuration
+scorer:
+  type: prm
+  model_path: "Qwen/Qwen2.5-Math-PRM-7B"
+  device: cuda:0
+  batch_size: 1
+  use_vllm: true
+  gpu_memory_utilization: 0.2
+  prm_max_tokens: 4000
+
+# Dataset configuration - HumanEval+
+dataset:
+  data_name: "human_eval_plus"
+  dataset_path: "evalplus/humanevalplus"
+  dataset_split: "test"
+  subset: null
+  offset: 0
+  question_field: "question"
+  answer_field: "answer"
+  answer_format: "code"
+  prompt_file: null
+  system_prompt: "Do not output any other code except for asked self-contained Python script. Do not provide any guides on how to run it. Code will be parsed from codeblock to check it's correct."
+
+# Evaluation configuration
+evaluation:
+  evaluators:
+    - human_eval_plus
+  human_eval_plus:
+    mode: full
+    timeout: 10
