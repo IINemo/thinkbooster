@@ -1,27 +1,26 @@
 # @package _global_
-# Run: python scripts/run_tts_eval.py --config-path=../config --config-name=experiments/offline_best_of_n/gpqa_diamond/offline_bon_vllm_gpt_oss_120b_gpqa_diamond_prm
-# Note: Do NOT specify CUDA_VISIBLE_DEVICES when submitting via scripts/slurm/submit.sh - SLURM assigns GPUs automatically
-# Offline Best-of-N with GPT-OSS-120B (vLLM) + PRM scorer on GPQA-Diamond
-# Generates N complete trajectories, splits post-hoc, selects best based on min step PRM
+# Run: WANDB_MODE=offline python scripts/run_tts_eval.py --config-path=../config --config-name=experiments/beam_search/gpqa_diamond/beam_search_vllm_gpt_oss_120b_gpqa_diamond_prm
+# Beam Search with GPT-OSS-120B (vLLM) + PRM scorer on GPQA-Diamond
+# Uses beam search for candidate generation, selects best based on min step PRM
 
 defaults:
   - /config
   - /model/vllm_qwen3
   - /generation/default
   - /system/default
-  - /strategy/offline_bon
+  - /strategy/beam_search
   - /scorer/prm
   - /evaluation/default
   - _self_
 
 # Run naming
-run_name: "offline_bon_vllm_gpt_oss_120b_gpqa_diamond_prm_seed${system.seed}_${now:%H-%M-%S}"
+run_name: "beam_search_vllm_gpt_oss_120b_gpqa_diamond_prm_seed${system.seed}_${now:%H-%M-%S}"
 
 # Main configuration
 verbose: true
 report_to: wandb
 wandb_project: llm-tts-eval-gpqa_diamond
-wandb_group: "offline_bon_gpt_oss_120b_gpqa_diamond_prm"
+wandb_group: "beam_search_vllm_gpt_oss_120b_gpqa_diamond_prm"
 
 # Model configuration (vLLM backend)
 model:
@@ -38,22 +37,23 @@ model:
 # System configuration
 system:
   device: cuda
-  seed: 42
+  seed: 0
 
 # Generation configuration
 generation:
   max_new_tokens: 32000
-  temperature: 0.65
+  temperature: 0.6
   top_p: 0.95
   top_k: 20
   batch_size: 1
   max_length: 65536
 
-# Strategy - Offline Best-of-N
+# Strategy - Beam Search with linguistic step boundaries
 strategy:
+  beam_size: 3
+  candidates_per_beam: 5
   max_steps: 100
-  # Step boundary detector settings - used for post-hoc step splitting
-  max_step_tokens: 2048
+  max_step_tokens: 1024
 
 # PRM scorer configuration
 scorer:
@@ -64,7 +64,6 @@ scorer:
   use_vllm: true
   gpu_memory_utilization: 0.2
   prm_max_tokens: 4000
-
 
 # Dataset configuration - GPQA-Diamond
 dataset:

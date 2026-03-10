@@ -29,8 +29,8 @@ if str(KERNELACT_PATH) not in sys.path:
 from datasets import load_dataset
 
 # Import from KernelAct
-from kernelact.prompts_v2 import choose_prompt
-from kernelact.utils_inference import extract_code
+from .kernelact.prompts_v2 import choose_prompt
+from .kernelact.utils_inference import extract_code
 
 log = logging.getLogger(__name__)
 
