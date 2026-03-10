@@ -90,7 +90,11 @@ where = ["."]
 include = ["llm_tts*", "service_app*"]
 
 [tool.setuptools.package-data]
-"llm_tts" = ["config/**/*.yaml", "config/**/*.txt"]
+llm_tts = [
+    "config/**/*.yaml",
+    "config/**/*.txt",
+    "datasets/kernelact/kb_prompts/*.toml",
+]
 
 [tool.black]
 line-length = 88
