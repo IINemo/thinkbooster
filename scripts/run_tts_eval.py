@@ -633,6 +633,8 @@ def create_model(config):
                     "max_context_budget", config.model.get("max_model_len", 32768)
                 ),
                 disable_thinking_mode=config.model.get("disable_thinking_mode", None),
+                reasoning_effort=config.model.get("reasoning_effort", None),
+                seed=config.system.get("seed", None),
             )
 
             log.info(f"Created vLLM step generator: {type(step_generator).__name__}")
