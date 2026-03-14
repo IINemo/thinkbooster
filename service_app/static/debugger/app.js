@@ -38,6 +38,10 @@ const state = {
   advancedConfigExpanded: false,
   advancedConfigTemplateKey: null,
   advancedConfigDirty: false,
+  experimentSamples: [],
+  experimentFilteredIndices: [],
+  experimentCurrentIdx: 0,
+  experimentFilterIncorrect: false,
   isRunInProgress: false,
   runAbortController: null,
   activeRequestId: null,
@@ -80,6 +84,12 @@ const elements = {
   resetDemoButton: document.getElementById("resetDemoButton"),
   customStatus: document.getElementById("customStatus"),
   modelSuggestions: document.getElementById("modelSuggestions"),
+  experimentFileInput: document.getElementById("experimentFileInput"),
+  sampleNavigation: document.getElementById("sampleNavigation"),
+  prevSampleBtn: document.getElementById("prevSampleBtn"),
+  nextSampleBtn: document.getElementById("nextSampleBtn"),
+  sampleCounter: document.getElementById("sampleCounter"),
+  filterIncorrectToggle: document.getElementById("filterIncorrectToggle"),
 };
 
 function updateModelSuggestions() {
@@ -2559,6 +2569,136 @@ function renderStepInspector() {
   renderTree();
 }
 
+// ---------------------------------------------------------------------------
+// Experiment file loading & sample navigation
+// ---------------------------------------------------------------------------
+
+function handleExperimentFileUpload(file) {
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    try {
+      const rawBundle = JSON.parse(event.target.result);
+      const normalized = normalizePrototypeBundle(rawBundle);
+
+      if (!normalized.scenarios.length) {
+        setStatus("Loaded file contains no valid examples.", true);
+        return;
+      }
+
+      // Store full examples for sample navigation
+      state.experimentSamples = normalized.scenarios;
+      state.experimentFilterIncorrect = false;
+      if (elements.filterIncorrectToggle) {
+        elements.filterIncorrectToggle.checked = false;
+      }
+
+      // Load into custom payloads so loadPayloadForScenario works
+      state.customPayloads = normalized.payloads;
+      state.dataMode = "custom";
+
+      // Load into catalog and UI
+      state.catalog = normalized.scenarios;
+      state.prototypePayloads = normalized.payloads;
+      state.prototypeLoaded = true;
+      state.prototypeCatalog = normalized.scenarios;
+
+      recomputeFilteredIndices();
+      state.experimentCurrentIdx = 0;
+
+      populateScenarioSelect();
+      navigateToCurrentSample();
+      updateSampleNavigationUi();
+
+      // Auto-enable cached mode
+      state.useCachedExample = true;
+      if (elements.useCachedToggle) {
+        elements.useCachedToggle.checked = true;
+      }
+      applyCachedModeUi();
+
+      setStatus(
+        `Loaded ${normalized.scenarios.length} samples from file.`,
+        false,
+      );
+    } catch (error) {
+      setStatus(`Failed to parse file: ${error.message}`, true);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function recomputeFilteredIndices() {
+  if (!state.experimentSamples.length) {
+    state.experimentFilteredIndices = [];
+    return;
+  }
+
+  state.experimentFilteredIndices = [];
+  for (let i = 0; i < state.experimentSamples.length; i++) {
+    if (state.experimentFilterIncorrect) {
+      // Check if sample title contains "[INCORRECT]"
+      const title = state.experimentSamples[i].title || "";
+      if (!title.includes("INCORRECT")) {
+        continue;
+      }
+    }
+    state.experimentFilteredIndices.push(i);
+  }
+}
+
+async function navigateToCurrentSample() {
+  const indices = state.experimentFilteredIndices;
+  if (!indices.length) {
+    setStatus("No samples match the current filter.", false);
+    return;
+  }
+
+  const clampedIdx = Math.max(
+    0,
+    Math.min(state.experimentCurrentIdx, indices.length - 1),
+  );
+  state.experimentCurrentIdx = clampedIdx;
+  const sampleIdx = indices[clampedIdx];
+  const scenario = state.experimentSamples[sampleIdx];
+
+  state.scenarioId = scenario.id;
+  elements.scenarioSelect.value = scenario.id;
+  configureCaseSelect(scenario.default_budget);
+
+  await loadCachedOptionsForCurrentScenario();
+  updateSampleNavigationUi();
+}
+
+function updateSampleNavigationUi() {
+  const indices = state.experimentFilteredIndices;
+  const hasExperiment = indices.length > 0;
+
+  if (elements.sampleNavigation) {
+    elements.sampleNavigation.classList.toggle("hidden", !hasExperiment);
+  }
+  if (elements.prevSampleBtn) {
+    elements.prevSampleBtn.disabled =
+      !hasExperiment || state.experimentCurrentIdx <= 0;
+  }
+  if (elements.nextSampleBtn) {
+    elements.nextSampleBtn.disabled =
+      !hasExperiment || state.experimentCurrentIdx >= indices.length - 1;
+  }
+  if (elements.sampleCounter) {
+    if (hasExperiment) {
+      const totalAll = state.experimentSamples.length;
+      const showing = indices.length;
+      const current = state.experimentCurrentIdx + 1;
+      elements.sampleCounter.textContent =
+        showing === totalAll
+          ? `Sample ${current} of ${showing}`
+          : `Sample ${current} of ${showing} (${totalAll} total)`;
+    } else {
+      elements.sampleCounter.textContent = "";
+    }
+  }
+}
+
 function render() {
   if (!state.payload) {
     return;
@@ -2753,6 +2893,50 @@ function bindHandlers() {
   elements.resetDemoButton.addEventListener("click", async () => {
     await restoreDemoData();
   });
+
+  // Experiment file upload
+  if (elements.experimentFileInput) {
+    elements.experimentFileInput.addEventListener("change", (event) => {
+      const file = event.target.files?.[0];
+      if (file) {
+        handleExperimentFileUpload(file);
+      }
+    });
+  }
+
+  // Sample navigation
+  if (elements.prevSampleBtn) {
+    elements.prevSampleBtn.addEventListener("click", async () => {
+      if (state.experimentCurrentIdx > 0) {
+        state.experimentCurrentIdx--;
+        await navigateToCurrentSample();
+      }
+    });
+  }
+  if (elements.nextSampleBtn) {
+    elements.nextSampleBtn.addEventListener("click", async () => {
+      if (
+        state.experimentCurrentIdx <
+        state.experimentFilteredIndices.length - 1
+      ) {
+        state.experimentCurrentIdx++;
+        await navigateToCurrentSample();
+      }
+    });
+  }
+  if (elements.filterIncorrectToggle) {
+    elements.filterIncorrectToggle.addEventListener("change", async (event) => {
+      state.experimentFilterIncorrect = event.target.checked;
+      recomputeFilteredIndices();
+      state.experimentCurrentIdx = 0;
+      if (state.experimentFilteredIndices.length) {
+        await navigateToCurrentSample();
+      } else {
+        updateSampleNavigationUi();
+        setStatus("No incorrect samples found.", false);
+      }
+    });
+  }
 }
 
 async function checkApiHealth() {
@@ -2778,11 +2962,33 @@ async function init() {
   const apiAlive = await checkApiHealth();
   if (!apiAlive) {
     setStatus(
-      "Service API is not reachable. Make sure the server is running (python service_app/main.py).",
+      "Service API is not reachable. Load an experiment file or start the server.",
       true,
     );
-    elements.strategyGrid.innerHTML =
-      '<p class="tree-empty">Cannot connect to the service API.</p>';
+    // Try to load cached examples for file:// or prototype mode
+    try {
+      state.catalog = await loadCatalog();
+    } catch {
+      state.catalog = [];
+    }
+    if (!state.catalog.length) {
+      elements.strategyGrid.innerHTML =
+        '<p class="tree-empty">Load an experiment file (debugger_payload.json) to explore results.</p>';
+      // Show cached controls so file upload is accessible
+      elements.cachedExplorerControls?.classList.remove("hidden");
+      return;
+    }
+    // Auto-enable cached mode when API is down but cached data exists
+    state.useCachedExample = true;
+    if (elements.useCachedToggle) {
+      elements.useCachedToggle.checked = true;
+    }
+    state.scenarioId = state.catalog[0].id;
+    populateScenarioSelect();
+    configureCaseSelect(state.catalog[0].default_budget);
+    applyCachedModeUi();
+    await loadCachedOptionsForCurrentScenario();
+    setStatus("Loaded cached examples (offline mode).", false);
     return;
   }
 
@@ -2790,7 +2996,8 @@ async function init() {
 
   if (!state.catalog.length) {
     elements.strategyGrid.innerHTML =
-      '<p class="tree-empty">No debugger scenarios are available.</p>';
+      '<p class="tree-empty">No debugger scenarios are available. Load an experiment file to explore results.</p>';
+    elements.cachedExplorerControls?.classList.remove("hidden");
     return;
   }
 
