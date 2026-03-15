@@ -18,13 +18,13 @@ import sys
 from copy import deepcopy
 from pathlib import Path
 
-import yaml
-
-from service_app.core.debugger_events import convert_strategy_result_to_debugger_run
-
 # Add the project root to sys.path so we can import service_app
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
+
+import yaml
+
+from service_app.core.debugger_events import convert_strategy_result_to_debugger_run
 
 log = logging.getLogger(__name__)
 
@@ -218,10 +218,8 @@ def convert_experiment(
         for key in (
             "step_candidates",
             "all_trajectories",
-            "all_trajectory_steps",
             "all_scores",
             "all_step_scores",
-            "all_traces",
             "best_idx",
         ):
             if key in sample:
