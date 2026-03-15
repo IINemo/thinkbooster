@@ -22,9 +22,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import yaml
+import yaml  # noqa: E402
 
-from service_app.core.debugger_events import convert_strategy_result_to_debugger_run
+from service_app.core.debugger_events import convert_strategy_result_to_debugger_run  # noqa: E402
 
 log = logging.getLogger(__name__)
 
