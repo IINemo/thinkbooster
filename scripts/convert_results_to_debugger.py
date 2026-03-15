@@ -218,8 +218,10 @@ def convert_experiment(
         for key in (
             "step_candidates",
             "all_trajectories",
+            "all_trajectory_steps",
             "all_scores",
             "all_step_scores",
+            "all_traces",
             "best_idx",
         ):
             if key in sample:
