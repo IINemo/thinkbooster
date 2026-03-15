@@ -24,7 +24,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import yaml  # noqa: E402
 
-from service_app.core.debugger_events import convert_strategy_result_to_debugger_run  # noqa: E402
+from service_app.core.debugger_events import (
+    convert_strategy_result_to_debugger_run,
+)  # noqa: E402
 
 log = logging.getLogger(__name__)
 
