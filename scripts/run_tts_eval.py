@@ -106,11 +106,7 @@ try:
 except ImportError:
     POLYGRAPH_UNCERTAINTY_AVAILABLE = False
     VLLMWithUncertainty = None
-from utils.results import (
-    load_results_json,
-    parse_resume_arguments,
-    save_results_json,
-)
+from utils.results import load_results_json, parse_resume_arguments, save_results_json
 
 from llm_tts.evaluation import (
     EvaluatorAlignScore,
@@ -1655,6 +1651,19 @@ def _generate_trajectories_batch(
                 "answer_tokens",
                 "context_limit_hit",
                 "max_steps_hit",
+            ):
+                if key in result:
+                    result_dict[key] = result[key]
+
+            # Save tree visualization data (if strategy provides it)
+            for key in (
+                "step_candidates",
+                "all_trajectories",
+                "all_trajectory_steps",
+                "all_scores",
+                "all_step_scores",
+                "all_traces",
+                "best_idx",
             ):
                 if key in result:
                     result_dict[key] = result[key]

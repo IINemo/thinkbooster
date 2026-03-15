@@ -1,0 +1,69 @@
+# @package _global_
+# Run: python scripts/run_tts_eval.py --config-path=../config --config-name=experiments/beam_search/math500/beam_search_openrouter_gpt4o_mini_math500_entropy
+# Beam Search for MATH-500 using OpenRouter API with entropy scorer
+# Quick test config for debugger visualization
+#
+# Environment variable required: OPENROUTER_API_KEY
+
+defaults:
+  - /config
+  - /model/openrouter
+  - /generation/default
+  - /system/default
+  - /strategy/beam_search
+  - /scorer/entropy
+  - /evaluation/default
+  - _self_
+
+# Run naming
+run_name: "beam_search_openrouter_gpt4o_mini_math500_entropy_seed${system.seed}_${now:%H-%M-%S}"
+
+# Main configuration
+verbose: true
+report_to: none
+
+# Model configuration (OpenRouter API)
+model:
+  type: "openai_api"
+  provider: openrouter
+  model_path: "openai/gpt-4o-mini"
+  api_key: null  # Set via OPENROUTER_API_KEY env var
+  supports_logprobs: true
+  prefill_mode: false
+  max_context_budget: 128000
+
+# System configuration
+system:
+  device: cpu
+  seed: 42
+
+# Generation configuration
+generation:
+  max_new_tokens: 2048
+  temperature: 0.7
+  top_p: 0.95
+  top_k: 50
+  batch_size: 1
+
+# Strategy - Beam Search (small for quick test)
+strategy:
+  beam_size: 2
+  candidates_per_beam: 2
+  max_steps: 5
+  min_step_tokens: 5
+  max_step_tokens: 256
+
+# Entropy scorer configuration
+scorer:
+  type: entropy
+  batch_size: 1
+
+# Dataset configuration - MATH-500
+dataset:
+  data_name: "math"
+  dataset_path: "test-time-compute/test_MATH"
+  dataset_split: "test"
+  subset: 3
+  offset: 0
+  answer_format: "numeric"
+  prompt_file: "${hydra:runtime.cwd}/config/prompts/default.txt"
