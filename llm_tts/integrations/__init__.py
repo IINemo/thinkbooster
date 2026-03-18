@@ -1,4 +1,4 @@
-# LangChain integration for llm-tts-service
+# LangChain integration for ThinkBooster
 #
 # Provides ChatTTS - a custom LangChain ChatModel that calls the TTS service
 # and returns uncertainty metrics in response_metadata.

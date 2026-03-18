@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "thinkbooster"
 version = "0.1.0"
-description = "LLM Test-Time Scaling strategies for improved reasoning"
+description = "ThinkBooster: a unified framework for test-time compute scaling of LLM reasoning"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
