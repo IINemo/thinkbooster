@@ -105,7 +105,7 @@ install_luh
 # Pin numpy and fix thinc/spacy AFTER all installs
 # (lm-polygraph deps downgrade numpy to 1.x; vLLM needs >=2.0; numba requires <2.3)
 echo -e "${YELLOW}Pinning numpy and fixing thinc/spacy for numpy 2.x compatibility...${NC}"
-pip_install "numpy>=2.0.0,<2.3.0"
+pip_install "numpy>=2.0.0,<2.4.0" "numba>=0.64.0"
 pip_install "thinc>=8.3.0" "spacy>=3.8.0"
 echo -e "${GREEN}✓ Dependencies pinned${NC}"
 
