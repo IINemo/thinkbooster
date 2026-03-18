@@ -38,8 +38,6 @@ conda activate thinkbooster
 
 # Install dependencies
 ./setup.sh
-pip install latex2sympy2 --no-deps   # math evaluation (separate due to antlr4 conflict)
-pip install ".[vllm]"                # vLLM for fast local inference
 
 # Configure API keys
 cp .env.example .env

@@ -78,6 +78,8 @@ echo -e "${BLUE}======================================${NC}\n"
 # Install package dependencies via pip
 echo -e "${YELLOW}Installing package dependencies...${NC}"
 pip install -e . > /dev/null
+pip install -e ".[vllm]" > /dev/null   # vLLM for fast local inference
+pip install latex2sympy2 --no-deps > /dev/null  # math evaluation (separate due to antlr4 conflict with hydra)
 echo -e "${GREEN}✓ Package installed${NC}\n"
 
 # Install lm-polygraph dev branch
