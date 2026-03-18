@@ -774,5 +774,5 @@ confidence = tts_meta["confidence"]
 
 - [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
 - [LangChain Tools](https://python.langchain.com/docs/modules/tools/)
-- [DeepConf Paper](docs/deepconf/DeepConf.md)
+- [DeepConf Guide](../strategies/deepconf.md)
 - [ThinkBooster README](../README.md)

@@ -8,9 +8,9 @@ Thank you for your interest in contributing! This guide covers environment setup
 
 Start by reading the core documentation:
 
-- **[Project Structure](PROJECT_STRUCTURE.md)** — architecture overview, components, and design patterns
-- **[Strategy Registration](STRATEGY_REGISTRATION.md)** — how to add new strategies with tests
-- **[DeepConf Guide](deepconf/DeepConf.md)** — example strategy implementation
+- **[Project Structure](project_structure.md)** — architecture overview, components, and design patterns
+- **[Strategy Registration](strategy_registration.md)** — how to add new strategies with tests
+- **[DeepConf Guide](strategies/deepconf.md)** — example strategy implementation
 
 Quick architecture overview:
 
@@ -171,7 +171,7 @@ python tests/strategy_registry.py --validate
 pytest tests/my_new/ -v
 ```
 
-See [Strategy Registration Guide](STRATEGY_REGISTRATION.md) for detailed steps.
+See [Strategy Registration Guide](strategy_registration.md) for detailed steps.
 
 ---
 

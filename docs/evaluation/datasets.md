@@ -2,14 +2,22 @@
 
 All datasets are available in our HuggingFace collection: [test-time-compute](https://huggingface.co/test-time-compute)
 
-## Mathematical Reasoning
+## Supported Datasets
 
-| Dataset | Size | Answer Type | Release | Notes |
-|---------|------|-------------|---------|-------|
-| **AIME 2024** | 30 | Integer (0-999) | 2024 | Competition problems, very hard |
-| **AIME 2025** | 30 | Integer (0-999) | 2025 | Competition problems, very hard |
-| **MATH-500** | 500 | Numeric/Expression | 2023 | Subset from "Let's Verify Step by Step" (OpenAI) |
-| **SVAMP** | 1000 | Integer | 2021 | Real-world arithmetic problems |
+| Dataset | Config | Size | Domain | Description |
+|---------|--------|------|--------|-------------|
+| **MATH-500** | `dataset/math_500` | 500 | Math | Competition-level math (OpenAI "Let's Verify Step by Step" subset) |
+| **OlympiadBench** | `dataset/olympiadbench` | 675 | Math | Olympiad-level math problems |
+| **GaoKao 2023 En** | `dataset/gaokao2023en` | 385 | Math | Chinese college entrance exam (English) |
+| **Minerva Math** | `dataset/minerva_math` | 272 | Math | Minerva math reasoning problems |
+| **AIME 2025** | `dataset/aime_2025` | 30 | Math | American Invitational Mathematics Examination |
+| **AIME 2024** | — | 30 | Math | AIME 2024 edition |
+| **AMC 2023** | — | — | Math | AMC competition problems |
+| **GPQA Diamond** | `dataset/gpqa_diamond` | — | Science | Graduate-level science QA |
+| **HumanEval+** | `dataset/human_eval_plus` | 164 | Code | Python function synthesis (EvalPlus) |
+| **MBPP+** | `dataset/mbpp_plus` | 378 | Code | Mostly Basic Python Problems (EvalPlus) |
+| **Game of 24** | `dataset/game24` | — | Math | Reach 24 using 4 numbers |
+| **GSM8K** | `dataset/gsm8k` | 1,319 | Math | Grade school math word problems |
 
 ---
 
@@ -40,15 +48,6 @@ Subset of MATH dataset created by OpenAI for the "Let's Verify Step by Step" pap
 - **Answer format**: Numeric or mathematical expression
 - **Requires**: Math parsing for exact match comparison
 - **Note**: Full MATH dataset (released 2021) may be saturated
-
-### SVAMP
-
-Simple Variations on Arithmetic Math word Problems.
-
-- **Source**: [SVAMP dataset](https://github.com/arkilpatel/SVAMP)
-- **Answer format**: Always an integer
-- **Difficulty**: Elementary to middle school level
-- **Use case**: Baseline evaluation, sanity checks
 
 ---
 

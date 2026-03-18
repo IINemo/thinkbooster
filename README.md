@@ -74,7 +74,7 @@ print(response.choices[0].message.content)
 
 The `base_url` encodes the scaling strategy and scorer (`beam_search/prm`). To switch strategy, just change the URL — no other code changes needed.
 
-See [Service API Guide](docs/service/SERVICE_API_GUIDE.md) for the full reference.
+See [Service API Guide](docs/service/api_guide.md) for the full reference.
 
 ### Run an Experiment
 
@@ -154,24 +154,23 @@ thinkbooster/
 └── lm-polygraph/         # Submodule: uncertainty estimation
 ```
 
-See [Project Structure](docs/PROJECT_STRUCTURE.md) for a detailed architecture overview.
+See [Project Structure](docs/project_structure.md) for a detailed architecture overview.
 
 ---
 
 ## Documentation
 
-- [Project Structure](docs/PROJECT_STRUCTURE.md) — architecture and component descriptions
+- [Project Structure](docs/project_structure.md) — architecture and component descriptions
 - [Evaluation Protocol](docs/evaluation/README.md) — datasets, metrics (accuracy, tokens, FLOPs), and reporting
-- [Strategy Registration](docs/STRATEGY_REGISTRATION.md) — how to add new strategies with tests
-- [Service API Guide](docs/service/SERVICE_API_GUIDE.md) — REST API reference and configuration
-- [DeepConf Guide](docs/deepconf/DeepConf.md) — confidence-based test-time scaling
-- [Robustness Guide](docs/ROBUSTNESS.md) — incremental saving, resume, and reproducibility
+- [Strategy Registration](docs/strategy_registration.md) — how to add new strategies with tests
+- [Service API Guide](docs/service/api_guide.md) — REST API reference and configuration
+- [DeepConf Guide](docs/strategies/deepconf.md) — confidence-based test-time scaling
 
 ---
 
 ## Contributing
 
-We welcome contributions! Whether it's a new strategy, scorer, dataset, or bug fix — see the [Contributing Guide](docs/CONTRIBUTING.md) for setup instructions, development workflow, and coding standards.
+We welcome contributions! Whether it's a new strategy, scorer, dataset, or bug fix — see the [Contributing Guide](docs/contributing.md) for setup instructions, development workflow, and coding standards.
 
 ---
 
