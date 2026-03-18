@@ -94,10 +94,6 @@ echo -e "${YELLOW}Installing package dependencies...${NC}"
 pip_install -e .
 pip_install -e ".[vllm]"                          # vLLM for fast local inference
 pip_install latex2sympy2 --no-deps                # math evaluation (separate due to antlr4 conflict with hydra)
-# Pin numpy after vLLM (vLLM pulls in 2.4+; numba requires <2.3)
-pip_install "numpy>=2.0.0,<2.3.0"
-# Upgrade thinc/spacy for numpy 2.x binary compatibility (lm-polygraph pins older versions)
-pip_install "thinc>=8.3.0" "spacy>=3.8.0"
 echo -e "${GREEN}✓ Package installed${NC}\n"
 
 # Install lm-polygraph dev branch
@@ -105,6 +101,13 @@ install_lm_polygraph
 
 # Install llm-uncertainty-head (luh) for UHead scorer
 install_luh
+
+# Pin numpy and fix thinc/spacy AFTER all installs
+# (lm-polygraph deps downgrade numpy to 1.x; vLLM needs >=2.0; numba requires <2.3)
+echo -e "${YELLOW}Pinning numpy and fixing thinc/spacy for numpy 2.x compatibility...${NC}"
+pip_install "numpy>=2.0.0,<2.3.0"
+pip_install "thinc>=8.3.0" "spacy>=3.8.0"
+echo -e "${GREEN}✓ Dependencies pinned${NC}"
 
 echo -e "\n${GREEN}✅ Setup complete!${NC}"
 echo -e "\nNext: Copy .env.example to .env and add your API keys"
