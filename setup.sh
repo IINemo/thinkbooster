@@ -29,7 +29,7 @@ pip_install() {
     if [ "$VERBOSE" = true ]; then
         pip install "$@"
     else
-        pip install "$@" 2>&1 | grep -v "pip's dependency resolver"
+        pip install "$@" > /dev/null 2>&1
     fi
 }
 
