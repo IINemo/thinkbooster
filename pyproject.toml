@@ -28,7 +28,6 @@ dependencies = [
     "transformers>=4.56.0",  # vLLM 0.12.0+ requires ALLOWED_LAYER_TYPES from transformers
     "datasets>=2.14.0",  # HuggingFace datasets for loading benchmarks
     "numpy>=2.0.0,<2.4.0",  # vLLM requires >=2.0; mistral-common requires <2.4
-    "numba>=0.64.0",  # 0.64+ supports numpy<2.5, older versions require <2.3
     "thinc>=8.3.0",  # 8.3+ required for numpy 2.x binary compatibility
     "tqdm>=4.64.0",
     "parse>=1.19.0",
