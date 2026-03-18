@@ -99,17 +99,17 @@ The interactive debugger lets you compare multiple TTS strategies side by side o
 
 <table border="0">
 <tr>
-<td width="60%"><img src="https://github.com/user-attachments/assets/e1fec504-d6f7-49d8-85e3-bf42d4e7baec" alt="Visual Debugger — main interface" width="100%" /></td>
+<td width="40%"><img src="https://github.com/user-attachments/assets/e1fec504-d6f7-49d8-85e3-bf42d4e7baec" alt="Visual Debugger — main interface" width="100%" /></td>
 <td valign="middle"><b>Main interface.</b> Select a cached example or enter a custom math/science/coding problem. Choose any strategy (beam search, best-of-N, MUR, …) and scorer (PRM, uncertainty, LLM-as-a-critic) and run it directly from the browser.</td>
 </tr>
 <tr><td colspan="2"><br/></td></tr>
 <tr>
-<td width="60%"><img src="https://github.com/user-attachments/assets/21c7fc24-7507-46e3-9ce3-34cb6a37d7b5" alt="Step-by-step reasoning inspector" width="100%" /></td>
+<td width="40%"><img src="https://github.com/user-attachments/assets/21c7fc24-7507-46e3-9ce3-34cb6a37d7b5" alt="Step-by-step reasoning inspector" width="100%" /></td>
 <td valign="middle"><b>Step inspector.</b> Replay the strategy execution step by step. Each entry in the reasoning timeline shows the operation (select, prune, escalate), the candidates considered, their scores, and the full text of the chosen step.</td>
 </tr>
 <tr><td colspan="2"><br/></td></tr>
 <tr>
-<td width="60%"><img src="https://github.com/user-attachments/assets/df03cc3e-a933-4b6c-aa96-f35ab3e9b986" alt="Trajectory tree visualization" width="100%" /></td>
+<td width="40%"><img src="https://github.com/user-attachments/assets/df03cc3e-a933-4b6c-aa96-f35ab3e9b986" alt="Trajectory tree visualization" width="100%" /></td>
 <td valign="middle"><b>Trajectory tree.</b> Global branching view of the entire strategy run. Nodes represent reasoning steps; the orange path highlights the final selected trajectory. Useful for understanding how beam search or tree-of-thought explores and prunes the search space.</td>
 </tr>
 </table>
