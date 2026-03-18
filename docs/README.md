@@ -35,4 +35,5 @@
 
 ## Infrastructure
 
+- [Local Job Scheduling](infrastructure/local.md) — running experiments on local GPU machines with Task Spooler
 - [SLURM Guide](infrastructure/slurm.md) — running experiments on HPC clusters
