@@ -43,9 +43,6 @@ jobs:
     - name: Run setup.sh
       run: |
         ./setup.sh
-    - name: Pin numpy and fix thinc/spacy for numpy 2.x compatibility
-      run: |
-        pip install "numpy>=2.0.0,<2.3.0" "thinc>=8.3.0" "spacy>=3.8.0"
     - name: Validate strategy registry
       run: |
         python tests/strategy_registry.py --validate
@@ -78,9 +75,6 @@ jobs:
     - name: Run setup.sh
       run: |
         ./setup.sh
-    - name: Pin numpy and fix thinc/spacy for numpy 2.x compatibility
-      run: |
-        pip install "numpy>=2.0.0,<2.3.0" "thinc>=8.3.0" "spacy>=3.8.0"
     - name: Run integration tests
       env:
         OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
