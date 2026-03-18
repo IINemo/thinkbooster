@@ -7,12 +7,12 @@ selects the best candidate for each question, and computes accuracy for each
 (scorer_type x aggregation) combination.
 
 Usage:
-    python scripts/analyze_candidates.py \
+    python scripts/analysis/analyze_candidates.py \
         --candidates-path outputs/.../candidates.json \
         --data-name math500
 
     # With all scoring windows:
-    python scripts/analyze_candidates.py \
+    python scripts/analysis/analyze_candidates.py \
         --candidates-path outputs/.../candidates.json \
         --data-name math500 \
         --scoring-windows all

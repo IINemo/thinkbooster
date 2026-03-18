@@ -160,8 +160,8 @@ if [[ -z "$STRATEGY" || -z "$DATASET" ]]; then
     show_help
 fi
 
-# Project directory
-PROJECT_DIR="/home/artem.shelmanov/vlad/llm-tts-service"
+# Project directory (auto-detect from script location)
+PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$PROJECT_DIR"
 
 # Config mappings

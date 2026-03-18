@@ -1,12 +1,14 @@
 import argparse
 import json
 import logging
+import sys
 from pathlib import Path
 
 import numpy as np
 from omegaconf import OmegaConf
 
-from scripts.run_tts_eval import build_evaluators
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from run_tts_eval import build_evaluators  # noqa: E402
 
 log = logging.getLogger("score_results")
 

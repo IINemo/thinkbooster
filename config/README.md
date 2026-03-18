@@ -1,162 +1,127 @@
-# Configuration Directory Structure
+# Configuration
 
-Hydra-based configuration for LLM Test-Time Scaling evaluation framework.
+Hydra-based configuration for ThinkBooster evaluation framework.
 
 ## Directory Structure
 
 ```
 config/
-├── experiments/          # Full experiment configs (entry points)
-│   ├── run_tts_eval.yaml              # Default evaluation config
-│   ├── deepconf/                      # DeepConf experiments
-│   │   ├── run_gsm8k_deepconf.yaml    # GSM8K + DeepConf
-│   │   └── deepconf_api_test.yaml     # DeepConf API test
-│   ├── chain_of_thought/              # Chain-of-thought experiments
-│   │   ├── chain_of_thought_test.yaml
-│   │   └── chain_of_thought_api_test.yaml
-│   └── self_consistency/              # Self-consistency experiments
-│       ├── self_consistency_test.yaml
-│       └── self_consistency_api_test.yaml
+├── experiments/              # Full experiment configs (entry points)
+│   ├── adaptive_scaling/     # Adaptive scaling experiments
+│   ├── baseline/             # Baseline (single-shot)
+│   ├── beam_search/          # Beam search experiments
+│   ├── chain_of_thought/     # Chain-of-thought
+│   ├── deepconf/             # DeepConf (offline/online)
+│   ├── extended_thinking/    # Extended thinking
+│   ├── offline_best_of_n/    # Offline best-of-N
+│   ├── online_best_of_n/     # Online best-of-N
+│   ├── self_consistency/     # Self-consistency
+│   └── uncertainty_cot/      # Uncertainty-guided CoT
 │
-├── dataset/              # Dataset configurations
-│   ├── default.yaml      # Default dataset config
-│   ├── gsm8k.yaml        # GSM8K dataset
-│   └── small_gsm8k.yaml  # Small GSM8K subset
+├── dataset/                  # Dataset configs
+│   ├── math_500.yaml         # MATH-500
+│   ├── olympiadbench.yaml    # OlympiadBench
+│   ├── gaokao2023en.yaml     # GaoKao 2023 English
+│   ├── minerva_math.yaml     # Minerva Math
+│   ├── aime_2025.yaml        # AIME 2025
+│   ├── human_eval_plus.yaml  # HumanEval+ (code)
+│   ├── mbpp_plus.yaml        # MBPP+ (code)
+│   └── ...
 │
-├── model/                # Model configurations
-│   ├── default.yaml      # Default model config
-│   ├── openrouter.yaml   # OpenRouter API models
-│   ├── openai.yaml       # OpenAI API models
-│   └── together_ai.yaml  # Together AI models
+├── model/                    # Model/backend configs
+│   ├── openrouter.yaml       # OpenRouter API (gpt-4o-mini, Claude, etc.)
+│   ├── vllm_qwen3.yaml       # vLLM local (Qwen3)
+│   ├── openai.yaml           # OpenAI API
+│   ├── deepseek.yaml         # DeepSeek API
+│   └── hf_qwen3.yaml         # HuggingFace local
 │
-├── strategy/             # Strategy configurations
-│   ├── deepconf.yaml            # DeepConf strategy
-│   ├── chain_of_thought.yaml   # Chain-of-thought
-│   └── self_consistency.yaml   # Self-consistency
+├── strategy/                 # Strategy hyperparameters
+│   ├── beam_search.yaml
+│   ├── offline_bon.yaml
+│   ├── online_bon.yaml
+│   ├── self_consistency.yaml
+│   ├── adaptive.yaml
+│   ├── deepconf.yaml
+│   └── ...
 │
-├── generation/           # Generation settings
-│   └── default.yaml
+├── scorer/                   # Scorer configs
+│   ├── entropy.yaml          # Entropy scorer
+│   ├── prm.yaml              # Process Reward Model
+│   ├── perplexity.yaml       # Perplexity scorer
+│   ├── sequence_prob.yaml    # Sequence probability
+│   ├── llm_critic.yaml       # LLM-as-a-critic
+│   └── ...
 │
-├── output/               # Output settings
-│   └── default.yaml
-│
-└── system/               # System settings
-    └── default.yaml
+├── evaluation/               # Evaluation method configs
+├── generation/               # Generation parameters (temperature, top_p, etc.)
+├── prompts/                  # Prompt templates
+└── system/                   # System settings (device, seed)
 ```
 
 ## Usage
 
-### Run an experiment config:
+### Run an experiment config
 
 ```bash
 python scripts/run_tts_eval.py \
   --config-path ../config \
-  --config-name experiments/deepconf/run_gsm8k_deepconf
+  --config-name experiments/offline_best_of_n/math500/offline_bon_openrouter_gpt4o_mini_math500_entropy
 ```
 
-### Override specific values:
+### Override specific values
 
 ```bash
 python scripts/run_tts_eval.py \
   --config-path ../config \
-  --config-name experiments/deepconf/run_gsm8k_deepconf \
-  dataset.subset=100 \
-  strategy.budget=16 \
-  model.model_name="openai/gpt-4o"
+  --config-name experiments/offline_best_of_n/math500/offline_bon_openrouter_gpt4o_mini_math500_entropy \
+  dataset.subset=10 \
+  report_to=''
 ```
 
-## Experiment Configs
+## Experiment Config Structure
 
-Experiment configs in `experiments/` combine modular components:
+Experiment configs compose from modular components via Hydra defaults:
 
 ```yaml
-# experiments/run_gsm8k_deepconf.yaml
+# @package _global_
 defaults:
-  - dataset: gsm8k          # From dataset/gsm8k.yaml
-  - model: openrouter       # From model/openrouter.yaml
-  - generation: default     # From generation/default.yaml
-  - output: default         # From output/default.yaml
-  - system: default         # From system/default.yaml
+  - /config
+  - /dataset/math_500
+  - /model/openrouter
+  - /strategy/offline_bon
+  - /scorer/entropy
+  - /evaluation/default
   - _self_
 
-# Override specific values
-model:
-  model_name: "openai/gpt-4o-mini"
+run_name: "offline_bon_openrouter_gpt4o_mini_math500_entropy_seed${system.seed}_${now:%H-%M-%S}"
+report_to: wandb
+wandb_project: llm-tts-eval-math500
 
-strategy:
-  type: deepconf
-  budget: 8
+model:
+  model_path: "openai/gpt-4o-mini"
+
+dataset:
+  data_name: math
+  prompt_file: "${hydra:runtime.cwd}/config/prompts/qwen25_math_official.txt"
 ```
 
-## Component Configs
+## Naming Convention
 
-### Dataset (`dataset/`)
+Experiment config filenames follow:
+```
+{strategy_prefix}_{backend}_{model}_{dataset}_{scorer}.yaml
+```
 
-Configure which dataset to use:
-- `dataset_path`: HuggingFace dataset path
-- `dataset_split`: train/test
-- `subset`: Number of samples (null = all)
+Examples:
+- `offline_bon_openrouter_gpt4o_mini_math500_entropy.yaml`
+- `beam_search_vllm_thinking_qwen3_8b_olympiadbench_prm.yaml`
+- `baseline_vllm_qwen25_math_7b_instruct_aime2025.yaml`
 
-### Model (`model/`)
-
-Configure model settings:
-- `provider`: openrouter, together_ai, or local
-- `model_name`: Model identifier
-- `top_logprobs`: For DeepConf (API models only)
-
-### Strategy (`strategy/`)
-
-Configure reasoning strategy:
-- `type`: deepconf, direct_online_best_of_n_reason_eval_separate, etc.
-- Strategy-specific parameters
-
-### Generation (`generation/`)
-
-Configure text generation:
-- `max_new_tokens`: Max tokens per generation
-- `temperature`: Sampling temperature
-- `top_p`, `top_k`: Nucleus/top-k sampling
+See `tests/test_config_naming.py` for the enforced naming rules.
 
 ## Creating New Experiments
 
-1. **Choose the right subfolder** based on strategy:
-   - `experiments/deepconf/` - DeepConf experiments
-   - `experiments/chain_of_thought/` - Chain-of-thought experiments
-   - `experiments/self_consistency/` - Self-consistency experiments
-
-2. **Copy existing config:**
-   ```bash
-   cp config/experiments/deepconf/run_gsm8k_deepconf.yaml \
-      config/experiments/deepconf/my_experiment.yaml
-   ```
-
-3. **Modify as needed:**
-   ```yaml
-   defaults:
-     - /dataset/my_dataset
-     - /model/openrouter
-     - /generation/default
-     - _self_
-
-   model:
-     model_name: "openai/gpt-4o"
-
-   strategy:
-     type: deepconf
-     budget: 32
-   ```
-
-4. **Run:**
-   ```bash
-   python scripts/run_tts_eval.py \
-     --config-path ../config \
-     --config-name experiments/deepconf/my_experiment
-   ```
-
-## Best Practices
-
-1. **Organize by strategy** - Keep experiments in method-specific subfolders
-2. **Use modular components** - Reuse dataset/model/strategy configs
-3. **Name descriptively** - `run_<dataset>_<method>.yaml` or `<method>_<variant>.yaml`
-4. **Document overrides** - Comment why values are overridden
-5. **Absolute paths in defaults** - Use `/dataset/...` not `dataset/...` for clarity
+1. Pick the strategy directory under `experiments/`
+2. Copy an existing config for the same strategy
+3. Modify model, dataset, scorer as needed
+4. Run with `dataset.subset=1` to verify

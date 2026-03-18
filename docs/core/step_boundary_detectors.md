@@ -226,7 +226,7 @@ steps = detector.detect_steps(thinking_content)
     - `marker.py` - `ThinkingMarkerDetector` (linguistic markers, includes v2)
     - `hybrid.py` - `ThinkingHybridDetector`, `ThinkingAdaptiveDetector`
     - `llm.py` - `ThinkingLLMDetector`, `ThinkingLLMDetectorVLLM`
-- **Analysis script**: `scripts/analyze_thinking_steps.py`
+- **Analysis script**: `scripts/analysis/analyze_thinking_steps.py`
 - **Results & logs (WandB artifact)**: [step_boundary_analysis/v0](https://wandb.ai/nlpresearch.group/llm-tts-eval-aime2025/artifacts/analysis/step_boundary_analysis/v0/files)
   - [Per-detector results](https://wandb.ai/nlpresearch.group/llm-tts-eval-aime2025/artifacts/analysis/step_boundary_analysis/v0/files/aime2025_thinking_vllm_22-50-50/by_detector) - JSON files for each detector type
   - `marker_semantic_v2_analysis.log` - Detailed reasoning for marker selection

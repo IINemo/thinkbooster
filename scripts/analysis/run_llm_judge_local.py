@@ -3,7 +3,7 @@
 Run LLM-as-a-judge evaluation locally on results.json
 
 Usage:
-    python scripts/run_llm_judge_local.py outputs/.../results.json
+    python scripts/analysis/run_llm_judge_local.py outputs/.../results.json
 
 API keys are loaded from .env file (OPENAI_API_KEY or OPENROUTER_API_KEY).
 """

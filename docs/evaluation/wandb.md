@@ -45,7 +45,7 @@ python scripts/run_tts_eval.py \
 ### Step 2: Upload to WandB
 
 ```bash
-python scripts/log_results_to_wandb.py \
+python scripts/data/log_results_to_wandb.py \
     outputs/2025-12-03/aime2025_deepconf_vllm_s0-29 \
     --project llm-tts-eval-aime2025 \
     --name "deepconf_qwen3-8b_vllm" \
@@ -106,7 +106,7 @@ Use consistent tags for filtering runs:
 
 ### Upload single experiment
 ```bash
-python scripts/log_results_to_wandb.py \
+python scripts/data/log_results_to_wandb.py \
     outputs/2025-12-03/aime2025_deepconf_vllm \
     --project llm-tts-eval-aime2025 \
     --name "deepconf_qwen3-8b_vllm" \
@@ -116,7 +116,7 @@ python scripts/log_results_to_wandb.py \
 ### Upload multiple experiments (batch)
 ```bash
 for dir in outputs/2025-12-03/*/; do
-    python scripts/log_results_to_wandb.py "$dir" \
+    python scripts/data/log_results_to_wandb.py "$dir" \
         --project llm-tts-eval-aime2025 \
         --tags deepconf qwen3-8b vllm
 done
@@ -141,4 +141,4 @@ artifact_dir = artifact.download()
 
 - [Results documentation](results/README.md) - How to document results
 - [Metrics](metrics.md) - What metrics to track
-- Upload script: [`scripts/log_results_to_wandb.py`](../../scripts/log_results_to_wandb.py)
+- Upload script: [`scripts/data/log_results_to_wandb.py`](../../scripts/data/log_results_to_wandb.py)

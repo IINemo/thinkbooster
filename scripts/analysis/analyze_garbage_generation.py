@@ -2,8 +2,8 @@
 """Analyze wandb runs for degenerate (garbage) token generation.
 
 Usage:
-    python scripts/analyze_garbage_generation.py URL1 URL2 ...
-    python scripts/analyze_garbage_generation.py --runs-file runs.txt
+    python scripts/analysis/analyze_garbage_generation.py URL1 URL2 ...
+    python scripts/analysis/analyze_garbage_generation.py --runs-file runs.txt
 """
 
 import argparse
