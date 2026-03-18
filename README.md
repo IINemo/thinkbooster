@@ -1,12 +1,13 @@
-<img width="130" height="130" alt="ThinkBooster" src="assets/logo.png" />
-
-# ThinkBooster
+<div align="center">
+  <img src="assets/logo.png" alt="ThinkBooster logo" width="140" />
+  <h1>ThinkBooster: A Unified Framework for Seamless Test-Time Scaling of LLM Reasoning</h1>
+</div>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
 [![arXiv](https://img.shields.io/badge/arXiv-b31b1b.svg)](https://thinkbooster.s3.us-east-1.amazonaws.com/thinkbooster.pdf)
 
-## What is ThinkBooster?
+[Quick Start](#quick-start) | [Key Features](#key-features) | [Strategies](#supported-strategies) | [Visual Debugger](#visual-debugger) | [Documentation](#documentation)
 
 ThinkBooster is an open-source framework for **test-time compute scaling** of large language models. It implements nine state-of-the-art scaling strategies — beam search, best-of-N, self-consistency, DeepConf, MUR, phi-decoding, and more — scored by process reward models (PRMs), uncertainty estimators, LLM-as-a-critic, and ReProbes. The framework includes an evaluation pipeline for math, science, and coding benchmarks, an OpenAI-compatible endpoint gateway, and an interactive visual debugger for inspecting strategy behavior step by step.
 
@@ -37,8 +38,6 @@ conda activate thinkbooster
 
 # Install dependencies
 ./setup.sh
-pip install latex2sympy2 --no-deps   # math evaluation (separate due to antlr4 conflict)
-pip install ".[vllm]"                # vLLM for fast local inference
 
 # Configure API keys
 cp .env.example .env
@@ -93,6 +92,23 @@ Results are saved to `outputs/` with full config snapshots for reproducibility. 
 ## Visual Debugger
 
 The interactive debugger lets you compare multiple TTS strategies side by side on the same problem. Inspect per-step decisions (escalate, stop, prune, select), view confidence and uncertainty signals, and drill into sampled candidates and tree expansions.
+
+<table border="0">
+<tr>
+<td width="40%"><img src="https://github.com/user-attachments/assets/e1fec504-d6f7-49d8-85e3-bf42d4e7baec" alt="Visual Debugger — main interface" width="100%" /></td>
+<td valign="middle"><b>Main interface.</b> Select a cached example or enter a custom math/science/coding problem. Choose any strategy (beam search, best-of-N, MUR, …) and scorer (PRM, uncertainty, LLM-as-a-critic) and run it directly from the browser.</td>
+</tr>
+<tr><td colspan="2"><br/></td></tr>
+<tr>
+<td width="40%"><img src="https://github.com/user-attachments/assets/21c7fc24-7507-46e3-9ce3-34cb6a37d7b5" alt="Step-by-step reasoning inspector" width="100%" /></td>
+<td valign="middle"><b>Step inspector.</b> Replay the strategy execution step by step. Each entry in the reasoning timeline shows the operation (select, prune, escalate), the candidates considered, their scores, and the full text of the chosen step.</td>
+</tr>
+<tr><td colspan="2"><br/></td></tr>
+<tr>
+<td width="40%"><img src="https://github.com/user-attachments/assets/df03cc3e-a933-4b6c-aa96-f35ab3e9b986" alt="Trajectory tree visualization" width="100%" /></td>
+<td valign="middle"><b>Trajectory tree.</b> Global branching view of the entire strategy run. Nodes represent reasoning steps; the orange path highlights the final selected trajectory. Useful for understanding how beam search or tree-of-thought explores and prunes the search space.</td>
+</tr>
+</table>
 
 After starting the REST API service, open:
 
