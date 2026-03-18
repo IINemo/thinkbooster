@@ -1,5 +1,5 @@
 #!/bin/bash
-# Setup script for llm-tts-service
+# Setup script for ThinkBooster
 # Installs package dependencies, lm-polygraph dev branch, and llm-uncertainty-head (luh)
 
 set -e  # Exit on error

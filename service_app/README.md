@@ -1,4 +1,4 @@
-# LLM Test-Time Scaling Service
+# ThinkBooster Service
 
 OpenAI-compatible REST API for Test-Time Scaling strategies.
 
@@ -22,13 +22,6 @@ This service exposes TTS strategies through an **OpenAI-compatible API**. You ca
 ```bash
 # From repository root
 ./setup.sh          # Install dependencies
-./start_service_app.sh  # Start the service
-```
-
-### Local Development
-
-```bash
-pip install -e ".[service]"
 export OPENROUTER_API_KEY="your-key"
 python service_app/main.py
 ```

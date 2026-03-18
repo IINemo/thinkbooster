@@ -1,5 +1,5 @@
 """
-LLM Test-Time Scaling Service - OpenAI-compatible API
+ThinkBooster Service - OpenAI-compatible API
 """
 
 import json
@@ -35,7 +35,7 @@ app = FastAPI(
     title=settings.api_title,
     version=settings.api_version,
     description="""
-    LLM Test-Time Scaling Service with OpenAI-compatible API.
+    ThinkBooster Service with OpenAI-compatible API.
 
     This service exposes TTS strategies (Self-Consistency, Offline Best-of-N,
     Online Best-of-N, Beam Search) through an OpenAI-compatible interface.
@@ -115,7 +115,7 @@ async def root():
 
     return JSONResponse(
         content={
-            "message": "LLM Test-Time Scaling Service",
+            "message": "ThinkBooster Service",
             "version": settings.api_version,
             "docs": "/docs",
             "deploy": "/deploy",

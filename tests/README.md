@@ -1,4 +1,4 @@
-# Testing Guide for LLM Test-Time Scaling Strategies
+# Testing Guide for ThinkBooster
 
 This directory contains tests for all TTS strategies. This guide explains what to test, how to structure tests, and best practices.
 
@@ -746,7 +746,7 @@ When implementing a new strategy, ensure you have:
 **Solution:**
 ```bash
 # Run from project root
-cd /path/to/llm-tts-service
+cd /path/to/thinkbooster
 PYTHONPATH=. pytest tests/ -v
 ```
 
