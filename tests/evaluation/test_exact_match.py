@@ -6,7 +6,7 @@ class TestEvaluatorExactMatch:
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.evaluator = EvaluatorExactMatch(dataset_answer_format="numeric")
+        self.evaluator = EvaluatorExactMatch(dataset_answer_format="numeric", data_name="math500")
 
     def test_exact_numeric_match(self):
         problems = ["What is 2+2?"]
@@ -207,7 +207,7 @@ class TestEvaluatorExactMatch:
         solution = "true"
         gold_answer = ["True", "true"]
 
-        boolean_evaluator = EvaluatorExactMatch(dataset_answer_format="boolean")
+        boolean_evaluator = EvaluatorExactMatch(dataset_answer_format="boolean", data_name="math500")
         score1 = boolean_evaluator._score_single((problem, solution, gold_answer[0]))
         score2 = boolean_evaluator._score_single((problem, solution, gold_answer[1]))
         assert score1 == 1.0
@@ -218,7 +218,7 @@ class TestEvaluatorExactMatch:
         solution_true = ["<Answer>: True", "<Answer>: true"]
         solution_false = ["<Answer>: False", "<Answer>: false"]
 
-        boolean_evaluator = EvaluatorExactMatch(dataset_answer_format="boolean")
+        boolean_evaluator = EvaluatorExactMatch(dataset_answer_format="boolean", data_name="math500")
         for st in solution_true:
             score = boolean_evaluator._score_single((problem, st, "true"))
             assert score == 1.0
@@ -239,7 +239,7 @@ class TestEvaluatorExactMatch:
         solution_true = ["The final answer is True", "The final answer is true"]
         solution_false = ["The final answer is False", "The final answer is false"]
 
-        boolean_evaluator = EvaluatorExactMatch(dataset_answer_format="boolean")
+        boolean_evaluator = EvaluatorExactMatch(dataset_answer_format="boolean", data_name="math500")
 
         for st in solution_true:
             score = boolean_evaluator._score_single((problem, st, "true"))
@@ -259,7 +259,7 @@ class TestEvaluatorExactMatch:
         solution = "A"
         gold_answer = "A"
 
-        char_evaluator = EvaluatorExactMatch(dataset_answer_format="char")
+        char_evaluator = EvaluatorExactMatch(dataset_answer_format="char", data_name="math500")
 
         score = char_evaluator._score_single((problem, solution, gold_answer))
         assert score == 1.0
@@ -271,7 +271,7 @@ class TestEvaluatorExactMatch:
         solution_true = ["<Answer>: A", "<Answer>: A"]
         solution_false = ["<Answer>: C", "<Answer>: C"]
 
-        char_evaluator = EvaluatorExactMatch(dataset_answer_format="char")
+        char_evaluator = EvaluatorExactMatch(dataset_answer_format="char", data_name="math500")
 
         for st in solution_true:
             score = char_evaluator._score_single((problem, st, "A"))
@@ -293,7 +293,7 @@ class TestEvaluatorExactMatch:
         gold_answer = "Paris"
 
         # Create evaluator with string format
-        string_evaluator = EvaluatorExactMatch(dataset_answer_format="string")
+        string_evaluator = EvaluatorExactMatch(dataset_answer_format="string", data_name="math500")
 
         score = string_evaluator._score_single((problem, solution, gold_answer))
         assert score == 1.0
