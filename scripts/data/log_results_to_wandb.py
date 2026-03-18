@@ -3,7 +3,7 @@
 Log existing evaluation results to wandb.
 
 Usage:
-    python scripts/log_results_to_wandb.py outputs/2025-10-18/23-50-46
+    python scripts/data/log_results_to_wandb.py outputs/2025-10-18/23-50-46
 """
 
 import argparse

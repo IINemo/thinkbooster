@@ -253,15 +253,15 @@ def main():
         epilog="""
 Examples:
   # Auto-discover runs in a folder
-  python scripts/aggregate_seed_results.py outputs/2026-02-08/aime24/baseline/
+  python scripts/analysis/aggregate_seed_results.py outputs/2026-02-08/aime24/baseline/
 
   # Specify specific runs
-  python scripts/aggregate_seed_results.py \\
+  python scripts/analysis/aggregate_seed_results.py \\
     outputs/2026-02-08/aime24/baseline/seed42_run1 \\
     outputs/2026-02-08/aime24/baseline/seed43_run2
 
   # Save to custom output file
-  python scripts/aggregate_seed_results.py outputs/2026-02-08/aime24/baseline/ -o results.json
+  python scripts/analysis/aggregate_seed_results.py outputs/2026-02-08/aime24/baseline/ -o results.json
         """,
     )
 

@@ -16,8 +16,8 @@ Unified Format:
 }
 
 Usage:
-    python scripts/convert_datasets.py --dataset gsm8k --output_dir data/unified
-    python scripts/convert_datasets.py --dataset aime_2025 --output_dir data/unified
+    python scripts/data/convert_datasets.py --dataset gsm8k --output_dir data/unified
+    python scripts/data/convert_datasets.py --dataset aime_2025 --output_dir data/unified
 """
 
 import argparse

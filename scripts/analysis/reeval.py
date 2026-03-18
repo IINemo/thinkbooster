@@ -2,7 +2,7 @@
 """Re-run evaluation phase on existing batch_results.jsonl.
 
 Usage:
-    python scripts/reeval.py <output_dir>
+    python scripts/analysis/reeval.py <output_dir>
 
 Loads the saved Hydra config and batch_results.jsonl from the output directory,
 merges compute metrics from sample_metrics.jsonl (if available), runs

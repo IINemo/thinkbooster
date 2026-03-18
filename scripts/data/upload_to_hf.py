@@ -7,10 +7,10 @@ Usage:
     huggingface-cli login
 
     # Upload AIME 2025
-    python scripts/upload_to_hf.py --dataset aime_2025 --org test-time-compute
+    python scripts/data/upload_to_hf.py --dataset aime_2025 --org test-time-compute
 
     # Dry run (preview without uploading)
-    python scripts/upload_to_hf.py --dataset aime_2025 --org test-time-compute --dry-run
+    python scripts/data/upload_to_hf.py --dataset aime_2025 --org test-time-compute --dry-run
 """
 
 import argparse
@@ -28,7 +28,7 @@ def load_converted_dataset(dataset_name: str, data_dir: Path) -> Dataset:
     if not jsonl_path.exists():
         raise FileNotFoundError(
             f"Dataset not found: {jsonl_path}\n"
-            f"Please run: python scripts/convert_datasets.py --dataset {dataset_name}"
+            f"Please run: python scripts/data/convert_datasets.py --dataset {dataset_name}"
         )
 
     # Load from JSONL
@@ -274,7 +274,7 @@ def main():
     if not args.data_dir.exists():
         print(f"Error: Data directory not found: {args.data_dir}")
         print("\nRun conversion first:")
-        print(f"  python scripts/convert_datasets.py --dataset {args.dataset}")
+        print(f"  python scripts/data/convert_datasets.py --dataset {args.dataset}")
         return 1
 
     # Upload
