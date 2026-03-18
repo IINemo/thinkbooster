@@ -1,9 +1,10 @@
-<table border="0">
-<tr>
-<td valign="middle"><img src="assets/logo.png" alt="ThinkBooster logo" width="240" /></td>
-<td valign="middle"><h1>ThinkBooster: A Unified Framework for Seamless Test-Time Scaling of LLM Reasoning</h1></td>
-</tr>
-</table>
+<h1>
+  <img src="assets/logo.png" alt="ThinkBooster logo" width="130" align="left" />
+  <br />
+  ThinkBooster: A Unified Framework for Seamless Test-Time Scaling of LLM Reasoning
+</h1>
+
+<br clear="all"/>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
