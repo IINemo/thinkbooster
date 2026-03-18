@@ -10,11 +10,6 @@ from .strategy_online_best_of_n import StrategyOnlineBestOfN
 from .strategy_self_consistency import StrategySelfConsistency
 from .strategy_uncertainty_cot import StrategyUncertaintyCoT
 
-try:
-    from .tree_of_thoughts import StrategyTreeOfThoughts
-except ImportError:
-    StrategyTreeOfThoughts = None
-
 # vLLM-only strategies (optional - requires vllm package)
 try:
     from .strategy_offline_best_of_n import StrategyOfflineBestOfN
@@ -36,6 +31,5 @@ __all__ = [
     "AdaptiveScalingBestOfN",
     "StrategyUncertaintyCoT",
     "PhiDecoding",
-    "StrategyTreeOfThoughts",
     "VLLM_STRATEGIES_AVAILABLE",
 ]
