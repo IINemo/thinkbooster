@@ -154,15 +154,15 @@ thinkbooster/
 └── lm-polygraph/         # Submodule: uncertainty estimation
 ```
 
-See [Project Structure](docs/project_structure.md) for a detailed architecture overview.
+See [Project Structure](docs/getting_started/project_structure.md) for a detailed architecture overview.
 
 ---
 
 ## Documentation
 
-- [Project Structure](docs/project_structure.md) — architecture and component descriptions
+- [Project Structure](docs/getting_started/project_structure.md) — architecture and component descriptions
 - [Evaluation Protocol](docs/evaluation/README.md) — datasets, metrics (accuracy, tokens, FLOPs), and reporting
-- [Strategy Registration](docs/strategy_registration.md) — how to add new strategies with tests
+- [Strategy Registration](docs/core/strategy_registration.md) — how to add new strategies with tests
 - [Service API Guide](docs/service/api_guide.md) — REST API reference and configuration
 - [DeepConf Guide](docs/strategies/deepconf.md) — confidence-based test-time scaling
 
@@ -170,7 +170,7 @@ See [Project Structure](docs/project_structure.md) for a detailed architecture o
 
 ## Contributing
 
-We welcome contributions! Whether it's a new strategy, scorer, dataset, or bug fix — see the [Contributing Guide](docs/contributing.md) for setup instructions, development workflow, and coding standards.
+We welcome contributions! Whether it's a new strategy, scorer, dataset, or bug fix — see the [Contributing Guide](docs/getting_started/contributing.md) for setup instructions, development workflow, and coding standards.
 
 ---
 

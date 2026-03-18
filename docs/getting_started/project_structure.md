@@ -230,7 +230,7 @@ defaults:
 ## References
 
 - [Contributing Guide](contributing.md) — setup, workflow, PR guidelines
-- [Strategy Registration](strategy_registration.md) — how to add new strategies
-- [Service API Guide](service/api_guide.md) — REST API reference
-- [DeepConf Guide](strategies/deepconf.md) — example strategy deep-dive
-- [Architecture](architecture.md) — offline vs online strategy paradigms
+- [Strategy Registration](../core/strategy_registration.md) — how to add new strategies
+- [Service API Guide](../service/api_guide.md) — REST API reference
+- [DeepConf Guide](../strategies/deepconf.md) — example strategy deep-dive
+- [Architecture](../core/architecture.md) — offline vs online strategy paradigms

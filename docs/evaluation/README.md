@@ -9,7 +9,7 @@ This document defines the evaluation protocol for comparing test-time compute sc
 - [Metrics](metrics.md) - Accuracy, tokens, FLOPs calculation
 - [WandB](wandb.md) - Logging conventions and upload workflow
 - [Results](results/) - Experiment results by dataset
-- [Architecture](../architecture.md) - Inference pipeline architecture
+- [Architecture](../core/architecture.md) - Inference pipeline architecture
 
 ---
 

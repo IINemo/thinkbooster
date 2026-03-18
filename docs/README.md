@@ -2,15 +2,15 @@
 
 ## Getting Started
 
-- [Contributing Guide](contributing.md) — setup, development workflow, PR guidelines
-- [Project Structure](project_structure.md) — codebase organization and design patterns
+- [Contributing Guide](getting_started/contributing.md) — setup, development workflow, PR guidelines
+- [Project Structure](getting_started/project_structure.md) — codebase organization and design patterns
 
 ## Core Concepts
 
-- [Architecture](architecture.md) — offline vs online strategy paradigms
-- [Step Boundary Detectors](step_boundary_detectors.md) — how step/answer boundaries are detected
-- [vLLM vs HuggingFace](vllm_vs_hf.md) — backend comparison and trade-offs
-- [Strategy Registration](strategy_registration.md) — adding new strategies with test coverage
+- [Architecture](core/architecture.md) — offline vs online strategy paradigms
+- [Step Boundary Detectors](core/step_boundary_detectors.md) — how step/answer boundaries are detected
+- [vLLM vs HuggingFace](core/vllm_vs_hf.md) — backend comparison and trade-offs
+- [Strategy Registration](core/strategy_registration.md) — adding new strategies with test coverage
 
 ## Strategies
 
@@ -35,4 +35,4 @@
 
 ## Infrastructure
 
-- [SLURM Guide](slurm.md) — running experiments on HPC clusters
+- [SLURM Guide](infrastructure/slurm.md) — running experiments on HPC clusters
