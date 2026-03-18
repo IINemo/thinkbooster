@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/logo.png" alt="ThinkBooster logo" width="110" />
+  <img src="assets/logo.png" alt="ThinkBooster logo" width="140" />
   <h1>ThinkBooster: A Unified Framework for Seamless Test-Time Scaling of LLM Reasoning</h1>
 </div>
 
