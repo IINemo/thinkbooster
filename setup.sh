@@ -33,9 +33,10 @@ install_lm_polygraph() {
         git clone -b dev https://github.com/IINemo/lm-polygraph.git
     fi
 
-    # Patch lm-polygraph requirements to allow newer transformers (needed for vLLM compatibility)
-    echo -e "  Patching transformers version constraint..."
+    # Patch lm-polygraph requirements to allow newer transformers and spacy (needed for vLLM/numpy 2.x compatibility)
+    echo -e "  Patching version constraints..."
     sed -i 's/transformers>=4.48.0,<4.52.0/transformers>=4.48.0/' "$LM_POLYGRAPH_DIR/requirements.txt"
+    sed -i 's/spacy>=3.4.0,<3.8.0/spacy>=3.8.0/' "$LM_POLYGRAPH_DIR/requirements.txt"
 
     echo -e "  Installing lm-polygraph..."
     pip install -e "$LM_POLYGRAPH_DIR" > /dev/null
