@@ -98,10 +98,11 @@ Results are saved to `outputs/` with full config snapshots for reproducibility. 
 The interactive debugger lets you compare multiple TTS strategies side by side on the same problem. Inspect per-step decisions (escalate, stop, prune, select), view confidence and uncertainty signals, and drill into sampled candidates and tree expansions.
 
 ![Visual Debugger — main interface](https://github.com/user-attachments/assets/e1fec504-d6f7-49d8-85e3-bf42d4e7baec)
+<p><em>Main interface — select a cached example or run a custom query with any strategy and scorer</em></p>
 
 <table border="0"><tr>
-<td><img src="https://github.com/user-attachments/assets/21c7fc24-7507-46e3-9ce3-34cb6a37d7b5" alt="Step-by-step reasoning inspector" /></td>
-<td><img src="https://github.com/user-attachments/assets/df03cc3e-a933-4b6c-aa96-f35ab3e9b986" alt="Trajectory tree visualization" /></td>
+<td><img src="https://github.com/user-attachments/assets/21c7fc24-7507-46e3-9ce3-34cb6a37d7b5" alt="Step-by-step reasoning inspector" /><p><em>Step inspector — per-step decisions, scores, and candidate details</em></p></td>
+<td><img src="https://github.com/user-attachments/assets/df03cc3e-a933-4b6c-aa96-f35ab3e9b986" alt="Trajectory tree visualization" /><p><em>Trajectory tree — global branching view of the strategy run</em></p></td>
 </tr></table>
 
 After starting the REST API service, open:
