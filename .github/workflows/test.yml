@@ -42,7 +42,7 @@ jobs:
         pip install .
     - name: Run setup.sh
       run: |
-        ./setup.sh
+        ./setup.sh --verbose
     - name: Validate strategy registry
       run: |
         python tests/strategy_registry.py --validate
@@ -74,7 +74,7 @@ jobs:
         pip install .
     - name: Run setup.sh
       run: |
-        ./setup.sh
+        ./setup.sh --verbose
     - name: Run integration tests
       env:
         OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
