@@ -9,7 +9,11 @@ from .strategy_extended_thinking import StrategyExtendedThinking
 from .strategy_online_best_of_n import StrategyOnlineBestOfN
 from .strategy_self_consistency import StrategySelfConsistency
 from .strategy_uncertainty_cot import StrategyUncertaintyCoT
-from .tree_of_thoughts import StrategyTreeOfThoughts
+
+try:
+    from .tree_of_thoughts import StrategyTreeOfThoughts
+except ImportError:
+    StrategyTreeOfThoughts = None
 
 # vLLM-only strategies (optional - requires vllm package)
 try:
