@@ -81,6 +81,10 @@ echo -e "${YELLOW}Installing package dependencies...${NC}"
 pip install -e . > /dev/null
 pip install -e ".[vllm]" > /dev/null   # vLLM for fast local inference
 pip install latex2sympy2 --no-deps > /dev/null  # math evaluation (separate due to antlr4 conflict with hydra)
+# Pin numpy after vLLM (vLLM pulls in 2.4+; numba requires <2.3)
+pip install "numpy>=2.0.0,<2.3.0" > /dev/null
+# Upgrade thinc/spacy for numpy 2.x binary compatibility (lm-polygraph pins older versions)
+pip install "thinc>=8.3.0" "spacy>=3.8.0" > /dev/null
 echo -e "${GREEN}✓ Package installed${NC}\n"
 
 # Install lm-polygraph dev branch
