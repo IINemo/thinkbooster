@@ -132,7 +132,7 @@ echo "============================================"
 
 ---
 
-## Running LLM-TTS Experiments
+## Running ThinkBooster Experiments
 
 ### Single GPU Experiment
 
