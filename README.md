@@ -1,12 +1,15 @@
-<img width="130" height="130" alt="ThinkBooster" src="assets/logo.png" />
-
-# ThinkBooster
+<table border="0">
+<tr>
+<td valign="middle"><img src="assets/logo.png" alt="ThinkBooster logo" width="240" /></td>
+<td valign="middle"><h1>ThinkBooster: A Unified Framework for Seamless Test-Time Scaling of LLM Reasoning</h1></td>
+</tr>
+</table>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
 [![arXiv](https://img.shields.io/badge/arXiv-b31b1b.svg)](https://thinkbooster.s3.us-east-1.amazonaws.com/thinkbooster.pdf)
 
-## What is ThinkBooster?
+[Quick Start](#quick-start) | [Key Features](#key-features) | [Strategies](#supported-strategies) | [Visual Debugger](#visual-debugger) | [Documentation](#documentation)
 
 ThinkBooster is an open-source framework for **test-time compute scaling** of large language models. It implements nine state-of-the-art scaling strategies — beam search, best-of-N, self-consistency, DeepConf, MUR, phi-decoding, and more — scored by process reward models (PRMs), uncertainty estimators, LLM-as-a-critic, and ReProbes. The framework includes an evaluation pipeline for math, science, and coding benchmarks, an OpenAI-compatible endpoint gateway, and an interactive visual debugger for inspecting strategy behavior step by step.
 
