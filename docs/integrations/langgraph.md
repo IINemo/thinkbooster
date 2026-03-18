@@ -1,6 +1,6 @@
-# LangChain/LangGraph Integration for llm-tts-service
+# LangChain/LangGraph Integration for ThinkBooster
 
-This document describes approaches for integrating llm-tts-service with LangChain and LangGraph, enabling uncertainty-aware LLM agents.
+This document describes approaches for integrating ThinkBooster with LangChain and LangGraph, enabling uncertainty-aware LLM agents.
 
 ## TL;DR - Which Approach to Use?
 
@@ -16,7 +16,7 @@ This document describes approaches for integrating llm-tts-service with LangChai
 
 ## Motivation
 
-Current LLM agents return answers without confidence information. By integrating llm-tts-service with LangGraph, we can:
+Current LLM agents return answers without confidence information. By integrating ThinkBooster with LangGraph, we can:
 
 1. **Return uncertainty alongside answers** - Agents know when they're uncertain
 2. **Enable uncertainty-based routing** - Retry, escalate, or accept based on confidence
@@ -27,7 +27,7 @@ Current LLM agents return answers without confidence information. By integrating
 
 ## Available Uncertainty Metrics
 
-llm-tts-service provides several uncertainty/confidence metrics:
+ThinkBooster provides several uncertainty/confidence metrics:
 
 | Metric | Strategy | Range | Description |
 |--------|----------|-------|-------------|
@@ -774,5 +774,5 @@ confidence = tts_meta["confidence"]
 
 - [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
 - [LangChain Tools](https://python.langchain.com/docs/modules/tools/)
-- [DeepConf Paper](docs/deepconf/DeepConf.md)
-- [llm-tts-service README](../README.md)
+- [DeepConf Guide](../strategies/deepconf.md)
+- [ThinkBooster README](../README.md)

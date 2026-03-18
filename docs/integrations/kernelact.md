@@ -1,13 +1,13 @@
-# KernelAct + LLM-TTS Service Integration
+# KernelAct + ThinkBooster Integration
 
 ## Overview
 
-This integration enables [KernelAct](https://github.com/ai-nikolai/KernelAct) (a CUDA kernel optimization benchmark) to use **llm-tts-service** as a remote backend for test-time scaling strategies. Instead of running plain vLLM inference locally, KernelAct can call the TTS service via an OpenAI-compatible API to apply uncertainty-guided reasoning strategies (Offline Best-of-N, Online Best-of-N, Beam Search) when generating CUDA kernel optimizations.
+This integration enables [KernelAct](https://github.com/ai-nikolai/KernelAct) (a CUDA kernel optimization benchmark) to use **ThinkBooster** as a remote backend for test-time scaling strategies. Instead of running plain vLLM inference locally, KernelAct can call the TTS service via an OpenAI-compatible API to apply uncertainty-guided reasoning strategies (Offline Best-of-N, Online Best-of-N, Beam Search) when generating CUDA kernel optimizations.
 
 ## Architecture
 
 ```
-KernelAct (client)                          llm-tts-service (server)
+KernelAct (client)                          ThinkBooster (server)
 ┌─────────────────────┐                    ┌──────────────────────────────┐
 │ run_inference_       │   OpenAI SDK      │  FastAPI service (port 8001) │
 │ test_time_scaling.py │ ──────────────>   │  /v1/chat/completions        │
@@ -25,7 +25,7 @@ KernelAct (client)                          llm-tts-service (server)
 
 ## What Changed
 
-### llm-tts-service side (`feat/kernelact-vllm-service-integration` branch)
+### ThinkBooster side (`feat/kernelact-vllm-service-integration` branch)
 
 **4 files modified in `service_app/`:**
 
@@ -90,7 +90,7 @@ export PRM_DEVICE="cuda:0"
 export PRM_USE_VLLM=true
 
 # Start the service
-cd llm-tts-service
+cd thinkbooster
 python service_app/main.py
 # Service starts on http://localhost:8001
 ```
@@ -193,5 +193,5 @@ print(response.choices[0].message.content)
 
 | Repository | Branch | Description |
 |------------|--------|-------------|
-| `llm-tts-service` | `feat/kernelact-vllm-service-integration` | Service-side: vLLM backend + strategy routing |
+| `ThinkBooster` | `feat/kernelact-vllm-service-integration` | Service-side: vLLM backend + strategy routing |
 | `KernelAct` | `feat/tts-service-integration` | Client-side: OpenAI SDK client + CLI args |

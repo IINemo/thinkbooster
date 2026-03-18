@@ -2,6 +2,8 @@
 
 A quick reference guide for submitting and managing jobs on the HPC cluster using Slurm workload manager.
 
+> **ThinkBooster submission script**: Use [`scripts/slurm/submit.sh`](../../scripts/slurm/README.md) to submit experiments — it handles config resolution, GPU allocation, and seed arrays automatically.
+>
 > **Official Documentation**: For comprehensive Slurm documentation on the MBZUAI cluster, see the [HPC Wiki - Slurm Guide](https://hpc.mbzuai.ac.ae/wiki/camd/slurm.html#).
 
 ---
@@ -130,7 +132,7 @@ echo "============================================"
 
 ---
 
-## Running LLM-TTS Experiments
+## Running ThinkBooster Experiments
 
 ### Single GPU Experiment
 

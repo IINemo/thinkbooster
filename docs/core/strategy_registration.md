@@ -27,7 +27,7 @@ REGISTERED_STRATEGIES = [
     StrategyInfo(
         name="deepconf",
         class_name="StrategyDeepConf",
-        module_path="llm_tts/strategies/strategy_deepconf.py",
+        module_path="llm_tts/strategies/deepconf/strategy.py",
         test_dir="tests/deepconf",
         required_tests=[
             "test_deepconf_accurate.py",
@@ -115,18 +115,26 @@ Implement your strategy:
 from .strategy_base import StrategyBase
 
 class StrategyMyStrategy(StrategyBase):
-    def __init__(self, model, **kwargs):
-        self.model = model
+    def __init__(self, step_generator, scorer, **kwargs):
+        self.step_generator = step_generator
+        self.scorer = scorer
         # ... initialization
 
-    def generate_trajectory(self, prompt):
+    def generate_trajectories_batch(self, requests, sample_indices=None, save_callback=None):
+        """Generate trajectories for a batch of samples."""
+        results = []
+        for request in requests:
+            result = self._generate_single(request)
+            results.append(result)
+        return results
+
+    def _generate_single(self, request):
         # ... implementation
         return {
             "trajectory": "...",
             "steps": [...],
             "validity_scores": [...],
             "completed": True,
-            "metadata": {...}
         }
 ```
 
@@ -294,19 +302,16 @@ Output:
 ```
 REGISTERED TTS STRATEGIES
 
-Total strategies: 2
+Total strategies: 1
 
 1. deepconf
    Class: StrategyDeepConf
    Description: Confidence-based test-time scaling with trace filtering
-   Module: llm_tts/strategies/strategy_deepconf.py
+   Module: llm_tts/strategies/deepconf/strategy.py
    Test dir: tests/deepconf
    Required tests:
      - test_deepconf_accurate.py
      - test_online_mode.py
-
-2. online_best_of_n
-   ...
 ```
 
 ### Validate All Strategies
@@ -383,14 +388,22 @@ Every strategy **MUST** have:
 
 ---
 
-## Current Registered Strategies
+## Test Coverage Status
 
-| Strategy | Status | Tests |
-|----------|--------|-------|
-| **deepconf** | ✅ Complete | 2 test files (accurate, online_mode) |
-| **online_best_of_n** | ✅ Complete | 1 test file (logic) |
-| **self_consistency** | ⚠️ TODO | Not registered (missing tests) |
-| **chain_of_thought** | ⚠️ TODO | Not registered (missing tests) |
+All 10 strategies are fully implemented. The table below tracks which ones have dedicated tests registered in `strategy_registry.py`:
+
+| Strategy | Test coverage | Notes |
+|----------|--------------|-------|
+| **deepconf** | ✅ 2 test files | `test_deepconf_accurate.py`, `test_online_mode.py` |
+| **beam_search** | — | Covered by integration tests and eval pipeline |
+| **online_best_of_n** | — | Covered by integration tests and eval pipeline |
+| **offline_best_of_n** | — | Covered by integration tests and eval pipeline |
+| **self_consistency** | — | Covered by integration tests and eval pipeline |
+| **adaptive_scaling** | — | Covered by integration tests and eval pipeline |
+| **uncertainty_cot** | — | |
+| **phi_decoding** | — | |
+| **extended_thinking** | — | |
+| **baseline** | — | |
 
 ---
 
@@ -448,4 +461,4 @@ Every strategy **MUST** have:
 - **Testing Guide**: `tests/README.md`
 - **Registry Implementation**: `tests/strategy_registry.py`
 - **CI Workflow**: `.github/workflows/test.yml`
-- **Example Tests**: `tests/deepconf/`, `tests/online_best_of_n/`
+- **Example Tests**: `tests/deepconf/`

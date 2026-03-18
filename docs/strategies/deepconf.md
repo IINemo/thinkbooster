@@ -64,9 +64,8 @@ print(f"Confidence: {result['metadata']['confidence_score']:.2%}")
 ```bash
 python scripts/run_tts_eval.py \
   --config-path ../config \
-  --config-name experiments/deepconf/run_gsm8k_deepconf \
+  --config-name experiments/deepconf/run_gsm8k_deepconf_offline \
   dataset.subset=10 \
-  strategy.mode=offline \
   strategy.budget=8
 ```
 
@@ -74,9 +73,8 @@ python scripts/run_tts_eval.py \
 ```bash
 python scripts/run_tts_eval.py \
   --config-path ../config \
-  --config-name experiments/deepconf/run_gsm8k_deepconf \
+  --config-name experiments/deepconf/run_gsm8k_deepconf_online \
   dataset.subset=10 \
-  strategy.mode=online \
   strategy.warmup_traces=4 \
   strategy.total_budget=16
 ```
@@ -271,7 +269,7 @@ llm_tts/
 │       ├── strategy.py                 # Main strategy (offline & online modes)
 │       └── utils.py                    # Confidence computation utilities
 ├── early_stopping.py                   # Early stopping conditions
-├── step_boundary_detector.py           # Detects step/answer boundaries
+├── step_boundary_detectors/            # Detects step/answer boundaries
 └── scorers/
     └── majority_voting.py              # Weighted voting implementation
 
@@ -444,7 +442,7 @@ strategy = StrategyDeepConf(model, temperature=0.9)
 
 **Solution**: Run from project root:
 ```bash
-cd /path/to/llm-tts-service
+cd /path/to/thinkbooster
 python tests/deepconf/test_deepconf_accurate.py
 ```
 
