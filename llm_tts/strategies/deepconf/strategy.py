@@ -214,7 +214,11 @@ class StrategyDeepConf(StrategyBase):
         sample_indices: List[int] = None,
         save_callback=None,
     ) -> List[Dict[str, Any]]:
-        """Generate trajectories for a batch by looping over samples."""
+        """Generate trajectories for a batch by looping over samples.
+
+        TODO: Implement proper batch generation with parallel API calls
+        and shared confidence statistics across samples.
+        """
         if sample_indices is None:
             sample_indices = list(range(len(requests)))
         results = []
