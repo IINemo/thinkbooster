@@ -36,6 +36,9 @@ jobs:
     - name: Run setup.sh
       run: |
         ./setup.sh --verbose
+    - name: Install dev dependencies
+      run: |
+        pip install pytest pytest-cov
     - name: Validate strategy registry
       run: |
         python tests/strategy_registry.py --validate
@@ -61,6 +64,9 @@ jobs:
     - name: Run setup.sh
       run: |
         ./setup.sh --verbose
+    - name: Install dev dependencies
+      run: |
+        pip install pytest pytest-cov
     - name: Run integration tests
       env:
         OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
