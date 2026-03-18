@@ -36,14 +36,8 @@ cd thinkbooster
 conda create -n thinkbooster python=3.11 -y
 conda activate thinkbooster
 
-# Install dependencies and lm-polygraph
+# Install all dependencies (lm-polygraph, vLLM, latex2sympy2, etc.)
 ./setup.sh
-
-# Install latex2sympy2 (must be installed separately due to antlr4 conflict)
-pip install latex2sympy2 --no-deps
-
-# Install vLLM for fast local inference
-pip install ".[vllm]"
 
 # Install dev dependencies and git hooks
 pip install -e ".[dev]"
@@ -53,10 +47,8 @@ make hooks
 **What this does:**
 
 - Creates isolated conda environment with Python 3.11
-- Installs package in editable mode (`-e`)
-- Installs lm-polygraph dev branch (for uncertainty estimation)
-- Installs latex2sympy2 for math evaluation (`--no-deps` avoids antlr4 conflict with Hydra)
-- Installs vLLM for fast local model inference
+- `setup.sh` installs the package in editable mode with vLLM, lm-polygraph, latex2sympy2, and all dependency pins
+- `.[dev]` adds pytest, black, isort, flake8
 - Sets up pre-commit hooks (black, isort, flake8)
 
 ---
@@ -79,13 +71,11 @@ cp .env.example .env
 ## Step 4: Verify Installation
 
 ```bash
-# Run tests to verify setup
-pytest tests/strategy_registry.py --validate  # Validate registry
-pytest tests/deepconf/ -v                     # Run DeepConf tests
-pytest tests/online_best_of_n/ -v             # Run Best-of-N tests
+# Validate strategy registry
+python tests/strategy_registry.py --validate
 
-# Or run all tests
-make test
+# Run all tests
+pytest tests/ -v
 ```
 
 Expected result: all tests pass (some may skip if API keys are not set).
@@ -95,11 +85,12 @@ Expected result: all tests pass (some may skip if API keys are not set).
 ## Step 5: Run Your First Experiment
 
 ```bash
-# Quick test with 1 sample
+# Quick test with 1 sample (offline best-of-N on MATH-500 via OpenRouter)
 python scripts/run_tts_eval.py \
-  --config-name experiments/deepconf/run_gsm8k_deepconf_offline \
+  --config-path ../config \
+  --config-name experiments/offline_best_of_n/math500/offline_bon_openrouter_gpt4o_mini_math500_entropy \
   dataset.subset=1 \
-  strategy.budget=4
+  report_to=''
 
 # Check the output
 ls outputs/  # Results saved here with timestamp

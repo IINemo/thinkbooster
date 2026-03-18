@@ -1,88 +1,142 @@
 # Project Structure
 
-This document provides a comprehensive overview of the LLM Test-Time Scaling Service codebase organization.
+Overview of the ThinkBooster codebase organization.
 
 ---
 
 ## Directory Tree
 
 ```
-llm-tts-service/
-├── config/                           # Hydra configuration files
-│   ├── experiments/                  # Complete experiment configs
-│   │   ├── deepconf/                # DeepConf experiments (offline/online)
-│   │   ├── chain_of_thought/        # Chain-of-thought experiments
-│   │   └── self_consistency/        # Self-consistency experiments
-│   ├── dataset/                      # Dataset configs (gsm8k, math, etc.)
-│   ├── model/                        # Model configs (openai, openrouter, hf, etc.)
-│   ├── strategy/                     # Strategy-specific parameters
-│   ├── scorer/                       # Scorer configs (PRM, uncertainty, etc.)
-│   ├── generation/                   # Generation parameters
-│   ├── evaluation/                   # Evaluation configs (llm_judge, alignscore)
-│   └── system/                       # System settings (device, seed, etc.)
+thinkbooster/
+├── llm_tts/                              # Main library package
+│   ├── strategies/                       # TTS strategy implementations
+│   │   ├── strategy_base.py             # Abstract base class (generate_trajectories_batch)
+│   │   ├── deepconf/                    # DeepConf (offline/online confidence-based)
+│   │   │   ├── strategy.py
+│   │   │   └── utils.py
+│   │   ├── strategy_beam_search.py      # Beam search with step-level scoring
+│   │   ├── strategy_online_best_of_n.py # Online best-of-N (step-by-step)
+│   │   ├── strategy_offline_best_of_n.py# Offline best-of-N (generate-then-score)
+│   │   ├── strategy_self_consistency.py # Majority voting across N paths
+│   │   ├── adaptive_scaling_best_of_n.py# Adaptive compute scaling
+│   │   ├── strategy_uncertainty_cot.py  # Uncertainty-guided chain-of-thought
+│   │   ├── phi.py                       # Phi decoding
+│   │   ├── strategy_extended_thinking.py# Extended thinking wrapper
+│   │   ├── strategy_baseline.py         # Single-shot baseline
+│   │   ├── strategy_chain_of_thought.py # Basic chain-of-thought
+│   │   └── metadata_builder.py          # Strategy metadata helpers
+│   │
+│   ├── generators/                       # Step candidate generators (backends)
+│   │   ├── base.py                      # Base interface + StepCandidate dataclass
+│   │   ├── api.py                       # OpenAI-compatible API backend
+│   │   ├── vllm.py                      # vLLM backend
+│   │   └── huggingface.py               # HuggingFace transformers backend
+│   │
+│   ├── scorers/                          # Step scoring implementations
+│   │   ├── step_scorer_base.py          # Base scorer interface
+│   │   ├── step_scorer_prm.py           # Process Reward Model scorer
+│   │   ├── step_scorer_uncertainty.py   # Uncertainty-based scorer (entropy, perplexity)
+│   │   ├── step_scorer_confidence.py    # Confidence scorer
+│   │   ├── step_scorer_llm_critic.py    # LLM-as-a-critic scorer
+│   │   ├── step_scorer_reward_base.py   # Base for reward model scorers
+│   │   ├── multi_scorer.py             # Composite scorer (multiple scorers)
+│   │   ├── majority_voting.py           # Majority voting scorer
+│   │   └── estimator_uncertainty_pd.py  # Predictive distribution uncertainty
+│   │
+│   ├── step_boundary_detectors/          # Step/answer boundary detection
+│   │   ├── base.py                      # Base detector interface
+│   │   ├── non_thinking/                # Structured step markers (- Step, <Answer>:)
+│   │   └── thinking/                    # Thinking model markers (<think>, </think>)
+│   │
+│   ├── models/                           # Model wrappers
+│   │   ├── blackboxmodel_with_streaming.py  # OpenAI-compatible with streaming + logprobs
+│   │   └── base.py                      # Base model interface
+│   │
+│   ├── evaluation/                       # Correctness evaluation
+│   │   ├── exact_match.py              # Qwen2.5-Math exact match (numeric, boolean, char, string)
+│   │   ├── llm_as_a_judge.py           # LLM-based correctness verification
+│   │   ├── human_eval_plus_evaluator.py# HumanEval+ code evaluation
+│   │   ├── mbpp_plus_evaluator.py      # MBPP+ code evaluation
+│   │   ├── grader.py                   # Math grading utilities
+│   │   ├── parser.py                   # Answer extraction parser
+│   │   ├── math_normalize.py           # Math expression normalization
+│   │   ├── alignscore.py              # Semantic similarity
+│   │   └── latex2sympy/               # LaTeX to SymPy conversion
+│   │
+│   ├── datasets/                         # Dataset loaders
+│   │   ├── gsm8k.py
+│   │   ├── human_eval_plus.py
+│   │   └── mbpp_plus.py
+│   │
+│   ├── integrations/                     # Third-party integrations
+│   │   └── langchain_chat_model.py      # LangChain/LangGraph chat model
+│   │
+│   ├── utils/                            # Shared utilities
+│   │   ├── answer_extraction.py         # Answer extraction from model output
+│   │   ├── flops.py                     # FLOP computation
+│   │   ├── parallel.py                  # Parallel execution helpers
+│   │   ├── telegram.py                  # Telegram notifications
+│   │   └── torch_dtype.py              # Torch dtype utilities
+│   │
+│   └── early_stopping.py                # Early stopping conditions for streaming
 │
-├── llm_tts/                          # Main library package
-│   ├── strategies/                   # TTS strategy implementations
-│   │   ├── deepconf/                # DeepConf strategy (offline/online modes)
-│   │   │   ├── strategy.py          # Main strategy implementation
-│   │   │   └── utils.py             # Confidence computation utilities
-│   │   ├── strategy_base.py         # Abstract base class for all strategies
-│   │   ├── strategy_online_best_of_n.py
-│   │   ├── strategy_self_consistency.py
-│   │   └── strategy_chain_of_thought.py
-│   │
-│   ├── models/                       # Model wrappers
-│   │   ├── blackboxmodel_with_streaming.py  # OpenAI-compatible model with streaming
-│   │   └── base.py                  # Base model interface
-│   │
-│   ├── scorers/                      # Step scoring implementations
-│   │   ├── step_scorer_base.py      # Base scorer interface
-│   │   ├── step_scorer_prm.py       # Process Reward Model scorer
-│   │   ├── step_scorer_uncertainty.py # Uncertainty-based scorer
-│   │   └── majority_voting.py       # Majority voting scorer
-│   │
-│   ├── evaluation/                   # Evaluation methods
-│   │   ├── llm_as_a_judge.py       # LLM-based correctness verification
-│   │   ├── exact_match.py          # Direct answer comparison
-│   │   └── alignscore.py           # Semantic similarity evaluation
-│   │
-│   ├── datasets/                     # Dataset utilities
-│   │   └── gsm8k.py                # GSM8K dataset loading and processing
-│   │
-│   ├── early_stopping.py            # Early stopping conditions for streaming
-│   ├── step_boundary_detector.py    # Detects step/answer boundaries
-│   ├── step_candidate_generator_base.py
-│   ├── step_candidate_generator_through_api.py
-│   └── step_candidate_generator_through_huggingface.py
+├── service_app/                          # OpenAI-compatible REST API service
+│   ├── main.py                          # FastAPI app entrypoint
+│   ├── api/
+│   │   ├── routes/
+│   │   │   ├── chat.py                  # /v1/chat/completions endpoint
+│   │   │   ├── debugger.py              # /debugger SSE endpoint
+│   │   │   └── models.py               # /v1/models endpoint
+│   │   └── models/
+│   │       └── openai_compat.py         # OpenAI-compatible request/response models
+│   ├── core/
+│   │   ├── strategy_manager.py          # Strategy factory and lifecycle
+│   │   ├── prm_scorer_factory.py        # PRM model loading
+│   │   ├── debugger_events.py           # Visual debugger event processing
+│   │   ├── config.py                    # Service configuration
+│   │   └── logging_config.py            # Logging setup
+│   └── static/debugger/                 # Visual debugger web UI (HTML/JS/CSS)
 │
 ├── scripts/
-│   └── run_tts_eval.py              # Main evaluation script
+│   ├── run_tts_eval.py                  # Main evaluation pipeline
+│   ├── local/submit.sh                  # Local experiment submission helper
+│   └── slurm/submit.sh                 # SLURM cluster submission
 │
-├── tests/                            # Test suite
-│   ├── strategy_registry.py         # Strategy registry and validation
-│   ├── deepconf/                    # DeepConf strategy tests
-│   │   ├── test_deepconf_accurate.py
-│   │   ├── test_online_mode.py
-│   │   └── test_deepconf_math.py
-│   ├── online_best_of_n/            # Best-of-N strategy tests
-│   └── run_tts_eval/                # Integration tests
+├── config/                               # Hydra configuration
+│   ├── experiments/                     # Complete experiment configs
+│   │   ├── adaptive_scaling/
+│   │   ├── baseline/
+│   │   ├── beam_search/
+│   │   ├── chain_of_thought/
+│   │   ├── deepconf/
+│   │   ├── extended_thinking/
+│   │   ├── offline_best_of_n/
+│   │   ├── online_best_of_n/
+│   │   ├── self_consistency/
+│   │   └── uncertainty_cot/
+│   ├── dataset/                         # Dataset configs (math_500, olympiadbench, etc.)
+│   ├── model/                           # Model configs (openrouter, vllm, hf, etc.)
+│   ├── strategy/                        # Strategy hyperparameters
+│   ├── scorer/                          # Scorer configs (entropy, prm, pd, etc.)
+│   ├── generation/                      # Generation parameters
+│   ├── evaluation/                      # Evaluation configs
+│   ├── prompts/                         # Prompt templates
+│   └── system/                          # System settings (device, seed)
 │
-├── docs/                             # Documentation
-│   ├── deepconf/                    # DeepConf strategy guide
-│   │   └── DeepConf.md
-│   ├── datasets/                    # Dataset documentation
-│   │   └── GSM8K/
-│   ├── STRATEGY_REGISTRATION.md     # Strategy registry guide
-│   └── PROJECT_STRUCTURE.md         # This file
+├── tests/                                # Test suite
+│   ├── strategy_registry.py             # Strategy registry and validation
+│   ├── test_config_naming.py            # Config naming convention tests
+│   ├── deepconf/                        # DeepConf tests
+│   ├── evaluation/                      # Evaluator tests
+│   ├── service_app/                     # API integration tests
+│   └── run_tts_eval/                    # Eval pipeline integration test
 │
-├── lm-polygraph/                     # Submodule: uncertainty estimation library
-│
-├── Makefile                          # Development commands (format, lint, test)
-├── pyproject.toml                    # Package configuration and dependencies
-├── setup.py                          # Package setup
-├── setup.sh                          # Installation script
-└── .github/workflows/                # CI/CD pipelines
-    └── test.yml
+├── lm-polygraph/                         # Submodule: uncertainty estimation library
+├── setup.sh                              # Installation script (all dependencies)
+├── pyproject.toml                        # Package configuration
+├── docker-compose.yml                    # Docker deployment
+├── Makefile                              # Dev commands (format, lint, test)
+└── .github/workflows/test.yml            # CI pipeline
 ```
 
 ---
@@ -91,358 +145,92 @@ llm-tts-service/
 
 ### 1. Strategies (`llm_tts/strategies/`)
 
-TTS strategy implementations that control how test-time computation is used.
+All strategies inherit from `StrategyBase` and implement `generate_trajectories_batch()`:
 
-#### Strategy Base (`strategy_base.py`)
-Abstract base class that all strategies must inherit from:
-```python
-class StrategyBase:
-    def generate_trajectory(self, prompt) -> Dict:
-        """
-        Generate reasoning trajectory for a prompt.
+| Strategy | File | Description |
+|----------|------|-------------|
+| Beam Search | `strategy_beam_search.py` | Step-level beam search with scorer-guided expansion |
+| Online Best-of-N | `strategy_online_best_of_n.py` | Generate K candidates per step, pick best |
+| Offline Best-of-N | `strategy_offline_best_of_n.py` | Generate N full trajectories, score and select |
+| Self-Consistency | `strategy_self_consistency.py` | Majority voting across N independent paths |
+| Adaptive Scaling | `adaptive_scaling_best_of_n.py` | Dynamic compute allocation based on confidence |
+| Uncertainty CoT | `strategy_uncertainty_cot.py` | Uncertainty-guided chain-of-thought branching |
+| DeepConf | `deepconf/strategy.py` | Confidence-based scaling (offline/online modes) |
+| Phi Decoding | `phi.py` | Phi decoding with clustering |
+| Extended Thinking | `strategy_extended_thinking.py` | Wrapper for thinking-mode models |
+| Baseline | `strategy_baseline.py` | Single-shot generation (no scaling) |
 
-        Returns:
-            dict with keys: trajectory, steps, validity_scores, completed, metadata
-        """
-        raise NotImplementedError
-```
+### 2. Generators (`llm_tts/generators/`)
 
-#### DeepConf (`deepconf/`)
-Confidence-based test-time scaling strategy.
+Backend-agnostic step candidate generation. Strategies call generators to produce step candidates.
 
-**Files:**
-- `strategy.py` - Main implementation with offline/online modes
-- `utils.py` - Confidence computation using lm-polygraph methods
-
-**Modes:**
-- **Offline**: Generate N traces → compute confidence → filter → majority vote
-- **Online**: Warmup phase → adaptive generation with early stopping
-
-**Key Features:**
-- Uses lm-polygraph for uncertainty estimation
-- Supports multiple filtering methods (top5, top10, threshold)
-- Answer extraction for math problems (`\boxed{answer}`)
-
-#### Online Best-of-N (`strategy_online_best_of_n.py`)
-Step-by-step generation with process reward model scoring.
-
-**Algorithm:**
-1. Generate K candidates for current step
-2. Score each candidate with PRM
-3. Select best candidate
-4. Repeat until answer reached
-
-#### Self-Consistency (`strategy_self_consistency.py`)
-Majority voting across multiple complete reasoning chains.
-
-**Algorithm:**
-1. Generate N independent solutions
-2. Extract final answers
-3. Return most frequent answer
-
-#### Chain-of-Thought (`strategy_chain_of_thought.py`)
-Single-pass step-by-step reasoning without test-time scaling.
-
----
-
-### 2. Models (`llm_tts/models/`)
-
-Model wrappers that provide unified interface to different LLM APIs.
-
-#### BlackboxModelWithStreaming (`blackboxmodel_with_streaming.py`)
-Main model wrapper extending lm-polygraph's `BlackboxModel`.
-
-**Features:**
-- Streaming generation support
-- OpenAI API compatibility
-- Custom base_url for OpenRouter
-- Early stopping integration
-- Logprobs support for confidence computation
-
-**Usage:**
-```python
-model = BlackboxModelWithStreaming(
-    openai_api_key=api_key,
-    model_path="openai/gpt-4o-mini",
-    supports_logprobs=True,
-    base_url="https://openrouter.ai/api/v1",  # For OpenRouter
-    early_stopping=BoundaryEarlyStopping(detector)
-)
-```
-
-#### Base Model (`base.py`)
-Abstract interface that all model wrappers must implement.
-
----
+| Generator | Backend | Use case |
+|-----------|---------|----------|
+| `api.py` | OpenAI-compatible API | OpenRouter, DeepSeek, any OpenAI SDK endpoint |
+| `vllm.py` | vLLM | Fast local GPU inference with batching |
+| `huggingface.py` | HuggingFace transformers | Local inference without vLLM |
 
 ### 3. Scorers (`llm_tts/scorers/`)
 
-Scoring functions for evaluating generation steps/candidates.
+Score reasoning steps to guide strategy decisions.
 
-#### Step Scorer Base (`step_scorer_base.py`)
-Abstract base for all step scorers:
-```python
-class StepScorerBase:
-    def score_steps(self, trajectory, candidates) -> List[float]:
-        """Score candidate next steps."""
-        raise NotImplementedError
+| Scorer | Description |
+|--------|-------------|
+| PRM (`step_scorer_prm.py`) | Process Reward Model (e.g., Qwen2.5-Math-PRM-7B) |
+| Uncertainty (`step_scorer_uncertainty.py`) | Entropy, perplexity, sequence probability |
+| LLM Critic (`step_scorer_llm_critic.py`) | LLM-as-a-critic evaluation |
+| Confidence (`step_scorer_confidence.py`) | Token-level confidence scoring |
+| Multi-scorer (`multi_scorer.py`) | Composite of multiple scorers |
+
+### 4. Service (`service_app/`)
+
+OpenAI-compatible REST API gateway. Strategy and scorer are selected via URL path:
+```
+/v1/beam_search/prm/chat/completions
+/v1/self_consistency/chat/completions
 ```
 
-#### Process Reward Model (`step_scorer_prm.py`)
-Uses trained PRM to score reasoning steps.
-
-#### Uncertainty Scorer (`step_scorer_uncertainty.py`)
-Scores based on model uncertainty (entropy, etc.).
-
-#### Majority Voting (`majority_voting.py`)
-Scores based on frequency across multiple samples.
-
----
-
-### 4. Evaluation (`llm_tts/evaluation/`)
-
-Methods for evaluating solution correctness.
-
-#### LLM as a Judge (`llm_as_a_judge.py`)
-Uses LLM to verify if solution matches gold answer.
-
-**Prompt Template:**
-```
-Problem: {problem}
-Student Solution: {solution}
-Gold Answer: {gold_answer}
-
-Is the student solution correct?
-<Grade>: Correct/Incorrect
-```
-
-#### Exact Match (`exact_match.py`)
-Direct string comparison of extracted answers.
-
-#### AlignScore (`alignscore.py`)
-Semantic similarity between solution and gold answer.
-
----
+Includes a visual debugger web UI at `/debugger` for inspecting strategy behavior.
 
 ### 5. Configuration (`config/`)
 
-Hierarchical Hydra configuration system.
+Hierarchical Hydra configuration. Experiment configs compose from dataset, model, strategy, scorer, and evaluation components:
 
-#### Structure:
-```
-config/
-├── experiments/          # Complete configs (compose from components)
-├── dataset/             # Dataset-specific settings
-├── model/               # Model providers and parameters
-├── strategy/            # Strategy hyperparameters
-├── scorer/              # Scorer configurations
-├── generation/          # Generation parameters (temp, top_p, etc.)
-├── evaluation/          # Evaluation method configs
-└── system/              # System settings (device, seed)
-```
-
-#### Example Experiment Config:
 ```yaml
-# experiments/deepconf/run_gsm8k_deepconf_offline.yaml
-
+# config/experiments/offline_best_of_n/math500/offline_bon_openrouter_gpt4o_mini_math500_entropy.yaml
 defaults:
-  - /dataset/gsm8k
+  - /config
+  - /dataset/math_500
   - /model/openrouter
-  - /strategy/deepconf
-  - /generation/default
-  - /evaluation/llm_judge
-  - /system/default
-
-# Override specific parameters
-strategy:
-  mode: offline
-  budget: 8
-  filter_method: top5
-
-model:
-  model_path: "openai/gpt-3.5-turbo"
+  - /strategy/offline_bon
+  - /scorer/entropy
+  - /evaluation/default
+  - _self_
 ```
 
-See `config/README.md` for detailed configuration guide.
+### 6. Evaluation (`llm_tts/evaluation/`)
 
----
-
-### 6. Early Stopping (`llm_tts/early_stopping.py`)
-
-Pluggable conditions for stopping streaming generation.
-
-#### Available Conditions:
-
-**BoundaryEarlyStopping**
-- Stops when step/answer boundary detected
-- Used by Best-of-N strategies
-
-**ConfidenceEarlyStopping**
-- Stops when confidence drops below threshold
-- Used by DeepConf online mode
-
-**CompositeEarlyStopping**
-- Combines multiple conditions
-- Stops when any condition triggers
-
-**NoEarlyStopping**
-- Never stops early (generates until max_tokens)
-
----
-
-### 7. Datasets (`llm_tts/datasets/`)
-
-Dataset loading and processing utilities.
-
-#### GSM8K (`gsm8k.py`)
-Grade School Math 8K dataset utilities:
-- Load from HuggingFace
-- Extract answers from `\boxed{}` format
-- Validation helpers
-
----
-
-### 8. Tests (`tests/`)
-
-Comprehensive test suite with strategy registry.
-
-#### Structure:
-```
-tests/
-├── strategy_registry.py          # Central registry
-├── deepconf/                     # Strategy-specific tests
-│   ├── test_deepconf_accurate.py
-│   ├── test_online_mode.py
-│   └── test_deepconf_math.py
-├── online_best_of_n/
-│   └── test_online_best_of_n.py
-└── run_tts_eval/
-    └── test_run_tts_eval.py
-```
-
-See [Strategy Registration Guide](STRATEGY_REGISTRATION.md) for testing requirements.
-
----
-
-### 9. Scripts (`scripts/`)
-
-Main evaluation and utility scripts.
-
-#### run_tts_eval.py
-Main evaluation script with two-phase pipeline:
-
-**Phase 1: Generation**
-- Load dataset and model
-- Run strategy on each sample
-- Save trajectories incrementally
-- Resume support for long runs
-
-**Phase 2: Evaluation**
-- Load generated trajectories
-- Run evaluators (LLM Judge, Exact Match, etc.)
-- Compute metrics
-- Save results
-
-**Usage:**
-```bash
-python scripts/run_tts_eval.py \
-  --config-path ../config \
-  --config-name experiments/deepconf/run_gsm8k_deepconf_offline \
-  dataset.subset=10
-```
-
----
-
-## Development Workflow
-
-### 1. Adding a New Strategy
-
-```bash
-# 1. Implement strategy
-touch llm_tts/strategies/strategy_my_new.py
-
-# 2. Create tests
-mkdir tests/my_new
-touch tests/my_new/test_my_new.py
-
-# 3. Register in strategy registry
-# Edit tests/strategy_registry.py
-
-# 4. Validate
-python tests/strategy_registry.py --validate
-
-# 5. Run tests
-pytest tests/my_new/ -v
-```
-
-### 2. Adding a New Dataset
-
-```bash
-# 1. Implement dataset loader
-touch llm_tts/datasets/my_dataset.py
-
-# 2. Create config
-touch config/dataset/my_dataset.yaml
-
-# 3. Add documentation
-mkdir docs/datasets/MY_DATASET
-touch docs/datasets/MY_DATASET/README.md
-```
-
-### 3. Adding a New Scorer
-
-```bash
-# 1. Implement scorer
-touch llm_tts/scorers/step_scorer_my_scorer.py
-
-# 2. Create config
-touch config/scorer/my_scorer.yaml
-
-# 3. Update run_tts_eval.py to support new scorer
-```
+- **Exact match** — Qwen2.5-Math official grading logic (numeric, LaTeX, boolean, char, string)
+- **LLM judge** — Multi-vote LLM-based correctness verification
+- **Code evaluation** — HumanEval+ and MBPP+ via EvalPlus sandbox
+- **AlignScore** — Semantic similarity
 
 ---
 
 ## Key Design Patterns
 
-### 1. Strategy Pattern
-All strategies inherit from `StrategyBase` and implement `generate_trajectory()`.
-
-### 2. Dependency Injection
-Models, scorers, and evaluators are injected into strategies via constructor.
-
-### 3. Configuration Composition
-Hydra configs compose from smaller config files using `defaults:`.
-
-### 4. Plugin Architecture
-Early stopping conditions are pluggable - strategies accept any `EarlyStopping` implementation.
-
-### 5. Registry Pattern
-Strategy registry tracks all strategies and enforces test requirements.
-
----
-
-## External Dependencies
-
-### lm-polygraph
-Uncertainty estimation library installed as git submodule.
-
-**Used for:**
-- Confidence computation (entropy, perplexity)
-- Uncertainty methods (`Categorical`, `MaximumTokenProbability`)
-- Base model interfaces
-
-**Installation:**
-```bash
-./setup.sh  # Installs lm-polygraph dev branch
-```
+1. **Strategy pattern** — all strategies implement `generate_trajectories_batch()` from `StrategyBase`
+2. **Generator abstraction** — strategies are backend-agnostic; same strategy works with API, vLLM, or HuggingFace
+3. **Configuration composition** — Hydra configs compose from smaller config files via `defaults:`
+4. **Registry pattern** — strategy registry in `tests/strategy_registry.py` enforces test coverage
+5. **Plugin architecture** — early stopping, boundary detectors, and scorers are pluggable
 
 ---
 
 ## References
 
-- **Configuration Guide**: `config/README.md`
-- **Strategy Registration**: `docs/STRATEGY_REGISTRATION.md`
-- **Testing Guide**: `tests/README.md`
-- **DeepConf Documentation**: `docs/deepconf/DeepConf.md`
-- **GSM8K Dataset**: `docs/datasets/GSM8K/README.md`
+- [Contributing Guide](CONTRIBUTING.md) — setup, workflow, PR guidelines
+- [Strategy Registration](STRATEGY_REGISTRATION.md) — how to add new strategies
+- [Service API Guide](service/SERVICE_API_GUIDE.md) — REST API reference
+- [DeepConf Guide](deepconf/DeepConf.md) — example strategy deep-dive
+- [Architecture](architecture.md) — offline vs online strategy paradigms

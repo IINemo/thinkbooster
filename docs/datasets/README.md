@@ -4,12 +4,19 @@ This directory documents the datasets supported by the TTS evaluation framework 
 
 ## Supported Datasets
 
-| Dataset | HuggingFace Link | Problems | Difficulty | Status | Description |
-|---------|------------------|----------|------------|--------|-------------|
-| **GSM8K** | [test-time-compute/test_gsm8k](https://huggingface.co/datasets/test-time-compute/test_gsm8k) | 1,319 | Grade School | ✅ Configured | Grade school math word problems |
-| **AIME 2025** | [test-time-compute/aime_2025](https://huggingface.co/datasets/test-time-compute/aime_2025) | 30 | Competition | ✅ Configured | American Invitational Mathematics Examination |
-| **MATH** | [test-time-compute/test_MATH](https://huggingface.co/datasets/test-time-compute/test_MATH) | 5,000 | High School+ | 🔜 Available | Competition mathematics problems (MATH dataset) |
-| **Proofnet** | [test-time-compute/test_Proofnet](https://huggingface.co/datasets/test-time-compute/test_Proofnet) | 186 | Proof-based | 🔜 Available | Formal proof generation problems |
+| Dataset | Config | Problems | Domain | Description |
+|---------|--------|----------|--------|-------------|
+| **MATH-500** | `dataset/math_500` | 500 | Math | MATH benchmark subset (competition-level) |
+| **OlympiadBench** | `dataset/olympiadbench` | 675 | Math | Olympiad-level math problems |
+| **GaoKao 2023 En** | `dataset/gaokao2023en` | 385 | Math | Chinese college entrance exam (English) |
+| **Minerva Math** | `dataset/minerva_math` | 272 | Math | Minerva math reasoning problems |
+| **AIME 2025** | `dataset/aime_2025` | 30 | Math | American Invitational Mathematics Examination |
+| **AMC 2023** | — | — | Math | AMC competition problems |
+| **GPQA Diamond** | `dataset/gpqa_diamond` | — | Science | Graduate-level science QA |
+| **HumanEval+** | `dataset/human_eval_plus` | 164 | Code | Python function synthesis (EvalPlus) |
+| **MBPP+** | `dataset/mbpp_plus` | 378 | Code | Mostly Basic Python Problems (EvalPlus) |
+| **Game of 24** | `dataset/game24` | — | Math | Reach 24 using 4 numbers |
+| **GSM8K** | `dataset/gsm8k` | 1,319 | Math | Grade school math word problems |
 
 ---
 
