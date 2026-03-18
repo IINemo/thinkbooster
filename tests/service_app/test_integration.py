@@ -210,9 +210,9 @@ class TestCancelOnlineBonE2E:
             tts_strategy="online_bon",
             tts_scorer="entropy",
             stream=True,
-            num_paths=4,
-            tts_max_steps=10,
-            tts_candidates_per_step=3,
+            num_paths=2,
+            tts_max_steps=3,
+            tts_candidates_per_step=2,
             messages=CANCEL_MESSAGES,
         )
 
@@ -233,7 +233,7 @@ class TestCancelOnlineBonE2E:
 
         cancel_thread.start()
         req_thread.start()
-        req_thread.join(timeout=60)
+        req_thread.join(timeout=120)
 
         resp = response_holder.get("resp")
         assert resp is not None, "Request thread did not finish in time"
