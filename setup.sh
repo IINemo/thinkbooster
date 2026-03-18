@@ -86,7 +86,7 @@ if [ "$UPDATE_ONLY" = true ]; then
 fi
 
 echo -e "${BLUE}======================================${NC}"
-echo -e "${BLUE}  LLM TTS Service Setup${NC}"
+echo -e "${BLUE}  ThinkBooster Setup${NC}"
 echo -e "${BLUE}======================================${NC}\n"
 
 # Install package dependencies via pip
