@@ -16,9 +16,22 @@ LUH_DIR="$SCRIPT_DIR/llm-uncertainty-head"
 
 # Parse arguments
 UPDATE_ONLY=false
-if [ "$1" = "--update" ] || [ "$1" = "-u" ]; then
-    UPDATE_ONLY=true
-fi
+VERBOSE=false
+for arg in "$@"; do
+    case "$arg" in
+        --update|-u) UPDATE_ONLY=true ;;
+        --verbose|-v) VERBOSE=true ;;
+    esac
+done
+
+# Redirect pip output based on verbosity
+pip_install() {
+    if [ "$VERBOSE" = true ]; then
+        pip install "$@"
+    else
+        pip install "$@" > /dev/null
+    fi
+}
 
 install_lm_polygraph() {
     echo -e "${YELLOW}Setting up lm-polygraph dev branch...${NC}"
@@ -39,7 +52,7 @@ install_lm_polygraph() {
     sed -i 's/spacy>=3.4.0,<3.8.0/spacy>=3.8.0/' "$LM_POLYGRAPH_DIR/requirements.txt"
 
     echo -e "  Installing lm-polygraph..."
-    pip install -e "$LM_POLYGRAPH_DIR" > /dev/null
+    pip_install -e "$LM_POLYGRAPH_DIR"
     echo -e "${GREEN}✓ lm-polygraph installed${NC}"
 }
 
@@ -58,11 +71,11 @@ install_luh() {
 
     # vllm-speculators is required for hidden states extraction
     echo -e "  Installing vllm-speculators (hidden states support)..."
-    pip install "git+https://github.com/vllm-project/speculators.git" > /dev/null
+    pip_install "git+https://github.com/vllm-project/speculators.git"
     echo -e "${GREEN}✓ vllm-speculators installed${NC}"
 
     echo -e "  Installing luh..."
-    pip install -e "$LUH_DIR" > /dev/null
+    pip_install -e "$LUH_DIR"
     echo -e "${GREEN}✓ luh installed${NC}"
 }
 
@@ -78,13 +91,13 @@ echo -e "${BLUE}======================================${NC}\n"
 
 # Install package dependencies via pip
 echo -e "${YELLOW}Installing package dependencies...${NC}"
-pip install -e . > /dev/null
-pip install -e ".[vllm]" > /dev/null   # vLLM for fast local inference
-pip install latex2sympy2 --no-deps > /dev/null  # math evaluation (separate due to antlr4 conflict with hydra)
+pip_install -e .
+pip_install -e ".[vllm]"                          # vLLM for fast local inference
+pip_install latex2sympy2 --no-deps                # math evaluation (separate due to antlr4 conflict with hydra)
 # Pin numpy after vLLM (vLLM pulls in 2.4+; numba requires <2.3)
-pip install "numpy>=2.0.0,<2.3.0" > /dev/null
+pip_install "numpy>=2.0.0,<2.3.0"
 # Upgrade thinc/spacy for numpy 2.x binary compatibility (lm-polygraph pins older versions)
-pip install "thinc>=8.3.0" "spacy>=3.8.0" > /dev/null
+pip_install "thinc>=8.3.0" "spacy>=3.8.0"
 echo -e "${GREEN}✓ Package installed${NC}\n"
 
 # Install lm-polygraph dev branch
