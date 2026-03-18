@@ -5,7 +5,6 @@
 | Script | Description |
 |--------|-------------|
 | `run_tts_eval.py` | Main evaluation pipeline — dataset loading, strategy execution, scoring, metrics |
-| `math_eval_subprocess.py` | Standalone math grading subprocess (called by `run_tts_eval.py`) |
 | `generate_cached_examples.py` | Generate `cached_examples.json` for the visual debugger |
 | `utils/results.py` | Shared result loading utilities |
 
