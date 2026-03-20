@@ -91,9 +91,10 @@
             <span>Case</span>
             <select id="caseSelect"></select>
           </label>
-          <label class="control">
+          <label class="control" style="text-align:center">
             <span>Load File</span>
-            <input type="file" id="experimentFileInput" accept=".json" style="font-size:0.85em" />
+            <button id="experimentFileButton" type="button" style="font-size:0.85em;cursor:pointer;padding:4px 12px">Choose JSON file…</button>
+            <input type="file" id="experimentFileInput" accept=".json" style="display:none" />
           </label>
         </div>
         <div id="sampleNavigation" class="controls cached-controls hidden">

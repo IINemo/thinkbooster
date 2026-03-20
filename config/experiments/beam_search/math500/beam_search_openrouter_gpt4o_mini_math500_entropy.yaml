@@ -1,3 +1,4 @@
+
 # @package _global_
 # Run: python scripts/run_tts_eval.py --config-path=../config --config-name=experiments/beam_search/math500/beam_search_openrouter_gpt4o_mini_math500_entropy
 # Beam Search for MATH-500 using OpenRouter API with entropy scorer
@@ -26,7 +27,7 @@ report_to: none
 model:
   type: "openai_api"
   provider: openrouter
-  model_path: "openai/gpt-4o-mini"
+  model_path: "qwen/qwen-2.5-7b-instruct"
   api_key: null  # Set via OPENROUTER_API_KEY env var
   supports_logprobs: true
   prefill_mode: false
@@ -45,13 +46,13 @@ generation:
   top_k: 50
   batch_size: 1
 
-# Strategy - Beam Search (small for quick test)
+# Strategy - Beam Search (bigger tree for visualization)
 strategy:
-  beam_size: 2
-  candidates_per_beam: 2
-  max_steps: 5
+  beam_size: 3
+  candidates_per_beam: 3
+  max_steps: 10
   min_step_tokens: 5
-  max_step_tokens: 256
+  max_step_tokens: 100
 
 # Entropy scorer configuration
 scorer:

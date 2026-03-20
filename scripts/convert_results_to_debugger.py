@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -155,6 +156,26 @@ def get_scorer_info(config: dict) -> dict | None:
     }
 
 
+def extract_run_timestamp(output_dir: Path) -> str:
+    """Extract a human-readable timestamp from the output directory path.
+
+    Looks for date pattern (YYYY-MM-DD) in parent dirs and time (HH-MM-SS)
+    in the run dir name.  Returns e.g. '2026-03-20 19:18'.
+    """
+    parts = output_dir.parts
+    date_part = ""
+    for p in parts:
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", p):
+            date_part = p
+            break
+    # Time from dir name like seed42_19-18-04
+    time_match = re.search(r"(\d{2})-(\d{2})-(\d{2})$", output_dir.name)
+    time_part = f"{time_match.group(1)}:{time_match.group(2)}" if time_match else ""
+    if date_part and time_part:
+        return f"{date_part} {time_part}"
+    return date_part or time_part or output_dir.name
+
+
 def convert_experiment(
     output_dir: Path,
     filter_incorrect: bool = False,
@@ -166,6 +187,7 @@ def convert_experiment(
     """
     config = load_config(output_dir)
     results = load_results(output_dir)
+    run_timestamp = extract_run_timestamp(output_dir)
 
     strategy_info = get_strategy_info(config)
     scorer_info = get_scorer_info(config)
@@ -185,6 +207,7 @@ def convert_experiment(
     }
 
     data_name = dataset_cfg.get("data_name", "unknown")
+    dataset_offset = dataset_cfg.get("offset", 0)
     strategy_type = strategy_cfg.get("type", "unknown")
 
     # Count correct/incorrect
@@ -248,8 +271,11 @@ def convert_experiment(
             continue
 
         correctness_mark = "correct" if is_correct else "INCORRECT"
-        title = f"[{sample_idx}] [{correctness_mark}] {question[:70]}"
+        scorer_label = scorer_info["name"] if scorer_info else "none"
+        dataset_idx = dataset_offset + sample_idx
+        title = f"[{run_timestamp}] [{strategy_info['name']}|{scorer_label}] #{dataset_idx} [{correctness_mark}] {question[:50]}"
         description = (
+            f"Strategy: {strategy_info['name']} | Scorer: {scorer_label} | "
             f"Gold: {gold_answer} | Predicted: {extracted_answer} | "
             f"{'Correct' if is_correct else 'Incorrect'}"
         )
@@ -258,7 +284,7 @@ def convert_experiment(
 
         payload = {
             "scenario": {
-                "id": f"sample_{sample_idx}",
+                "id": f"{strategy_type}_{sample_idx}",
                 "title": title,
                 "description": description,
                 "prompt": question,
@@ -281,6 +307,10 @@ def convert_experiment(
                     "name": strategy_info["name"],
                     "family": strategy_info["family"],
                     "summary": strategy_info.get("summary", ""),
+                    "requires_scorer": scorer_info is not None,
+                    "builtin_scorer": (
+                        "Consensus (majority vote)" if not scorer_info else None
+                    ),
                     "run": run_payload,
                     "comparison_rank": 1,
                 }
@@ -289,7 +319,7 @@ def convert_experiment(
 
         examples.append(
             {
-                "id": f"sample_{sample_idx}",
+                "id": f"{strategy_type}_{sample_idx}",
                 "title": title,
                 "description": description,
                 "available_budgets": [budget],
@@ -334,7 +364,12 @@ def main():
     parser.add_argument(
         "--install",
         action="store_true",
-        help="Also copy the output to cached_examples.json for direct use with the debugger",
+        help="Also copy the output to cached_examples.json for direct use with the debugger (replaces existing)",
+    )
+    parser.add_argument(
+        "--merge",
+        action="store_true",
+        help="Merge into existing cached_examples.json (adds new examples, keeps old ones)",
     )
 
     args = parser.parse_args()
@@ -357,17 +392,29 @@ def main():
         json.dump(result, f, indent=2, default=str)
     log.info(f"Wrote {out_path} ({len(result['examples'])} examples)")
 
+    cached_path = (
+        PROJECT_ROOT / "service_app" / "static" / "debugger" / "cached_examples.json"
+    )
+
     if args.install:
-        cached_path = (
-            PROJECT_ROOT
-            / "service_app"
-            / "static"
-            / "debugger"
-            / "cached_examples.json"
-        )
         with open(cached_path, "w") as f:
             json.dump(result, f, indent=2, default=str)
-        log.info(f"Installed to {cached_path}")
+        log.info(f"Installed to {cached_path} (replaced)")
+
+    if args.merge:
+        existing = {"examples": []}
+        if cached_path.exists():
+            with open(cached_path) as f:
+                existing = json.load(f)
+        existing_ids = {ex["id"] for ex in existing.get("examples", [])}
+        new_examples = [ex for ex in result["examples"] if ex["id"] not in existing_ids]
+        existing["examples"].extend(new_examples)
+        with open(cached_path, "w") as f:
+            json.dump(existing, f, indent=2, default=str)
+        log.info(
+            f"Merged {len(new_examples)} new examples into {cached_path} "
+            f"({len(existing['examples'])} total)"
+        )
         log.info(
             f"Open in browser: file://{PROJECT_ROOT}/service_app/static/debugger/index.html"
         )

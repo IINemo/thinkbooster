@@ -85,6 +85,7 @@ const elements = {
   customStatus: document.getElementById("customStatus"),
   modelSuggestions: document.getElementById("modelSuggestions"),
   experimentFileInput: document.getElementById("experimentFileInput"),
+  experimentFileButton: document.getElementById("experimentFileButton"),
   sampleNavigation: document.getElementById("sampleNavigation"),
   prevSampleBtn: document.getElementById("prevSampleBtn"),
   nextSampleBtn: document.getElementById("nextSampleBtn"),
@@ -2721,6 +2722,8 @@ function bindHandlers() {
     clearRenderedResults();
     if (state.useCachedExample) {
       await loadCachedOptionsForCurrentScenario();
+      // Auto-run in cached mode so the user sees results immediately
+      elements.runButton?.click();
     }
   });
 
@@ -2895,6 +2898,11 @@ function bindHandlers() {
   });
 
   // Experiment file upload
+  if (elements.experimentFileButton) {
+    elements.experimentFileButton.addEventListener("click", () => {
+      elements.experimentFileInput?.click();
+    });
+  }
   if (elements.experimentFileInput) {
     elements.experimentFileInput.addEventListener("change", (event) => {
       const file = event.target.files?.[0];
@@ -2988,6 +2996,8 @@ async function init() {
     configureCaseSelect(state.catalog[0].default_budget);
     applyCachedModeUi();
     await loadCachedOptionsForCurrentScenario();
+    // Auto-run first scenario so user sees results immediately
+    elements.runButton?.click();
     setStatus("Loaded cached examples (offline mode).", false);
     return;
   }
