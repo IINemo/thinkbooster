@@ -1,5 +1,5 @@
 """
-Custom LangChain ChatModel for llm-tts-service.
+Custom LangChain ChatModel for ThinkBooster.
 
 This is the PROPER way to integrate with LangChain - a custom BaseChatModel
 that returns tts_metadata in response_metadata directly.
@@ -34,13 +34,13 @@ log = logging.getLogger(__name__)
 
 class ChatTTS(BaseChatModel):
     """
-    LangChain ChatModel for llm-tts-service with proper tts_metadata support.
+    LangChain ChatModel for ThinkBooster with proper tts_metadata support.
 
-    This custom model calls your llm-tts-service and returns tts_metadata
+    This custom model calls your ThinkBooster and returns tts_metadata
     (confidence, uncertainty, strategy) in response_metadata where it belongs.
 
     Attributes:
-        base_url: URL of your llm-tts-service (e.g., "http://localhost:8000/v1")
+        base_url: URL of your ThinkBooster (e.g., "http://localhost:8000/v1")
         api_key: API key (optional, your service may not require it)
         model: Model name (e.g., "openai/gpt-4o-mini")
         tts_strategy: TTS strategy to use ("self_consistency", "deepconf", etc.)
@@ -132,7 +132,7 @@ class ChatTTS(BaseChatModel):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> ChatResult:
-        """Generate a response using llm-tts-service."""
+        """Generate a response using ThinkBooster."""
         request_body = self._build_request(messages, stop)
 
         with httpx.Client(timeout=self.timeout) as client:

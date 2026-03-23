@@ -24,13 +24,13 @@ hooks:
 
 lint:
 	@echo "Running flake8..."
-	@flake8 llm_tts scripts
+	@flake8 llm_tts scripts service_app
 
 format:
 	@echo "Formatting with black..."
-	@black llm_tts scripts
+	@black llm_tts scripts service_app
 	@echo "Sorting imports with isort..."
-	@isort llm_tts scripts
+	@isort llm_tts scripts service_app
 	@echo "✓ Code formatted"
 
 fix:
@@ -50,20 +50,3 @@ clean:
 	rm -rf htmlcov/
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
-
-# GSM8K benchmark shortcuts
-.PHONY: eval-gsm8k eval-gsm8k-subset
-
-eval-gsm8k:
-	@echo "Running GSM8K evaluation with DeepConf..."
-	python scripts/run_tts_eval.py \
-		--config-path ../config \
-		--config-name experiments/run_gsm8k_deepconf
-
-eval-gsm8k-subset:
-	@echo "Running GSM8K evaluation on subset (3 samples)..."
-	python scripts/run_tts_eval.py \
-		--config-path ../config \
-		--config-name experiments/run_gsm8k_deepconf \
-		dataset.subset=3 \
-		strategy.budget=4

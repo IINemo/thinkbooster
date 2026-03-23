@@ -45,56 +45,8 @@ REGISTERED_STRATEGIES = [
         ],
         description="Confidence-based test-time scaling with trace filtering",
     ),
-    StrategyInfo(
-        name="online_best_of_n",
-        class_name="StrategyOnlineBestOfN",
-        module_path="llm_tts/strategies/strategy_online_best_of_n.py",
-        test_dir="tests/online_best_of_n",
-        required_tests=[
-            "test_online_best_of_n.py",  # Strategy logic tests
-        ],
-        description="Step-by-step generation with PRM scoring",
-    ),
-    StrategyInfo(
-        name="adaptive_scaling_best_of_n",
-        class_name="AdaptiveScalingBestOfN",
-        module_path="llm_tts/strategies/adaptive_scaling_best_of_n.py",
-        test_dir="tests/adaptive_scaling_best_of_n",
-        required_tests=[
-            "test_adaptive_scaling.py",
-        ],
-        description="Adaptive scaling best-of-n strategy",
-    ),
-    StrategyInfo(
-        name="uncert_cot",
-        class_name="StrategyUncertaintyCoT",
-        module_path="llm_tts/strategies/strategy_uncertainty_cot.py",
-        test_dir="tests/uncert_cot",
-        required_tests=[
-            "test_uncert_cot.py",
-        ],
-        description="Uncertainty-guided chain-of-thought with PD",
-    ),
-    StrategyInfo(
-        name="phi_decoding",
-        class_name="PhiDecoding",
-        module_path="llm_tts/strategies/phi.py",
-        test_dir="tests/phi_decoding",
-        required_tests=[
-            "test_phi_decoding.py",  # Strategy logic tests
-        ],
-        description="Phi decoding",
-    ),
-    StrategyInfo(
-        name="tree_of_thoughts",
-        class_name="StrategyTreeOfThoughts",
-        module_path="llm_tts/strategies/tree_of_thoughts/strategy.py",
-        test_dir="tests/tree_of_thoughts",
-        required_tests=[
-            "test_tree_of_thoughts.py",  # Strategy logic and integration tests
-        ],
-        description="Beam search with LLM-based state evaluation",
-    )
+    # TODO: Add tests for online_best_of_n, adaptive_scaling, uncert_cot, phi_decoding
+    # (removed legacy HF-based tests; new tests should use vLLM/API backends)
     # TODO: Add tests for self_consistency strategy
     # StrategyInfo(
     #     name="self_consistency",

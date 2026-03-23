@@ -42,6 +42,16 @@ KNOWN_MODEL_KEYS = {
     "vllm_qwen25_math_15b_instruct",
     "vllm_qwen25_math_7b",
     "openai_gpt4o_mini",
+    "k2think",
+    "openrouter_claude_sonnet4",
+    "openrouter_gptoss120b",
+    "openrouter_gpt4o_mini",
+    "vllm_nothink_qwen25_7b",
+    "vllm_nothink_qwen3_8b",
+    "openrouter_claude_sonnet",
+    "openrouter",
+    "vllm_codeqwen15_7b_chat",
+    "vllm_qwen25_coder_7b_instruct",
 }
 
 KNOWN_DATASETS = {
@@ -56,6 +66,7 @@ KNOWN_DATASETS = {
     "gsm8k",
     "game24",
     "mbpp_plus",
+    "human_eval_plus",
 }
 
 
@@ -92,13 +103,29 @@ def test_filename_starts_with_strategy_prefix():
     )
 
 
+def _find_dataset_dir(config_path):
+    """Find the dataset directory name from the path ancestors.
+
+    Walks up from the config file's parent to find a known dataset name.
+    For nested structures like beam_search/aime2024/window_5/mean/file.yaml,
+    the dataset dir is 'aime2024', not 'mean'.
+    """
+    strategy_dir = config_path.parent
+    while strategy_dir != CONFIGS_DIR and strategy_dir.parent != CONFIGS_DIR:
+        if strategy_dir.name in KNOWN_DATASETS:
+            return strategy_dir.name
+        strategy_dir = strategy_dir.parent
+    # Fallback: immediate parent (flat structure)
+    return config_path.parent.name
+
+
 def test_filename_contains_dataset_dir_name():
-    """Verify that the dataset directory name appears in the filename (no abbreviations)."""
+    """Verify that a known dataset directory name appears in the filename."""
     configs = _collect_configs()
     violations = []
     for strategy, config_path in sorted(configs, key=lambda x: x[1]):
         stem = config_path.stem
-        dataset_dir = config_path.parent.name
+        dataset_dir = _find_dataset_dir(config_path)
         if dataset_dir not in stem:
             rel = config_path.relative_to(CONFIGS_DIR.parent.parent)
             violations.append(
@@ -122,7 +149,7 @@ def test_filename_uses_known_model_key():
     violations = []
     for strategy, config_path in sorted(configs, key=lambda x: x[1]):
         stem = config_path.stem
-        dataset_dir = config_path.parent.name
+        dataset_dir = _find_dataset_dir(config_path)
         prefix = STRATEGY_PREFIXES[strategy] + "_"
 
         if not stem.startswith(prefix):
@@ -170,7 +197,7 @@ def test_scored_configs_dataset_before_scorer():
     violations = []
     for strategy, config_path in sorted(configs, key=lambda x: x[1]):
         stem = config_path.stem
-        dataset_dir = config_path.parent.name
+        dataset_dir = _find_dataset_dir(config_path)
 
         dataset_pos = _find_position(stem, dataset_dir)
         if dataset_pos is None:

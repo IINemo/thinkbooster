@@ -170,7 +170,7 @@ For running multiple seeds sequentially in a single SLURM job, use this template
 #SBATCH --time=24:00:00
 #SBATCH --output=logs/EXPERIMENT_NAME_%j.log
 #SBATCH --error=logs/EXPERIMENT_NAME_%j.err
-#SBATCH --chdir=/home/artem.shelmanov/vlad/llm-tts-service
+#SBATCH --chdir=/path/to/thinkbooster
 
 set -e
 
@@ -190,7 +190,7 @@ for SEED in 42 43 44; do
     echo "============================================"
 
     python scripts/run_tts_eval.py \
-        --config-path=/home/artem.shelmanov/vlad/llm-tts-service/config \
+        --config-path=/path/to/thinkbooster/config \
         --config-name=CONFIG_NAME_HERE \
         system.seed=$SEED
 

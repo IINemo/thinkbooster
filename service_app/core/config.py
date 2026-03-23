@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     """Service configuration settings."""
 
     # API Settings
-    api_title: str = "LLM Test-Time Scaling Service"
+    api_title: str = "ThinkBooster Service"
     api_version: str = "1.0.0"
     api_prefix: str = "/api/v1"
     host: str = "0.0.0.0"

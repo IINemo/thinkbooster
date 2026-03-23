@@ -208,6 +208,25 @@ class StrategyDeepConf(StrategyBase):
             f"window={window_size}, filter={filter_method}, threads={n_threads}"
         )
 
+    def generate_trajectories_batch(
+        self,
+        requests: List,
+        sample_indices: List[int] = None,
+        save_callback=None,
+    ) -> List[Dict[str, Any]]:
+        """Generate trajectories for a batch by looping over samples.
+
+        TODO: Implement proper batch generation with parallel API calls
+        and shared confidence statistics across samples.
+        """
+        if sample_indices is None:
+            sample_indices = list(range(len(requests)))
+        results = []
+        for request in requests:
+            result = self.generate_trajectory(request)
+            results.append(result)
+        return results
+
     def generate_trajectory(self, prompt) -> Dict[str, Any]:
         """
         Main entry point - generate traces and select best answer.

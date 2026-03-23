@@ -4,12 +4,12 @@ This document defines the evaluation protocol for comparing test-time compute sc
 
 ## Quick Links
 
-- [Datasets](datasets.md) - AIME, MATH-500, SVAMP benchmark details
+- [Datasets](datasets.md) - MATH-500, OlympiadBench, AIME, GPQA, HumanEval+ benchmark details
 - [Models](models.md) - Model configurations and thinking mode settings
 - [Metrics](metrics.md) - Accuracy, tokens, FLOPs calculation
 - [WandB](wandb.md) - Logging conventions and upload workflow
 - [Results](results/) - Experiment results by dataset
-- [Architecture](../architecture.md) - Inference pipeline architecture
+- [Architecture](../core/architecture.md) - Inference pipeline architecture
 
 ---
 
