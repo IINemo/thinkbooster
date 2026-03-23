@@ -62,14 +62,15 @@ strategy:
   max_steps: 100
   # Step boundary detector settings - used for post-hoc step splitting
   max_step_tokens: 4096
+  num_trajectories: 8  # Number of complete trajectories to generate per question
 
 # Dataset configuration - KernelBench
 dataset:
   data_name: "kernelbench"
   dataset_path: "ai-nikolai/KernelBench"
   dataset_split: "level_1"  # Options: level_1, level_2, level_3
-  subset: 3
-  offset: 1
+  subset: null
+  offset: 0
   question_field: "question"  # KernelAct loader provides correct prompt format
   answer_field: "answer"  # Reference PyTorch implementation
   answer_format: "code"

@@ -440,17 +440,40 @@ def create_model(config):
             raise ImportError("vLLM not installed. Run: pip install vllm")
 
         # Initialize vLLM engine with seed for reproducibility
-        llm = LLM(
-            model=config.model.model_path,
-            gpu_memory_utilization=config.model.get("gpu_memory_utilization", 0.9),
-            tensor_parallel_size=config.model.get("tensor_parallel_size", 1),
-            enable_prefix_caching=config.model.get("enable_prefix_caching", True),
-            trust_remote_code=config.model.get("trust_remote_code", True),
-            max_model_len=config.model.get(
-                "max_context_budget", config.model.get("max_model_len", 32768)
-            ),
-            seed=config.system.seed,  # Reproducibility
-        )
+        use_native_hs_capture = config.model.get("use_native_hs_capture", True)
+        if use_native_hs_capture:
+            log.info("Using native hidden state capture via vLLM worker extension")
+            llm = LLM(
+                model=config.model.model_path,
+                gpu_memory_utilization=config.model.get("gpu_memory_utilization", 0.9),
+                tensor_parallel_size=config.model.get("tensor_parallel_size", 1),
+                enable_prefix_caching=config.model.get("enable_prefix_caching", True),
+                trust_remote_code=config.model.get("trust_remote_code", True),
+                max_model_len=config.model.get(
+                    "max_context_budget", config.model.get("max_model_len", 32768)
+                ),
+                quantization=config.model.get("quantization", None),
+                kv_cache_dtype=config.model.get("kv_cache_dtype", "auto"),
+                seed=config.system.seed,  # Reproducibility
+                enforce_eager=True,  # Required for native HS capture
+                worker_extension_cls=config.model.get("hook_hs_extension", "utils.hook_hs_extension.HookHiddenStatesExtension"),
+            )
+        else:
+            log.info("Using vLLM with post-forward hidden state capture (faster but require second copy of the model in GPU memory)")
+            llm = LLM(
+                model=config.model.model_path,
+                gpu_memory_utilization=config.model.get("gpu_memory_utilization", 0.9),
+                tensor_parallel_size=config.model.get("tensor_parallel_size", 1),
+                enable_prefix_caching=config.model.get("enable_prefix_caching", True),
+                trust_remote_code=config.model.get("trust_remote_code", True),
+                max_model_len=config.model.get(
+                    "max_context_budget", config.model.get("max_model_len", 32768)
+                ),
+                quantization=config.model.get("quantization", None),
+                kv_cache_dtype=config.model.get("kv_cache_dtype", "auto"),
+                seed=config.system.seed,  # Reproducibility
+                enable_sleep_mode=True,  # Allow sleeping LLM to free GPU memory
+            )
 
         # Create sampling params (will be updated by strategy)
         sampling_params = SamplingParams(
@@ -572,6 +595,7 @@ def create_model(config):
                     llm=llm,
                     stat_calculators=stat_calculators,
                     estimator=estimator,
+                    use_native_hs_capture=config.model.get("use_native_hs_capture", True),
                     **vllm_with_uncertainty_arguments,
                 )
                 log.info(
