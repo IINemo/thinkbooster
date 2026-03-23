@@ -15,22 +15,38 @@ Usage in run_tts_eval.py:
     )
     dataset = Dataset.from_list(kb_data)
 """
-
+import importlib.util
 import logging
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# Add KernelAct to path to import utilities
-KERNELACT_PATH = Path(__file__).parents[4] / "KernelAct"
-if str(KERNELACT_PATH) not in sys.path:
-    sys.path.insert(0, str(KERNELACT_PATH))
-
 from datasets import load_dataset
 
-# Import from KernelAct
-from .kernelact.prompts_v2 import choose_prompt
-from .kernelact.utils_inference import extract_code
+# Load KernelAct modules from their directory to avoid conflicts with scripts/utils
+_kernelact_dir = Path(__file__).parent / "KernelAct" / "kernelact"
+
+def _load_kernelact_module(module_name: str, register_as: str = None):
+    """Load a module from KernelAct directory and register it in sys.modules."""
+    spec = importlib.util.spec_from_file_location(
+        register_as or module_name,
+        _kernelact_dir / f"{module_name}.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    # Register in sys.modules BEFORE executing so internal imports find it
+    sys.modules[register_as or module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+# Load dependencies first and register them with their original names
+# so that prompts_v2 can import them with "from utils import ..."
+utils = _load_kernelact_module("utils", register_as="utils")
+utils_inference = _load_kernelact_module("utils_inference", register_as="utils_inference")
+prompts_kb = _load_kernelact_module("prompts_kb", register_as="prompts_kb")
+prompts_v2 = _load_kernelact_module("prompts_v2", register_as="prompts_v2")
+
+choose_prompt = prompts_v2.choose_prompt
+extract_code = utils_inference.extract_code
 
 log = logging.getLogger(__name__)
 
