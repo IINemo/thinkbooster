@@ -91,7 +91,11 @@ install_kernelact() {
         cd "$SCRIPT_DIR"
     else
         echo -e "  Cloning KernelAct to llm_tts/datasets..."
-        git clone -b feat/tts-service-integration https://github.com/ai-nikolai/KernelAct.git "$KERNELACT_DIR"
+        if ! git clone -b feat/tts-service-integration https://github.com/ai-nikolai/KernelAct.git "$KERNELACT_DIR" 2>/dev/null; then
+            echo -e "${RED}✗ Failed to clone KernelAct (skipping)${NC}"
+            echo -e "  ${YELLOW}Note: KernelAct is optional, required only for KernelBench dataset${NC}"
+            return 0
+        fi
     fi
     echo -e "${GREEN}✓ KernelAct cloned${NC}"
 }
