@@ -12,6 +12,7 @@ Usage:
         worker_extension_cls="hook_hs_extension.HookHiddenStatesExtension",
     )
 """
+
 from __future__ import annotations
 
 import logging
@@ -89,6 +90,7 @@ class HookHiddenStatesExtension:
                     # Only TP rank 0 captures (all ranks have identical values)
                     try:
                         from vllm.distributed import get_tensor_model_parallel_rank
+
                         if get_tensor_model_parallel_rank() != 0:
                             return
                     except Exception:
@@ -97,20 +99,26 @@ class HookHiddenStatesExtension:
                     # Initialize buffer on first access
                     if idx not in self._hs_captured:
                         self._hs_captured[idx] = {
-                            'buffer': None,
-                            'size': 0,
-                            'capacity': 0,
+                            "buffer": None,
+                            "size": 0,
+                            "capacity": 0,
                         }
 
                     buf_info = self._hs_captured[idx]
 
                     # Flatten all hidden states and append to buffer
-                    log.info(f"Capturing hidden states from layer {idx}: shape={hs.shape}, dtype={hs.dtype}, dim={hs.dim()}")
-                    log.info(f"Input to hook: module={module.__class__.__name__}, inp_shapes={[i.shape for i in inp]}, output_shape={output.shape if isinstance(output, torch.Tensor) else [o.shape for o in output]}")
+                    log.info(
+                        f"Capturing hidden states from layer {idx}: shape={hs.shape}, dtype={hs.dtype}, dim={hs.dim()}"
+                    )
+                    log.info(
+                        f"Input to hook: module={module.__class__.__name__}, inp_shapes={[i.shape for i in inp]}, output_shape={output.shape if isinstance(output, torch.Tensor) else [o.shape for o in output]}"
+                    )
                     if hs.dim() == 3:
                         # [batch, seq, hidden] -> flatten all tokens
                         hs_flat = hs.reshape(-1, hs.shape[-1])  # [batch*seq, hidden]
-                        log.info(f"  Prefill step: reshaped {hs.shape} -> {hs_flat.shape}")
+                        log.info(
+                            f"  Prefill step: reshaped {hs.shape} -> {hs_flat.shape}"
+                        )
                     else:
                         # [batch, hidden] -> already 2D
                         hs_flat = hs
@@ -118,31 +126,41 @@ class HookHiddenStatesExtension:
 
                     num_tokens = hs_flat.shape[0]
                     hidden_size = hs_flat.shape[1]
-                    log.info(f"  Adding {num_tokens} tokens to buffer (current size: {buf_info['size']})")
+                    log.info(
+                        f"  Adding {num_tokens} tokens to buffer (current size: {buf_info['size']})"
+                    )
 
                     # Initialize buffer if needed
-                    if buf_info['buffer'] is None:
-                        buf_info['buffer'] = torch.empty((1024, hidden_size), device=hs_flat.device, dtype=hs_flat.dtype)
-                        buf_info['capacity'] = 1024
+                    if buf_info["buffer"] is None:
+                        buf_info["buffer"] = torch.empty(
+                            (1024, hidden_size),
+                            device=hs_flat.device,
+                            dtype=hs_flat.dtype,
+                        )
+                        buf_info["capacity"] = 1024
 
-                    buffer = buf_info['buffer']
-                    size = buf_info['size']
-                    capacity = buf_info['capacity']
+                    buffer = buf_info["buffer"]
+                    size = buf_info["size"]
+                    capacity = buf_info["capacity"]
 
                     # Expand buffer if needed
                     if size + num_tokens > capacity:
                         new_capacity = max(capacity * 2, size + num_tokens)
-                        new_buffer = torch.empty((new_capacity, hidden_size), device=hs_flat.device, dtype=hs_flat.dtype)
+                        new_buffer = torch.empty(
+                            (new_capacity, hidden_size),
+                            device=hs_flat.device,
+                            dtype=hs_flat.dtype,
+                        )
                         # Copy only the used portion of old buffer
                         if size > 0:
                             new_buffer[:size] = buffer[:size]
-                        buf_info['buffer'] = new_buffer
-                        buf_info['capacity'] = new_capacity
+                        buf_info["buffer"] = new_buffer
+                        buf_info["capacity"] = new_capacity
                         buffer = new_buffer
 
                     # Append all tokens to buffer
-                    buffer[size:size + num_tokens] = hs_flat
-                    buf_info['size'] = size + num_tokens
+                    buffer[size : size + num_tokens] = hs_flat
+                    buf_info["size"] = size + num_tokens
 
                 return _hook
 
@@ -167,15 +185,17 @@ class HookHiddenStatesExtension:
         """
         result: Dict[int, bytes] = {}
         for layer_id, buf_info in self._hs_captured.items():
-            buffer = buf_info['buffer']
-            size = buf_info['size']
+            buffer = buf_info["buffer"]
+            size = buf_info["size"]
             # Extract actual data and convert to numpy, then pickle
             arr = buffer[:size].cpu().float().numpy()
-            log.info(f"\n\nCaptured hidden states for layer {layer_id}: shape={arr.shape}, dtype={arr.dtype}\n\n")
+            log.info(
+                f"Captured hidden states for layer {layer_id}: shape={arr.shape}, dtype={arr.dtype}"
+            )
             result[layer_id] = pickle.dumps(arr, protocol=pickle.HIGHEST_PROTOCOL)
         self._hs_captured = {}
         return result
-    
+
     # Kept for API compatibility — not used in hook approach
     def _store_captured_states(self, states) -> None:
         pass
