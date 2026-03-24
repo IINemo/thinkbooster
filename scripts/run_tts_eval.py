@@ -456,10 +456,15 @@ def create_model(config):
                 kv_cache_dtype=config.model.get("kv_cache_dtype", "auto"),
                 seed=config.system.seed,  # Reproducibility
                 enforce_eager=True,  # Required for native HS capture
-                worker_extension_cls=config.model.get("hook_hs_extension", "utils.hook_hs_extension.HookHiddenStatesExtension"),
+                worker_extension_cls=config.model.get(
+                    "hook_hs_extension",
+                    "utils.hook_hs_extension.HookHiddenStatesExtension",
+                ),
             )
         else:
-            log.info("Using vLLM with post-forward hidden state capture (faster but require second copy of the model in GPU memory)")
+            log.info(
+                "Using vLLM with post-forward hidden state capture (faster but require second copy of the model in GPU memory)"
+            )
             llm = LLM(
                 model=config.model.model_path,
                 gpu_memory_utilization=config.model.get("gpu_memory_utilization", 0.9),
@@ -595,7 +600,9 @@ def create_model(config):
                     llm=llm,
                     stat_calculators=stat_calculators,
                     estimator=estimator,
-                    use_native_hs_capture=config.model.get("use_native_hs_capture", True),
+                    use_native_hs_capture=config.model.get(
+                        "use_native_hs_capture", True
+                    ),
                     **vllm_with_uncertainty_arguments,
                 )
                 log.info(
@@ -2757,7 +2764,10 @@ def main(config):
             serializable_data.append(serializable_item)
         dataset = Dataset.from_list(serializable_data)
     # Special handling for KernelBench dataset to use KernelAct prompts
-    elif data_name == "kernelbench" or "kernelbench" in config.dataset.dataset_path.lower():
+    elif (
+        data_name == "kernelbench"
+        or "kernelbench" in config.dataset.dataset_path.lower()
+    ):
         from llm_tts.datasets.kernelbench import load_kernelbench_with_prompts
 
         # Get prompt_type and trial from config or use defaults

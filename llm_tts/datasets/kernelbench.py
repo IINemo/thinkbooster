@@ -15,6 +15,7 @@ Usage in run_tts_eval.py:
     )
     dataset = Dataset.from_list(kb_data)
 """
+
 import importlib.util
 import logging
 import sys
@@ -26,11 +27,11 @@ from datasets import load_dataset
 # Load KernelAct modules from their directory to avoid conflicts with scripts/utils
 _kernelact_dir = Path(__file__).parent / "KernelAct" / "kernelact"
 
+
 def _load_kernelact_module(module_name: str, register_as: str = None):
     """Load a module from KernelAct directory and register it in sys.modules."""
     spec = importlib.util.spec_from_file_location(
-        register_as or module_name,
-        _kernelact_dir / f"{module_name}.py"
+        register_as or module_name, _kernelact_dir / f"{module_name}.py"
     )
     module = importlib.util.module_from_spec(spec)
     # Register in sys.modules BEFORE executing so internal imports find it
@@ -38,10 +39,13 @@ def _load_kernelact_module(module_name: str, register_as: str = None):
     spec.loader.exec_module(module)
     return module
 
+
 # Load dependencies first and register them with their original names
 # so that prompts_v2 can import them with "from utils import ..."
 utils = _load_kernelact_module("utils", register_as="utils")
-utils_inference = _load_kernelact_module("utils_inference", register_as="utils_inference")
+utils_inference = _load_kernelact_module(
+    "utils_inference", register_as="utils_inference"
+)
 prompts_kb = _load_kernelact_module("prompts_kb", register_as="prompts_kb")
 prompts_v2 = _load_kernelact_module("prompts_v2", register_as="prompts_v2")
 
@@ -77,7 +81,9 @@ def load_kernelbench_with_prompts(
     Returns:
         List of dicts with formatted data for llm-tts evaluation pipeline
     """
-    log.info(f"Loading KernelBench level_{level} with prompt_type={prompt_type}, trial={trial}...")
+    log.info(
+        f"Loading KernelBench level_{level} with prompt_type={prompt_type}, trial={trial}..."
+    )
 
     data_repo = "ai-nikolai/KernelBench"
     split = f"level_{level}"
@@ -111,7 +117,9 @@ def load_kernelbench_with_prompts(
         try:
             prompt_func, prompt_category = choose_prompt(sample, trial, prompt_type)
             prompt = prompt_func(sample)
-            log.debug(f"Generated prompt for problem_id={problem_id}: {prompt_category}")
+            log.debug(
+                f"Generated prompt for problem_id={problem_id}: {prompt_category}"
+            )
         except Exception as e:
             log.warning(f"Failed to generate prompt for problem_id={problem_id}: {e}")
             # Fallback to basic prompt
@@ -179,10 +187,7 @@ if __name__ == "__main__":
 
     # Load small subset from level 1
     data = load_kernelbench_with_prompts(
-        level=1,
-        prompt_type="improve",
-        trial=1,
-        subset_size=3
+        level=1, prompt_type="improve", trial=1, subset_size=3
     )
 
     print(f"Loaded {len(data)} problems\n")
