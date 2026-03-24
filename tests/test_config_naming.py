@@ -52,6 +52,8 @@ KNOWN_MODEL_KEYS = {
     "openrouter",
     "vllm_codeqwen15_7b_chat",
     "vllm_qwen25_coder_7b_instruct",
+    "vllm_qwen25_coder_7b",
+    "vllm_gpt_oss_120b",
 }
 
 KNOWN_DATASETS = {
@@ -98,8 +100,8 @@ def test_filename_starts_with_strategy_prefix():
             rel = config_path.relative_to(CONFIGS_DIR.parent.parent)
             violations.append(f"  {rel}: expected prefix '{expected_prefix}_'")
 
-    assert not violations, (
-        "Config files with wrong strategy prefix:\n" + "\n".join(violations)
+    assert not violations, "Config files with wrong strategy prefix:\n" + "\n".join(
+        violations
     )
 
 
@@ -155,7 +157,7 @@ def test_filename_uses_known_model_key():
         if not stem.startswith(prefix):
             continue  # caught by other test
 
-        after_prefix = stem[len(prefix):]
+        after_prefix = stem[len(prefix) :]
 
         # Find where dataset starts
         idx = after_prefix.find(f"_{dataset_dir}")
@@ -175,8 +177,7 @@ def test_filename_uses_known_model_key():
 
     assert not violations, (
         "Config files with unrecognized model key "
-        "(update KNOWN_MODEL_KEYS if adding a new model):\n"
-        + "\n".join(violations)
+        "(update KNOWN_MODEL_KEYS if adding a new model):\n" + "\n".join(violations)
     )
 
 

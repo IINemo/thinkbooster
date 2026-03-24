@@ -339,9 +339,21 @@ class StrategyManager:
         """
         strategy_config = strategy_config or {}
 
-        if strategy_type == "self_consistency":
-            return self._create_self_consistency_strategy(model_name, strategy_config)
-        elif strategy_type in ("offline_bon", "online_bon", "beam_search"):
+        # Check if API backend is requested
+        use_api_backend = bool(
+            strategy_config.get("tts_api_key") or strategy_config.get("model_base_url")
+        )
+
+        if strategy_type in (
+            "self_consistency",
+            "offline_bon",
+            "online_bon",
+            "beam_search",
+        ):
+            if use_api_backend:
+                return self._create_api_strategy(
+                    strategy_type, model_name, strategy_config
+                )
             return self._create_vllm_strategy(strategy_type, strategy_config)
         else:
             raise ValueError(
@@ -436,29 +448,14 @@ class StrategyManager:
                 aggregation=config.get("score_aggregation", "mean"),
                 scoring_window=config.get("window_size", None),
             )
+        elif strategy_type == "self_consistency":
+            strategy = StrategySelfConsistency(
+                step_generator=self._step_generator,
+                num_paths=config.get("num_paths", 10),
+                batch_generation=True,
+            )
 
         log.info(f"Created vLLM strategy: {strategy_type} with scorer: {scorer_type}")
-        return strategy
-
-    def _create_self_consistency_strategy(
-        self, model_name: str, config: Dict[str, Any]
-    ) -> StrategySelfConsistency:
-        """Create self-consistency strategy instance."""
-        provider = config.get("provider", "openrouter")
-        client = self._get_or_create_client(provider)
-
-        strategy = StrategySelfConsistency(
-            client=client,
-            model=model_name,
-            num_paths=config.get("num_paths", 5),
-            temperature=config.get("temperature", 0.7),
-            max_tokens=config.get("max_tokens", 4096),
-        )
-
-        log.info(
-            f"Created self-consistency strategy: "
-            f"model={model_name}, num_paths={config.get('num_paths', 5)}"
-        )
         return strategy
 
     # ------------------------------------------------------------------
