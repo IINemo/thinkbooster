@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 
 from openai import OpenAI
 
-from llm_tts.strategies.strategy_self_consistency import SelfConsistencyStrategy
+from llm_tts.strategies.strategy_self_consistency import StrategySelfConsistency
 
 from .config import settings
 from .prm_scorer_factory import prm_scorer_factory
@@ -442,12 +442,12 @@ class StrategyManager:
 
     def _create_self_consistency_strategy(
         self, model_name: str, config: Dict[str, Any]
-    ) -> SelfConsistencyStrategy:
+    ) -> StrategySelfConsistency:
         """Create self-consistency strategy instance."""
         provider = config.get("provider", "openrouter")
         client = self._get_or_create_client(provider)
 
-        strategy = SelfConsistencyStrategy(
+        strategy = StrategySelfConsistency(
             client=client,
             model=model_name,
             num_paths=config.get("num_paths", 5),
