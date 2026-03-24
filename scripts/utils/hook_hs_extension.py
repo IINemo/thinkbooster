@@ -17,9 +17,8 @@ from __future__ import annotations
 
 import logging
 import pickle
-from typing import Dict, List, Optional
+from typing import Dict, List
 
-import numpy as np
 import torch
 
 log = logging.getLogger(__name__)
