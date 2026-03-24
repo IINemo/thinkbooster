@@ -11,6 +11,7 @@ import logging
 import threading
 from typing import Any, Dict, Optional
 
+from llm_tts.strategies.strategy_self_consistency import SelfConsistencyStrategy
 from openai import OpenAI
 
 from .config import settings
@@ -693,59 +694,6 @@ class StrategyManager:
                 "llm_tts library is required for self-consistency but could not be imported. "
                 "Install with: pip install -e '.[service]'"
             ) from exc
-
-    # ------------------------------------------------------------------
-    # vLLM-backed strategies
-    # ------------------------------------------------------------------
-
-    def _create_vllm_strategy(self, strategy_type: str, config: Dict[str, Any]):
-        """Create a vLLM-backed TTS strategy instance."""
-        if self._step_generator is None:
-            self._init_vllm_backend()
-
-        scorer_type = config.get("scorer_type", "entropy")
-        scorer = self._get_scorer(scorer_type)
-
-        if strategy_type == "offline_bon":
-            from llm_tts.strategies.strategy_offline_best_of_n import (
-                StrategyOfflineBestOfN,
-            )
-
-            strategy = StrategyOfflineBestOfN(
-                scorer=scorer,
-                num_trajectories=config.get("num_trajectories", 8),
-                max_steps=config.get("max_steps", 100),
-                step_generator=self._step_generator,
-                score_aggregation=config.get("score_aggregation", "min"),
-                batch_generation=True,
-            )
-        elif strategy_type == "online_bon":
-            from llm_tts.strategies.strategy_online_best_of_n import (
-                StrategyOnlineBestOfN,
-            )
-
-            strategy = StrategyOnlineBestOfN(
-                scorer=scorer,
-                candidates_per_step=config.get("candidates_per_step", 4),
-                max_steps=config.get("max_steps", 100),
-                step_generator=self._step_generator,
-                batch_generation=True,
-            )
-        elif strategy_type == "beam_search":
-            from llm_tts.strategies.strategy_beam_search import StrategyBeamSearch
-
-            strategy = StrategyBeamSearch(
-                step_generator=self._step_generator,
-                scorer=scorer,
-                beam_size=config.get("beam_size", 4),
-                candidates_per_beam=config.get("candidates_per_step", 4),
-                max_steps=config.get("max_steps", 100),
-                aggregation=config.get("score_aggregation", "mean"),
-                scoring_window=config.get("window_size", None),
-            )
-
-        log.info(f"Created vLLM strategy: {strategy_type} with scorer: {scorer_type}")
-        return strategy
 
     # ------------------------------------------------------------------
     # Cleanup
