@@ -1,10 +1,16 @@
 """
 OpenAI-compatible /v1/chat/completions endpoint.
+
+Supports three URL patterns (all hit the same handler):
+  POST /v1/chat/completions                          — strategy & scorer from body
+  POST /v1/{strategy}/chat/completions               — strategy from URL
+  POST /v1/{strategy}/{scorer}/chat/completions      — strategy & scorer from URL
 """
 
 import logging
 import time
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -22,6 +28,12 @@ log = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Track active requests for cancellation (used in streaming)
+_active_requests = {}
+
+_VALID_STRATEGIES = {"self_consistency", "offline_bon", "online_bon", "beam_search"}
+_VALID_SCORERS = {"entropy", "perplexity", "sequence_prob", "prm"}
+
 
 def estimate_tokens(text: str) -> int:
     """Rough token estimation (4 chars ≈ 1 token)."""
@@ -36,9 +48,16 @@ def estimate_tokens(text: str) -> int:
         500: {"model": ErrorResponse},
     },
 )
-async def create_chat_completion(request: ChatCompletionRequest):
+async def create_chat_completion(
+    request: ChatCompletionRequest,
+    url_strategy: Optional[str] = None,
+    url_scorer: Optional[str] = None,
+):
     """
-    Create a chat completion using self-consistency strategy.
+    Create a chat completion using TTS strategy.
+
+    Strategy and scorer can be specified via URL path or request body.
+    URL path takes priority over body parameters.
 
     This endpoint is OpenAI-compatible. Use the OpenAI Python SDK:
 
@@ -67,6 +86,37 @@ async def create_chat_completion(request: ChatCompletionRequest):
     ```
     """
     try:
+        # URL path segments override body params
+        if url_strategy:
+            if url_strategy not in _VALID_STRATEGIES:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": {
+                            "message": f"Unknown strategy in URL: '{url_strategy}'. "
+                            f"Valid: {', '.join(sorted(_VALID_STRATEGIES))}",
+                            "type": "invalid_request_error",
+                            "param": "strategy",
+                        }
+                    },
+                )
+            request.tts_strategy = url_strategy
+
+        if url_scorer:
+            if url_scorer not in _VALID_SCORERS:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": {
+                            "message": f"Unknown scorer in URL: '{url_scorer}'. "
+                            f"Valid: {', '.join(sorted(_VALID_SCORERS))}",
+                            "type": "invalid_request_error",
+                            "param": "scorer",
+                        }
+                    },
+                )
+            request.tts_scorer = url_scorer
+
         log.info(f"Received chat completion request for model: {request.model}")
         log.info(f"TTS strategy: {request.tts_strategy}")
 
@@ -112,6 +162,10 @@ async def create_chat_completion(request: ChatCompletionRequest):
             "score_aggregation": request.tts_score_aggregation,
             "window_size": request.tts_window_size,
         }
+
+        # Add API key if provided (overrides default)
+        if request.tts_api_key:
+            strategy_config["tts_api_key"] = request.tts_api_key
 
         # Create strategy
         log.info(f"Creating strategy: {strategy_type}")
@@ -196,3 +250,37 @@ async def create_chat_completion(request: ChatCompletionRequest):
                 }
             },
         )
+
+
+@router.post(
+    "/v1/{url_strategy}/chat/completions",
+    response_model=ChatCompletionResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+    include_in_schema=False,
+)
+async def create_chat_completion_with_strategy(
+    url_strategy: str, request: ChatCompletionRequest
+):
+    """Route with strategy in URL path."""
+    return await create_chat_completion(request, url_strategy=url_strategy)
+
+
+@router.post(
+    "/v1/{url_strategy}/{url_scorer}/chat/completions",
+    response_model=ChatCompletionResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+    include_in_schema=False,
+)
+async def create_chat_completion_with_strategy_and_scorer(
+    url_strategy: str, url_scorer: str, request: ChatCompletionRequest
+):
+    """Route with strategy and scorer in URL path."""
+    return await create_chat_completion(
+        request, url_strategy=url_strategy, url_scorer=url_scorer
+    )
