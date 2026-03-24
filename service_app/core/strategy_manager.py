@@ -11,8 +11,9 @@ import logging
 import threading
 from typing import Any, Dict, Optional
 
-from llm_tts.strategies.strategy_self_consistency import SelfConsistencyStrategy
 from openai import OpenAI
+
+from llm_tts.strategies.strategy_self_consistency import SelfConsistencyStrategy
 
 from .config import settings
 from .prm_scorer_factory import prm_scorer_factory
