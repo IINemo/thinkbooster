@@ -351,10 +351,17 @@ class StrategyManager:
             "beam_search",
         ):
             if use_api_backend:
-                return self._create_api_strategy(
+                strategy = self._create_api_strategy(
                     strategy_type, model_name, strategy_config
                 )
-            return self._create_vllm_strategy(strategy_type, strategy_config)
+            else:
+                strategy = self._create_vllm_strategy(strategy_type, strategy_config)
+
+            # Attach cancel event if provided
+            if cancel_event is not None:
+                strategy.set_cancel_event(cancel_event)
+
+            return strategy
         else:
             raise ValueError(
                 f"Unknown strategy type: {strategy_type}. "

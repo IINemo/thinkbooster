@@ -54,6 +54,7 @@ KNOWN_MODEL_KEYS = {
     "vllm_qwen25_coder_7b_instruct",
     "vllm_qwen25_coder_7b",
     "vllm_gpt_oss_120b",
+    "vllm_k2_think_v2",
 }
 
 KNOWN_DATASETS = {
