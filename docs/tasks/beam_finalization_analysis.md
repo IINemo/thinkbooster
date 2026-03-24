@@ -1,5 +1,7 @@
 # Analysis: Beam Finalization Logic — `completed_beams or active` vs `completed_beams + active`
 
+> **Key point:** This issue **only triggers when `max_steps` is reached** while some beams are still active. If all beams complete naturally before `max_steps` (the common case for math reasoning), a different code path handles finalization correctly and this logic is never executed.
+
 ## The Code in Question
 
 ```python
@@ -14,11 +16,11 @@ for sample_id in active_samples:
 
 ## How Beam Search Works (Two Exit Paths)
 
-### Exit Path 1: All beams complete inside the loop (line 643)
-A sample's beams are split every step into `completed` and `active` lists. Completed beams are stored in `completed_beams_by_sample` and removed from the active pool. When `active` becomes empty (all beams finished), `_select_best_beam(completed_beams_by_sample[sample_id])` is called — this only considers completed beams. **No issue here.**
+### Exit Path 1: All beams complete inside the loop (line 643) — THE COMMON CASE
+A sample's beams are split every step into `completed` and `active` lists. Completed beams are stored in `completed_beams_by_sample` and removed from the active pool. When `active` becomes empty (all beams finished), `_select_best_beam(completed_beams_by_sample[sample_id])` is called — this only considers completed beams. **No issue here. This is how most math experiments work** — beams generate an answer and emit EOS well before `max_steps`.
 
-### Exit Path 2: `max_steps` reached with beams still active (line 699–704)
-The main `for step_num in range(max_steps)` loop ends. Some samples may still have active beams. This is where line 703 runs. At this point:
+### Exit Path 2: `max_steps` reached with beams still active (line 699–704) — THE EDGE CASE
+The main `for step_num in range(max_steps)` loop ends. Some samples may still have active beams. **This only happens when `max_steps` is hit before all beams finish** — e.g., short `max_steps` setting, very hard problems, or tasks like Game of 24 where some beams find an answer quickly while others don't. This is where line 703 runs. At this point:
 - `completed_beams_by_sample[sample_id]` = beams that finished early (EOS, `is_trajectory_complete`, etc.)
 - `sample_beams[sample_id]` = beams still active when max_steps was reached (never produced EOS)
 
