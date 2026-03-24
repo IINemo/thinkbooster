@@ -14,7 +14,7 @@ import queue
 import threading
 import time
 import uuid
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -108,7 +108,10 @@ async def create_chat_completion(
     url_scorer: Optional[str] = None,
 ):
     """
-    Create a chat completion with TTS strategy.
+    Create a chat completion using TTS strategy.
+
+    Strategy and scorer can be specified via URL path or request body.
+    URL path takes priority over body parameters.
 
     Strategy and scorer can be specified in **three ways** (highest priority first):
 
