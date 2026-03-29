@@ -179,10 +179,10 @@ We welcome contributions! Whether it's a new strategy, scorer, dataset, or bug f
 If you use ThinkBooster in your research, please cite:
 
 ```bibtex
-@inproceedings{thinkbooster2026,
+@misc{thinkbooster2026,
   title     = {ThinkBooster: A Unified Framework for Seamless Test-Time Scaling of LLM Reasoning},
   author    = {Smirnov, Vladislav and Nguyen, Chieu and Senichev, Sergey and Ta, Minh Ngoc and Fadeeva, Ekaterina and Vazhentsev, Artem and Galimzianova, Daria and Rozanov, Nikolai and Mazanov, Viktor and Ni, Jingwei and Wu, Tianyi and Kiselev, Igor and Sachan, Mrinmaya and Gurevych, Iryna and Nakov, Preslav and Baldwin, Timothy and Shelmanov, Artem},
-  booktitle = {Proceedings of the 64th Annual Meeting of the Association for Computational Linguistics: System Demonstrations},
+  booktitle = {Preprint},
   year      = {2026},
   url       = {https://thinkbooster.s3.us-east-1.amazonaws.com/thinkbooster.pdf}
 }
