@@ -678,29 +678,6 @@ class StrategyManager:
         )
 
     # ------------------------------------------------------------------
-    # Simple self-consistency (no library deps, plain OpenAI client)
-    # ------------------------------------------------------------------
-
-    def _create_self_consistency_simple(
-        self,
-        model_name: str,
-        config: Dict[str, Any],
-    ):
-        """Fallback: use library StrategySelfConsistency when llm_tts is
-        available, otherwise raise."""
-        try:
-            return self._create_api_strategy(
-                "self_consistency",
-                model_name,
-                config,
-            )
-        except ImportError as exc:
-            raise ValueError(
-                "llm_tts library is required for self-consistency but could not be imported. "
-                "Install with: pip install -e '.[service]'"
-            ) from exc
-
-    # ------------------------------------------------------------------
     # Cleanup
     # ------------------------------------------------------------------
 
