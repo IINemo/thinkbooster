@@ -77,8 +77,8 @@ class ChatCompletionRequest(BaseModel):
 
     # Reasoning effort for models that support it
     reasoning_effort: Optional[str] = Field(
-        default="low",
-        description="Reasoning effort level: low, medium, high",
+        default=None,
+        description="Reasoning effort level: low, medium, high. If None, not passed to model.",
     )
 
     # Random seed for reproducibility
