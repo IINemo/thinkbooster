@@ -63,6 +63,30 @@ class ChatCompletionRequest(BaseModel):
         "Gemini API). Overrides the provider's default URL.",
     )
 
+    # vLLM model quantization
+    quantization: Optional[str] = Field(
+        default=None,
+        description="vLLM quantization: awq, gptq, squeezellm, etc.",
+    )
+
+    # vLLM KV cache dtype
+    kv_cache_dtype: Optional[str] = Field(
+        default=None,
+        description="vLLM KV cache dtype: fp8, fp8_e4m3, fp8_e5m2, etc.",
+    )
+
+    # Reasoning effort for models that support it
+    reasoning_effort: Optional[str] = Field(
+        default=None,
+        description="Reasoning effort level: low, medium, high. If None, not passed to model.",
+    )
+
+    # Random seed for reproducibility
+    seed: Optional[int] = Field(
+        default=None,
+        description="Random seed for reproducible generation",
+    )
+
     # vLLM TTS strategy parameters (passed via extra_body)
     tts_scorer: Optional[str] = Field(
         default="entropy",
@@ -90,7 +114,6 @@ class ChatCompletionRequest(BaseModel):
     tts_window_size: Optional[int] = Field(
         default=None, description="Window size for scoring (1-N steps)", ge=1, le=50
     )
-
     # Debugger / verbose mode
     tts_verbose: Optional[bool] = Field(
         default=False,

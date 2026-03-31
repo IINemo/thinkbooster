@@ -440,17 +440,36 @@ def create_model(config):
             raise ImportError("vLLM not installed. Run: pip install vllm")
 
         # Initialize vLLM engine with seed for reproducibility
-        llm = LLM(
-            model=config.model.model_path,
-            gpu_memory_utilization=config.model.get("gpu_memory_utilization", 0.9),
-            tensor_parallel_size=config.model.get("tensor_parallel_size", 1),
-            enable_prefix_caching=config.model.get("enable_prefix_caching", True),
-            trust_remote_code=config.model.get("trust_remote_code", True),
-            max_model_len=config.model.get(
+        llm_kwargs = {
+            "model": config.model.model_path,
+            "gpu_memory_utilization": config.model.get("gpu_memory_utilization", 0.9),
+            "tensor_parallel_size": config.model.get("tensor_parallel_size", 1),
+            "enable_prefix_caching": config.model.get("enable_prefix_caching", True),
+            "trust_remote_code": config.model.get("trust_remote_code", True),
+            "max_model_len": config.model.get(
                 "max_context_budget", config.model.get("max_model_len", 32768)
             ),
-            seed=config.system.seed,  # Reproducibility
-        )
+            "quantization": config.model.get("quantization", None),
+            "kv_cache_dtype": config.model.get("kv_cache_dtype", "auto"),
+            "seed": config.system.seed,
+        }
+
+        use_native_hs_capture = config.model.get("use_native_hs_capture", True)
+        if use_native_hs_capture:
+            log.info("Using native hidden state capture via vLLM worker extension")
+            llm_kwargs["enforce_eager"] = True
+            llm_kwargs["worker_extension_cls"] = config.model.get(
+                "hook_hs_extension",
+                "utils.hook_hs_extension.HookHiddenStatesExtension",
+            )
+        else:
+            log.info(
+                "Using vLLM with post-forward hidden state capture "
+                "(faster but requires second copy of the model in GPU memory)"
+            )
+            llm_kwargs["enable_sleep_mode"] = True
+
+        llm = LLM(**llm_kwargs)
 
         # Create sampling params (will be updated by strategy)
         sampling_params = SamplingParams(
@@ -572,6 +591,9 @@ def create_model(config):
                     llm=llm,
                     stat_calculators=stat_calculators,
                     estimator=estimator,
+                    use_native_hs_capture=config.model.get(
+                        "use_native_hs_capture", True
+                    ),
                     **vllm_with_uncertainty_arguments,
                 )
                 log.info(
@@ -633,6 +655,8 @@ def create_model(config):
                     "max_context_budget", config.model.get("max_model_len", 32768)
                 ),
                 disable_thinking_mode=config.model.get("disable_thinking_mode", None),
+                reasoning_effort=config.model.get("reasoning_effort", None),
+                seed=config.system.get("seed", None),
             )
 
             log.info(f"Created vLLM step generator: {type(step_generator).__name__}")
@@ -2727,6 +2751,42 @@ def main(config):
                 "answer": item["answer"],
                 "task_id": item["task_id"],
                 "entry_point": item["entry_point"],
+            }
+            serializable_data.append(serializable_item)
+        dataset = Dataset.from_list(serializable_data)
+    # Special handling for KernelBench dataset to use KernelAct prompts
+    elif (
+        data_name == "kernelbench"
+        or "kernelbench" in config.dataset.dataset_path.lower()
+    ):
+        from llm_tts.datasets.kernelbench import load_kernelbench_with_prompts
+
+        # Get prompt_type and trial from config or use defaults
+        kb_prompt_type = config.dataset.get("prompt_type", "improve")
+        kb_trial = config.dataset.get("trial", 1)
+        kb_level = config.dataset.get("level", 1)
+
+        log.info(
+            f"Using KernelAct prompt generator for KernelBench: "
+            f"level={kb_level}, prompt_type={kb_prompt_type}, trial={kb_trial}"
+        )
+
+        kb_data = load_kernelbench_with_prompts(
+            level=kb_level,
+            prompt_type=kb_prompt_type,
+            trial=kb_trial,
+            subset_size=None,  # Load all, subset later
+        )
+        # Convert to HuggingFace Dataset format
+        serializable_data = []
+        for item in kb_data:
+            serializable_item = {
+                "question": item["question"],
+                "answer": item["answer"],
+                "problem_id": item["problem_id"],
+                "name": item["name"],
+                "level": item["level"],
+                "prompt_category": item.get("prompt_category", ""),
             }
             serializable_data.append(serializable_item)
         dataset = Dataset.from_list(serializable_data)

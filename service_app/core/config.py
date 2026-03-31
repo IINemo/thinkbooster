@@ -61,6 +61,20 @@ class Settings(BaseSettings):
     log_dir: str = "logs"
     log_level: str = "INFO"
 
+    # vLLM backend config
+    vllm_model_path: Optional[str] = None  # e.g. "Qwen/Qwen2.5-Coder-7B-Instruct"
+    vllm_max_model_len: int = 32000
+    vllm_gpu_memory_utilization: float = 0.9
+    vllm_tensor_parallel_size: int = 1
+    vllm_seed: int = 42
+    vllm_quantization: Optional[str] = None  # e.g. "awq", "gptq", "squeezellm", etc.
+
+    # Default TTS params
+    default_scorer: str = "entropy"
+    default_temperature: float = 0.6
+    default_max_tokens: int = 16000
+    default_thinking_mode: bool = False
+
     # Service Limits
     max_concurrent_requests: int = 10
     request_timeout: int = 600  # seconds

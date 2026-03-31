@@ -13,6 +13,8 @@ from typing import Any, Dict, Optional
 
 from openai import OpenAI
 
+from llm_tts.strategies.strategy_self_consistency import StrategySelfConsistency
+
 from .config import settings
 from .prm_scorer_factory import prm_scorer_factory
 
@@ -43,14 +45,33 @@ class StrategyManager:
         self._vllm_model = None
         self._step_generator = None
         self._confidence_scorer = None  # For entropy/perplexity/sequence_prob
+        self._current_quantization: Optional[str] = (
+            None  # Track current quantization setting
+        )
+        self._current_kv_cache_dtype: Optional[str] = (
+            None  # Track current KV cache dtype setting
+        )
+        self._current_reasoning_effort: Optional[str] = (
+            None  # Track current reasoning effort setting
+        )
 
-    # ------------------------------------------------------------------
-    # vLLM backend
-    # ------------------------------------------------------------------
-
-    def _init_vllm_backend(self):
+    def _init_vllm_backend(
+        self,
+        quantization: Optional[str] = None,
+        kv_cache_dtype: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
+    ):
         """Load vLLM model, wrap with uncertainty, create step generator.
-        Called lazily on first vLLM request, then cached."""
+        Called lazily on first vLLM request, then cached.
+
+        Args:
+            quantization: Optional quantization method (e.g., "awq", "gptq").
+                         If None, uses the default from settings.
+            kv_cache_dtype: Optional KV cache dtype (e.g., "fp8", "fp8_e4m3").
+                          If None, uses the default from settings.
+            reasoning_effort: Optional reasoning effort level (e.g., "low", "medium", "high").
+                            If None, uses the default from settings.
+        """
         from lm_polygraph.estimators import MeanTokenEntropy
         from lm_polygraph.stat_calculators import (
             EntropyCalculator,
@@ -65,14 +86,46 @@ class StrategyManager:
 
         log.info(f"Loading vLLM model: {settings.vllm_model_path}")
 
-        llm = LLM(
-            model=settings.vllm_model_path,
-            gpu_memory_utilization=settings.vllm_gpu_memory_utilization,
-            tensor_parallel_size=settings.vllm_tensor_parallel_size,
-            max_model_len=settings.vllm_max_model_len,
-            trust_remote_code=True,
-            seed=settings.vllm_seed,
+        # Use provided quantization or fall back to settings
+        effective_quantization = quantization or settings.vllm_quantization
+
+        # Use provided kv_cache_dtype or fall back to settings
+        effective_kv_cache_dtype = kv_cache_dtype or getattr(
+            settings, "vllm_kv_cache_dtype", None
         )
+
+        # Use provided reasoning_effort or fall back to default
+        effective_reasoning_effort = reasoning_effort or "low"
+
+        # Seed for LLM engine init (fixed from settings, per-request seed is set on step generator)
+        effective_seed = settings.vllm_seed
+
+        llm_kwargs = {
+            "model": settings.vllm_model_path,
+            "gpu_memory_utilization": settings.vllm_gpu_memory_utilization,
+            "tensor_parallel_size": settings.vllm_tensor_parallel_size,
+            "max_model_len": settings.vllm_max_model_len,
+            "trust_remote_code": True,
+            "seed": effective_seed,
+        }
+
+        if effective_quantization:
+            llm_kwargs["quantization"] = effective_quantization
+            log.info(f"Using quantization: {effective_quantization}")
+
+        if effective_kv_cache_dtype:
+            llm_kwargs["kv_cache_dtype"] = effective_kv_cache_dtype
+            log.info(f"Using KV cache dtype: {effective_kv_cache_dtype}")
+
+        if effective_seed is not None:
+            log.info(f"Using seed: {effective_seed}")
+
+        log.info(f"Using reasoning effort: {effective_reasoning_effort}")
+
+        self._current_quantization = effective_quantization
+        self._current_kv_cache_dtype = effective_kv_cache_dtype
+        self._current_reasoning_effort = effective_reasoning_effort
+        llm = LLM(**llm_kwargs)
 
         stat_calculators = [VLLMLogprobsCalculator(), EntropyCalculator()]
         estimator = MeanTokenEntropy()
@@ -97,6 +150,7 @@ class StrategyManager:
             max_new_tokens=settings.default_max_tokens,
             temperature=settings.default_temperature,
             max_context_budget=settings.vllm_max_model_len,
+            reasoning_effort=effective_reasoning_effort,
             disable_thinking_mode=None if settings.default_thinking_mode else True,
         )
 
@@ -107,7 +161,18 @@ class StrategyManager:
     _VALID_SCORER_TYPES = {"entropy", "perplexity", "sequence_prob", "prm"}
 
     def _get_scorer(self, scorer_type: str):
-        """Get scorer for vLLM-backed strategies (needs logprobs for non-PRM)."""
+        """
+        Get scorer instance based on scorer type.
+
+        Args:
+            scorer_type: One of 'entropy', 'perplexity', 'sequence_prob', 'prm'
+
+        Returns:
+            Scorer instance (StepScorerConfidence or StepScorerPRM)
+
+        Raises:
+            ValueError: If scorer_type is not recognised
+        """
         if scorer_type not in self._VALID_SCORER_TYPES:
             raise ValueError(
                 f"Unknown scorer type: {scorer_type!r}. "
@@ -116,6 +181,7 @@ class StrategyManager:
         if scorer_type == "prm":
             return prm_scorer_factory.get_scorer()
         else:
+            # For entropy, perplexity, sequence_prob - use confidence scorer
             if self._confidence_scorer is None:
                 self._init_vllm_backend()
             return self._confidence_scorer
@@ -258,35 +324,137 @@ class StrategyManager:
         """
         Create a TTS strategy instance.
 
-        When ``tts_api_key`` or ``model_base_url`` is present in
-        *strategy_config* the API backend is used (all strategies).
-        Otherwise, self_consistency uses the simple OpenAI client and
-        everything else uses the vLLM backend.
+        Args:
+            strategy_type: Type of strategy
+            model_name: Model name
+            strategy_config: Optional strategy-specific configuration
+
+        Returns:
+            Strategy instance ready for trajectory generation
         """
         strategy_config = strategy_config or {}
 
+        # Check if API backend is requested
         use_api_backend = bool(
             strategy_config.get("tts_api_key") or strategy_config.get("model_base_url")
         )
 
-        if use_api_backend:
-            strategy = self._create_api_strategy(
-                strategy_type, model_name, strategy_config
-            )
-        elif strategy_type == "self_consistency":
-            strategy = self._create_self_consistency_simple(model_name, strategy_config)
-        elif strategy_type in ("offline_bon", "online_bon", "beam_search"):
-            strategy = self._create_vllm_strategy(strategy_type, strategy_config)
+        if strategy_type in (
+            "self_consistency",
+            "offline_bon",
+            "online_bon",
+            "beam_search",
+        ):
+            if use_api_backend:
+                strategy = self._create_api_strategy(
+                    strategy_type, model_name, strategy_config
+                )
+            else:
+                strategy = self._create_vllm_strategy(strategy_type, strategy_config)
+
+            # Attach cancel event if provided
+            if cancel_event is not None:
+                strategy.set_cancel_event(cancel_event)
+
+            return strategy
         else:
             raise ValueError(
                 f"Unknown strategy type: {strategy_type}. "
-                f"Available strategies: self_consistency, offline_bon, "
-                f"online_bon, beam_search"
+                f"Available strategies: self_consistency, offline_bon, online_bon, beam_search"
             )
 
-        if cancel_event is not None:
-            strategy.set_cancel_event(cancel_event)
+    def _create_vllm_strategy(self, strategy_type: str, config: Dict[str, Any]):
+        """Create a vLLM-backed TTS strategy instance."""
+        # Check if quantization, kv_cache_dtype, or reasoning_effort has changed
+        # (seed is per-request via SamplingParams, doesn't require model reload)
+        requested_quantization = config.get("quantization")
+        requested_kv_cache_dtype = config.get("kv_cache_dtype")
+        requested_reasoning_effort = config.get("reasoning_effort")
+        needs_reinit = (
+            self._step_generator is None
+            or self._current_quantization != requested_quantization
+            or self._current_kv_cache_dtype != requested_kv_cache_dtype
+            or self._current_reasoning_effort != requested_reasoning_effort
+        )
+        if needs_reinit:
+            # Clear cache if config changed
+            if self._step_generator is not None:
+                if self._current_quantization != requested_quantization:
+                    log.info(
+                        f"Quantization changed from {self._current_quantization} to {requested_quantization}, "
+                        "clearing vLLM cache and reloading..."
+                    )
+                elif self._current_kv_cache_dtype != requested_kv_cache_dtype:
+                    log.info(
+                        f"KV cache dtype changed from {self._current_kv_cache_dtype} to {requested_kv_cache_dtype}, "
+                        "clearing vLLM cache and reloading..."
+                    )
+                elif self._current_reasoning_effort != requested_reasoning_effort:
+                    log.info(
+                        f"Reasoning effort changed from {self._current_reasoning_effort} to {requested_reasoning_effort}, "
+                        "clearing vLLM cache and reloading..."
+                    )
+                self._vllm_model = None
+                self._step_generator = None
+                self._confidence_scorer = None
+            self._init_vllm_backend(
+                quantization=requested_quantization,
+                kv_cache_dtype=requested_kv_cache_dtype,
+                reasoning_effort=requested_reasoning_effort,
+            )
 
+        # Set per-request seed on step generator (no model reload needed)
+        # Resets to None when not provided so previous request's seed doesn't persist
+        self._step_generator.seed = config.get("seed")
+
+        scorer_type = config.get("scorer_type", "entropy")
+        scorer = self._get_scorer(scorer_type)
+
+        if strategy_type == "offline_bon":
+            from llm_tts.strategies.strategy_offline_best_of_n import (
+                StrategyOfflineBestOfN,
+            )
+
+            strategy = StrategyOfflineBestOfN(
+                scorer=scorer,
+                num_trajectories=config.get("num_trajectories", 8),
+                max_steps=config.get("max_steps", 100),
+                step_generator=self._step_generator,
+                score_aggregation=config.get("score_aggregation", "min"),
+                batch_generation=True,
+            )
+        elif strategy_type == "online_bon":
+            from llm_tts.strategies.strategy_online_best_of_n import (
+                StrategyOnlineBestOfN,
+            )
+
+            strategy = StrategyOnlineBestOfN(
+                scorer=scorer,
+                candidates_per_step=config.get("candidates_per_step", 4),
+                max_steps=config.get("max_steps", 100),
+                step_generator=self._step_generator,
+                batch_generation=True,
+            )
+        elif strategy_type == "beam_search":
+            from llm_tts.strategies.strategy_beam_search import StrategyBeamSearch
+
+            strategy = StrategyBeamSearch(
+                step_generator=self._step_generator,
+                scorer=scorer,
+                beam_size=config.get("beam_size", 4),
+                candidates_per_beam=config.get("candidates_per_step", 4),
+                max_steps=config.get("max_steps", 100),
+                aggregation=config.get("score_aggregation", "mean"),
+                scoring_window=config.get("window_size", None),
+            )
+        elif strategy_type == "self_consistency":
+            strategy = StrategySelfConsistency(
+                step_generator=self._step_generator,
+                num_paths=config.get("num_paths", 10),
+                batch_generation=True,
+            )
+
+        log.info(f"Created vLLM strategy: {strategy_type} with scorer: {scorer_type}")
         return strategy
 
     # ------------------------------------------------------------------
@@ -500,82 +668,6 @@ class StrategyManager:
             aggregation=config.get("score_aggregation", "mean"),
             batch_generation=True,
         )
-
-    # ------------------------------------------------------------------
-    # Simple self-consistency (no library deps, plain OpenAI client)
-    # ------------------------------------------------------------------
-
-    def _create_self_consistency_simple(
-        self,
-        model_name: str,
-        config: Dict[str, Any],
-    ):
-        """Fallback: use library StrategySelfConsistency when llm_tts is
-        available, otherwise raise."""
-        try:
-            return self._create_api_strategy(
-                "self_consistency",
-                model_name,
-                config,
-            )
-        except ImportError as exc:
-            raise ValueError(
-                "llm_tts library is required for self-consistency but could not be imported. "
-                "Install with: pip install -e '.[service]'"
-            ) from exc
-
-    # ------------------------------------------------------------------
-    # vLLM-backed strategies
-    # ------------------------------------------------------------------
-
-    def _create_vllm_strategy(self, strategy_type: str, config: Dict[str, Any]):
-        """Create a vLLM-backed TTS strategy instance."""
-        if self._step_generator is None:
-            self._init_vllm_backend()
-
-        scorer_type = config.get("scorer_type", "entropy")
-        scorer = self._get_scorer(scorer_type)
-
-        if strategy_type == "offline_bon":
-            from llm_tts.strategies.strategy_offline_best_of_n import (
-                StrategyOfflineBestOfN,
-            )
-
-            strategy = StrategyOfflineBestOfN(
-                scorer=scorer,
-                num_trajectories=config.get("num_trajectories", 8),
-                max_steps=config.get("max_steps", 100),
-                step_generator=self._step_generator,
-                score_aggregation=config.get("score_aggregation", "min"),
-                batch_generation=True,
-            )
-        elif strategy_type == "online_bon":
-            from llm_tts.strategies.strategy_online_best_of_n import (
-                StrategyOnlineBestOfN,
-            )
-
-            strategy = StrategyOnlineBestOfN(
-                scorer=scorer,
-                candidates_per_step=config.get("candidates_per_step", 4),
-                max_steps=config.get("max_steps", 100),
-                step_generator=self._step_generator,
-                batch_generation=True,
-            )
-        elif strategy_type == "beam_search":
-            from llm_tts.strategies.strategy_beam_search import StrategyBeamSearch
-
-            strategy = StrategyBeamSearch(
-                step_generator=self._step_generator,
-                scorer=scorer,
-                beam_size=config.get("beam_size", 4),
-                candidates_per_beam=config.get("candidates_per_step", 4),
-                max_steps=config.get("max_steps", 100),
-                aggregation=config.get("score_aggregation", "mean"),
-                scoring_window=config.get("window_size", None),
-            )
-
-        log.info(f"Created vLLM strategy: {strategy_type} with scorer: {scorer_type}")
-        return strategy
 
     # ------------------------------------------------------------------
     # Cleanup

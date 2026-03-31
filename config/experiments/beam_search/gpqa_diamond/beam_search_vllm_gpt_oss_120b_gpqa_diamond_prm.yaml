@@ -1,0 +1,87 @@
+# @package _global_
+# Run: WANDB_MODE=offline python scripts/run_tts_eval.py --config-path=../config --config-name=experiments/beam_search/gpqa_diamond/beam_search_vllm_gpt_oss_120b_gpqa_diamond_prm
+# Beam Search with GPT-OSS-120B (vLLM) + PRM scorer on GPQA-Diamond
+# Uses beam search for candidate generation, selects best based on min step PRM
+
+defaults:
+  - /config
+  - /model/vllm_qwen3
+  - /generation/default
+  - /system/default
+  - /strategy/beam_search
+  - /scorer/prm
+  - /evaluation/default
+  - _self_
+
+# Run naming
+run_name: "beam_search_vllm_gpt_oss_120b_gpqa_diamond_prm_seed${system.seed}_${now:%H-%M-%S}"
+
+# Main configuration
+verbose: true
+report_to: wandb
+wandb_project: llm-tts-eval-gpqa_diamond
+wandb_group: "beam_search_vllm_gpt_oss_120b_gpqa_diamond_prm"
+
+# Model configuration (vLLM backend)
+model:
+  type: "vllm"
+  model_path: "openai/gpt-oss-120b"
+  model_short_name: "vllm_gpt_oss_120b"
+  gpu_memory_utilization: 0.7
+  tensor_parallel_size: 1
+  enable_prefix_caching: true
+  trust_remote_code: true
+  max_context_budget: 32768
+  disable_thinking_mode: false
+
+# System configuration
+system:
+  device: cuda
+  seed: 0
+
+# Generation configuration
+generation:
+  max_new_tokens: 32000
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+  batch_size: 1
+  max_length: 65536
+
+# Strategy - Beam Search with linguistic step boundaries
+strategy:
+  beam_size: 3
+  candidates_per_beam: 5
+  max_steps: 100
+  max_step_tokens: 1024
+
+# PRM scorer configuration
+scorer:
+  type: prm
+  model_path: "Qwen/Qwen2.5-Math-PRM-7B"
+  device: cuda:0
+  batch_size: 1
+  use_vllm: true
+  gpu_memory_utilization: 0.2
+  prm_max_tokens: 4000
+
+# Dataset configuration - GPQA-Diamond
+dataset:
+  dataset_path: "test-time-compute/test_gpqa_diamond"
+  dataset_config: null
+  dataset_split: "test"
+  subset: null
+  offset: 0
+  question_field: "question"
+  answer_field: "answer"
+  answer_format: "char"
+  data_name: gpqa_diamond
+  system_prompt: "You are an expert in graduate-level science. Answer the following multiple choice question. Think step by step and provide your final answer as a single letter (A, B, C, or D) within \\boxed{}."
+  prompt_template: "{question}"
+  prompt_file: null
+
+# Evaluation configuration - disable llm_judge to avoid API key issues
+evaluation:
+  evaluators:
+    - exact_match
+  batch_evaluators: []
