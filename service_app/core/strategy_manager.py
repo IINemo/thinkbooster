@@ -48,7 +48,6 @@ class StrategyManager:
         self._current_quantization: Optional[str] = (
             None  # Track current quantization setting
         )
-        self._current_seed: Optional[int] = None  # Track current seed setting
         self._current_kv_cache_dtype: Optional[str] = (
             None  # Track current KV cache dtype setting
         )
@@ -61,7 +60,6 @@ class StrategyManager:
         quantization: Optional[str] = None,
         kv_cache_dtype: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
-        seed: Optional[int] = None,
     ):
         """Load vLLM model, wrap with uncertainty, create step generator.
         Called lazily on first vLLM request, then cached.
@@ -73,7 +71,6 @@ class StrategyManager:
                           If None, uses the default from settings.
             reasoning_effort: Optional reasoning effort level (e.g., "low", "medium", "high").
                             If None, uses the default from settings.
-            seed: Optional seed for generation. If None, uses the default from settings.
         """
         from lm_polygraph.estimators import MeanTokenEntropy
         from lm_polygraph.stat_calculators import (
@@ -100,8 +97,8 @@ class StrategyManager:
         # Use provided reasoning_effort or fall back to default
         effective_reasoning_effort = reasoning_effort or "low"
 
-        # Use provided seed or fall back to settings
-        effective_seed = seed if seed is not None else settings.vllm_seed
+        # Seed for LLM engine init (fixed from settings, per-request seed is set on step generator)
+        effective_seed = settings.vllm_seed
 
         llm_kwargs = {
             "model": settings.vllm_model_path,
@@ -128,7 +125,6 @@ class StrategyManager:
         self._current_quantization = effective_quantization
         self._current_kv_cache_dtype = effective_kv_cache_dtype
         self._current_reasoning_effort = effective_reasoning_effort
-        self._current_seed = effective_seed
         llm = LLM(**llm_kwargs)
 
         stat_calculators = [VLLMLogprobsCalculator(), EntropyCalculator()]
@@ -156,7 +152,6 @@ class StrategyManager:
             max_context_budget=settings.vllm_max_model_len,
             reasoning_effort=effective_reasoning_effort,
             disable_thinking_mode=None if settings.default_thinking_mode else True,
-            seed=effective_seed,
         )
 
         self._confidence_scorer = StepScorerConfidence()
@@ -370,17 +365,16 @@ class StrategyManager:
 
     def _create_vllm_strategy(self, strategy_type: str, config: Dict[str, Any]):
         """Create a vLLM-backed TTS strategy instance."""
-        # Check if quantization, kv_cache_dtype, reasoning_effort, or seed has changed
+        # Check if quantization, kv_cache_dtype, or reasoning_effort has changed
+        # (seed is per-request via SamplingParams, doesn't require model reload)
         requested_quantization = config.get("quantization")
         requested_kv_cache_dtype = config.get("kv_cache_dtype")
         requested_reasoning_effort = config.get("reasoning_effort")
-        requested_seed = config.get("seed")
         needs_reinit = (
             self._step_generator is None
             or self._current_quantization != requested_quantization
             or self._current_kv_cache_dtype != requested_kv_cache_dtype
             or self._current_reasoning_effort != requested_reasoning_effort
-            or self._current_seed != requested_seed
         )
         if needs_reinit:
             # Clear cache if config changed
@@ -400,11 +394,6 @@ class StrategyManager:
                         f"Reasoning effort changed from {self._current_reasoning_effort} to {requested_reasoning_effort}, "
                         "clearing vLLM cache and reloading..."
                     )
-                elif self._current_seed != requested_seed:
-                    log.info(
-                        f"Seed changed from {self._current_seed} to {requested_seed}, "
-                        "clearing vLLM cache and reloading..."
-                    )
                 self._vllm_model = None
                 self._step_generator = None
                 self._confidence_scorer = None
@@ -412,8 +401,12 @@ class StrategyManager:
                 quantization=requested_quantization,
                 kv_cache_dtype=requested_kv_cache_dtype,
                 reasoning_effort=requested_reasoning_effort,
-                seed=requested_seed,
             )
+
+        # Set per-request seed on step generator (no model reload needed)
+        requested_seed = config.get("seed")
+        if requested_seed is not None:
+            self._step_generator.seed = requested_seed
 
         scorer_type = config.get("scorer_type", "entropy")
         scorer = self._get_scorer(scorer_type)
