@@ -404,9 +404,8 @@ class StrategyManager:
             )
 
         # Set per-request seed on step generator (no model reload needed)
-        requested_seed = config.get("seed")
-        if requested_seed is not None:
-            self._step_generator.seed = requested_seed
+        # Resets to None when not provided so previous request's seed doesn't persist
+        self._step_generator.seed = config.get("seed")
 
         scorer_type = config.get("scorer_type", "entropy")
         scorer = self._get_scorer(scorer_type)
