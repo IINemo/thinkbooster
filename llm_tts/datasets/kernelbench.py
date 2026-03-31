@@ -24,33 +24,63 @@ from typing import Any, Dict, List, Optional
 
 from datasets import load_dataset
 
-# Load KernelAct modules from their directory to avoid conflicts with scripts/utils
+# Load KernelAct modules from their directory to avoid conflicts with scripts/utils.
+# KernelAct internally does "from utils import ..." so we must temporarily register
+# modules under bare names, then restore the originals to avoid polluting sys.modules.
 _kernelact_dir = Path(__file__).parent / "KernelAct" / "kernelact"
+
+_KERNELACT_MODULE_NAMES = ["utils", "utils_inference", "prompts_kb", "prompts_v2"]
 
 
 def _load_kernelact_module(module_name: str, register_as: str = None):
     """Load a module from KernelAct directory and register it in sys.modules."""
+    key = register_as or module_name
     spec = importlib.util.spec_from_file_location(
-        register_as or module_name, _kernelact_dir / f"{module_name}.py"
+        key, _kernelact_dir / f"{module_name}.py"
     )
     module = importlib.util.module_from_spec(spec)
     # Register in sys.modules BEFORE executing so internal imports find it
-    sys.modules[register_as or module_name] = module
+    sys.modules[key] = module
     spec.loader.exec_module(module)
     return module
 
 
-# Load dependencies first and register them with their original names
-# so that prompts_v2 can import them with "from utils import ..."
-utils = _load_kernelact_module("utils", register_as="utils")
-utils_inference = _load_kernelact_module(
-    "utils_inference", register_as="utils_inference"
-)
-prompts_kb = _load_kernelact_module("prompts_kb", register_as="prompts_kb")
-prompts_v2 = _load_kernelact_module("prompts_v2", register_as="prompts_v2")
+def _load_kernelact_modules():
+    """Load KernelAct modules, then restore original sys.modules entries."""
+    # Save any existing modules that would be shadowed
+    saved = {name: sys.modules.get(name) for name in _KERNELACT_MODULE_NAMES}
 
-choose_prompt = prompts_v2.choose_prompt
-extract_code = utils_inference.extract_code
+    # Load KernelAct modules (registers under bare names for internal imports)
+    modules = {}
+    modules["utils"] = _load_kernelact_module("utils", register_as="utils")
+    modules["utils_inference"] = _load_kernelact_module(
+        "utils_inference", register_as="utils_inference"
+    )
+    modules["prompts_kb"] = _load_kernelact_module(
+        "prompts_kb", register_as="prompts_kb"
+    )
+    modules["prompts_v2"] = _load_kernelact_module(
+        "prompts_v2", register_as="prompts_v2"
+    )
+
+    # Restore original modules (or remove if they didn't exist before)
+    for name in _KERNELACT_MODULE_NAMES:
+        if saved[name] is not None:
+            sys.modules[name] = saved[name]
+        else:
+            sys.modules.pop(name, None)
+
+    return modules
+
+
+try:
+    _ka = _load_kernelact_modules()
+    choose_prompt = _ka["prompts_v2"].choose_prompt
+    extract_code = _ka["utils_inference"].extract_code
+except (FileNotFoundError, ModuleNotFoundError):
+    # KernelAct not installed — these will fail at use time with a clear error
+    choose_prompt = None
+    extract_code = None
 
 log = logging.getLogger(__name__)
 
@@ -81,6 +111,12 @@ def load_kernelbench_with_prompts(
     Returns:
         List of dicts with formatted data for llm-tts evaluation pipeline
     """
+    if choose_prompt is None:
+        raise ImportError(
+            "KernelAct is required for KernelBench dataset. "
+            "Install it via: ./setup.sh"
+        )
+
     log.info(
         f"Loading KernelBench level_{level} with prompt_type={prompt_type}, trial={trial}..."
     )
