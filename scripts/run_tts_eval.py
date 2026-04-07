@@ -454,7 +454,9 @@ def create_model(config):
             "seed": config.system.seed,
         }
 
-        use_native_hs_capture = config.model.get("use_native_hs_capture", True)
+        use_native_hs_capture = getattr(
+            config.model, "use_native_hs_capture", None
+        ) or (config.scorer.type == "uhead")
         if use_native_hs_capture:
             log.info("Using native hidden state capture via vLLM worker extension")
             llm_kwargs["enforce_eager"] = True
@@ -587,13 +589,14 @@ def create_model(config):
                         f"Supported types: perplexity, sequence_prob, uncertainty_pd, entropy, prm"
                     )
 
+                use_native_hs_capture = getattr(
+                    config.model, "use_native_hs_capture", None
+                ) or vllm_with_uncertainty_arguments.get("output_hidden_states", False)
                 vllm_model = VLLMWithUncertainty(
                     llm=llm,
                     stat_calculators=stat_calculators,
                     estimator=estimator,
-                    use_native_hs_capture=config.model.get(
-                        "use_native_hs_capture", True
-                    ),
+                    use_native_hs_capture=use_native_hs_capture,
                     **vllm_with_uncertainty_arguments,
                 )
                 log.info(
