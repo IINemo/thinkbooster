@@ -1,7 +1,7 @@
 # @package _global_
-# Run: python scripts/run_tts_eval.py --config-path=../config --config-name=experiments/offline_best_of_n/kernelbench/offline_bon_vllm_k2_think_v2_kernelbench_uhead
+# Run: python scripts/run_tts_eval.py --config-path=../config --config-name=experiments/offline_best_of_n/human_eval_plus/offline_bon_vllm_k2_think_v2_human_eval_plus_uhead
 # Note: Do NOT specify CUDA_VISIBLE_DEVICES when submitting via scripts/slurm/submit.sh - SLURM assigns GPUs automatically
-# Offline Best-of-N with K2-Think-V2 (vLLM) + uhead scorer on KernelBench
+# Offline Best-of-N with K2-Think-V2 (vLLM) + uhead scorer on HumanEval+
 # Generates N complete trajectories, splits post-hoc, selects best based on min step uhead score
 
 defaults:
