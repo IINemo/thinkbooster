@@ -68,7 +68,7 @@ dataset:
   data_name: "mbpp_plus"
   dataset_path: "evalplus/mbppplus"
   dataset_split: "test"  # 378 problems
-  subset: null
+  num_trajectories: 6  # 8 causes OOM on MBPP+ (larger prompts → more memory per trajectory)
   offset: 0
   question_field: "question"
   answer_field: "answer"
