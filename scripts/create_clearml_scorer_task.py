@@ -9,6 +9,8 @@ Usage:
     python scripts/create_clearml_scorer_task.py --name 'Scorer Qwen2.5-7B-Instruct' --queue high_q_80 --model Qwen/Qwen2.5-7B-Instruct --port 8000
 """
 
+import os
+
 from clearml import Task
 
 DEFAULT_DOCKER_IMAGE = "vllm/vllm-openai:v0.12.0"
@@ -35,6 +37,16 @@ def create_scorer_task(
     use_docker: bool = True,
 ):
     docker_args = DEFAULT_DOCKER_ARGS
+
+    # Inject HF token for higher rate limits
+    hf_token = os.environ.get("HF_TOKEN", "") or os.environ.get(
+        "HUGGING_FACE_HUB_TOKEN", ""
+    )
+    if hf_token:
+        docker_args += f" -e HF_TOKEN={hf_token}"
+        print("HF_TOKEN: injected from local environment")
+    else:
+        print("WARNING: HF_TOKEN not set — may hit HuggingFace rate limits")
 
     # vLLM server script uses argparse-style args
     argparse_args = [
