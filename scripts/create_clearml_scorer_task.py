@@ -38,6 +38,7 @@ def create_scorer_task(
     model_impl: str = None,
     reasoning_parser: str = None,
     tensor_parallel_size: int = None,
+    max_num_seqs: int = None,
     cuda_devices: str = None,
     docker_image: str = DEFAULT_DOCKER_IMAGE,
     use_docker: bool = True,
@@ -73,6 +74,8 @@ def create_scorer_task(
         argparse_args.append(f"reasoning-parser={reasoning_parser}")
     if tensor_parallel_size:
         argparse_args.append(f"tensor-parallel-size={tensor_parallel_size}")
+    if max_num_seqs:
+        argparse_args.append(f"max-num-seqs={max_num_seqs}")
 
     if use_docker:
         task = Task.create(
@@ -141,6 +144,9 @@ if __name__ == "__main__":
         help="Number of GPUs for tensor parallelism",
     )
     parser.add_argument(
+        "--max-num-seqs", type=int, default=None, help="Max concurrent sequences"
+    )
+    parser.add_argument(
         "--cuda-devices", default=None, help="CUDA_VISIBLE_DEVICES (e.g. '1' or '0,1')"
     )
     args = parser.parse_args()
@@ -156,6 +162,7 @@ if __name__ == "__main__":
         model_impl=args.model_impl,
         reasoning_parser=args.reasoning_parser,
         tensor_parallel_size=args.tensor_parallel_size,
+        max_num_seqs=args.max_num_seqs,
         cuda_devices=args.cuda_devices,
         docker_image=args.docker_image,
         use_docker=not args.no_docker,

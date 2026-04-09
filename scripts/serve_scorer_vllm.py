@@ -89,6 +89,12 @@ if __name__ == "__main__":
         default=None,
         help="Number of GPUs for tensor parallelism",
     )
+    parser.add_argument(
+        "--max-num-seqs",
+        type=int,
+        default=None,
+        help="Max concurrent sequences (lower if OOM on Mamba/GDN cache)",
+    )
     args = parser.parse_args()
 
     local_ip = get_local_ip()
@@ -125,6 +131,8 @@ if __name__ == "__main__":
         cmd.extend(["--reasoning-parser", args.reasoning_parser])
     if args.tensor_parallel_size:
         cmd.extend(["--tensor-parallel-size", str(args.tensor_parallel_size)])
+    if args.max_num_seqs:
+        cmd.extend(["--max-num-seqs", str(args.max_num_seqs)])
 
     log.info("Running: %s", " ".join(cmd))
     sys.exit(subprocess.call(cmd))
