@@ -77,6 +77,18 @@ if __name__ == "__main__":
         default=None,
         help="Model implementation backend (e.g. 'transformers' for unsupported architectures)",
     )
+    parser.add_argument(
+        "--reasoning-parser",
+        type=str,
+        default=None,
+        help="Reasoning parser (e.g. 'qwen3' for thinking mode)",
+    )
+    parser.add_argument(
+        "--tensor-parallel-size",
+        type=int,
+        default=None,
+        help="Number of GPUs for tensor parallelism",
+    )
     args = parser.parse_args()
 
     local_ip = get_local_ip()
@@ -109,6 +121,10 @@ if __name__ == "__main__":
 
     if args.model_impl:
         cmd.extend(["--model-impl", args.model_impl])
+    if args.reasoning_parser:
+        cmd.extend(["--reasoning-parser", args.reasoning_parser])
+    if args.tensor_parallel_size:
+        cmd.extend(["--tensor-parallel-size", str(args.tensor_parallel_size)])
 
     log.info("Running: %s", " ".join(cmd))
     sys.exit(subprocess.call(cmd))

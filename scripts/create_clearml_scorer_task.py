@@ -36,6 +36,9 @@ def create_scorer_task(
     max_model_len: int = 4096,
     gpu_memory_utilization: float = 0.9,
     model_impl: str = None,
+    reasoning_parser: str = None,
+    tensor_parallel_size: int = None,
+    docker_image: str = DEFAULT_DOCKER_IMAGE,
     use_docker: bool = True,
 ):
     docker_args = DEFAULT_DOCKER_ARGS
@@ -61,6 +64,10 @@ def create_scorer_task(
     ]
     if model_impl:
         argparse_args.append(f"model-impl={model_impl}")
+    if reasoning_parser:
+        argparse_args.append(f"reasoning-parser={reasoning_parser}")
+    if tensor_parallel_size:
+        argparse_args.append(f"tensor-parallel-size={tensor_parallel_size}")
 
     if use_docker:
         task = Task.create(
@@ -70,7 +77,7 @@ def create_scorer_task(
             branch="fix/clearml-hydra-wrapper",
             script="scripts/serve_scorer_vllm.py",
             argparse_args=argparse_args,
-            docker=f"{DEFAULT_DOCKER_IMAGE} {docker_args}",
+            docker=f"{docker_image} {docker_args}",
             docker_bash_setup_script=DOCKER_BASH_SETUP,
             packages=[],
         )
@@ -114,6 +121,20 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model-impl", default=None, help="Model impl backend (e.g. 'transformers')"
     )
+    parser.add_argument(
+        "--docker-image",
+        default=DEFAULT_DOCKER_IMAGE,
+        help="Docker image (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--reasoning-parser", default=None, help="Reasoning parser (e.g. 'qwen3')"
+    )
+    parser.add_argument(
+        "--tensor-parallel-size",
+        type=int,
+        default=None,
+        help="Number of GPUs for tensor parallelism",
+    )
     args = parser.parse_args()
 
     create_scorer_task(
@@ -125,5 +146,8 @@ if __name__ == "__main__":
         max_model_len=args.max_model_len,
         gpu_memory_utilization=args.gpu_memory_utilization,
         model_impl=args.model_impl,
+        reasoning_parser=args.reasoning_parser,
+        tensor_parallel_size=args.tensor_parallel_size,
+        docker_image=args.docker_image,
         use_docker=not args.no_docker,
     )
