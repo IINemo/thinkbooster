@@ -21,6 +21,7 @@ echo "=== GPU Info ==="
 nvidia-smi
 nvidia-smi -L
 echo "=== Installing dependencies ==="
+pip install --upgrade transformers huggingface-hub
 pip install boto3
 echo "=== Starting vLLM OpenAI server ==="
 """
