@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 # Ensure the repo root is on sys.path so `service_app` is importable even
-# when the package is not installed (only llm_tts is in setuptools.packages).
+# when the package is not installed (only thinkbooster is in setuptools.packages).
 _repo_root = str(Path(__file__).resolve().parents[2])
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)

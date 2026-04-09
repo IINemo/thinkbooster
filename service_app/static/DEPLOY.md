@@ -29,16 +29,16 @@ apt remove python3-blinker
 
 Why: distro-level `python3-blinker` can shadow the `pip` version inside your Python environment and cause dependency/runtime conflicts. Removing it avoids that package resolution clash.
 
-## 4. Install missing system-level dependencies
+## 4. Install the package
 
 ```bash
-pip install latex2sympy2 "vllm>=0.12.0,<0.13.0"
-pip install torchvision spacy thinc --upgrade
+pip install -e ".[service]"
 ```
 
-## 5. Run project setup
+## 5. (Optional) Install advanced scorers
 
 ```bash
+# Only needed for UHead, KernelAct scorers
 ./setup.sh
 ```
 

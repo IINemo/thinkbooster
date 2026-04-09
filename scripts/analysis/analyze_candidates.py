@@ -36,7 +36,7 @@ project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "scripts"))
 
-from llm_tts.evaluation.exact_match import EvaluatorExactMatch  # noqa: E402
+from thinkbooster.evaluation.exact_match import EvaluatorExactMatch  # noqa: E402
 
 log = logging.getLogger(__name__)
 

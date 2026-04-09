@@ -17,12 +17,12 @@ question_field: "question"  # KernelAct loader uses "question" field with genera
 answer_field: "answer"  # KernelAct loader uses "answer" field (reference code)
 data_name: "kernelbench"  # Used for evaluation routing and KernelAct loader
 
-# KernelBench specific settings (used by llm_tts/datasets/kernelbench.py)
+# KernelBench specific settings (used by thinkbooster/datasets/kernelbench.py)
 level: 1  # Dataset level (1, 2, or 3)
 prompt_type: "improve"  # Prompt type: "improve", "kernelbench", "normal"
 trial: 1  # Trial number (affects prompt generation for TTS iterations)
 
-# Fields from KernelAct loader (llm_tts/datasets/kernelbench.py):
+# Fields from KernelAct loader (thinkbooster/datasets/kernelbench.py):
 # - question: Generated prompt using KernelAct's choose_prompt()
 # - answer: Reference PyTorch implementation
 # - problem_id: Unique identifier (e.g., 1, 2, 3, ...)

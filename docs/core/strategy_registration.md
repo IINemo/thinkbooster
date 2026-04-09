@@ -27,7 +27,7 @@ REGISTERED_STRATEGIES = [
     StrategyInfo(
         name="deepconf",
         class_name="StrategyDeepConf",
-        module_path="llm_tts/strategies/deepconf/strategy.py",
+        module_path="thinkbooster/strategies/deepconf/strategy.py",
         test_dir="tests/deepconf",
         required_tests=[
             "test_deepconf_accurate.py",
@@ -45,7 +45,7 @@ For each registered strategy, the validator checks:
 
 | Check | Description | Blocks Merge |
 |-------|-------------|--------------|
-| Strategy module exists | `llm_tts/strategies/strategy_*.py` must exist | ✅ Yes |
+| Strategy module exists | `thinkbooster/strategies/strategy_*.py` must exist | ✅ Yes |
 | Test directory exists | `tests/[strategy_name]/` must exist | ✅ Yes |
 | Required test files exist | All files in `required_tests` must exist | ✅ Yes |
 | Test files have tests | Must contain at least one `def test_*()` | ✅ Yes |
@@ -90,7 +90,7 @@ Output:
 StrategyInfo(
     name="my_strategy",
     class_name="StrategyMyStrategy",
-    module_path="llm_tts/strategies/strategy_my_strategy.py",
+    module_path="thinkbooster/strategies/strategy_my_strategy.py",
     test_dir="tests/my_strategy",
     required_tests=[
         "test_my_strategy_logic.py",
@@ -105,12 +105,12 @@ StrategyInfo(
 
 ```bash
 # Create strategy file
-touch llm_tts/strategies/strategy_my_strategy.py
+touch thinkbooster/strategies/strategy_my_strategy.py
 ```
 
 Implement your strategy:
 ```python
-# llm_tts/strategies/strategy_my_strategy.py
+# thinkbooster/strategies/strategy_my_strategy.py
 
 from .strategy_base import StrategyBase
 
@@ -158,12 +158,12 @@ touch tests/my_strategy/test_my_strategy_math.py
 
 def test_answer_extraction():
     """Test answer extraction logic"""
-    from llm_tts.utils.confidence import extract_answer
+    from thinkbooster.utils.confidence import extract_answer
     assert extract_answer("\\boxed{42}") == "42"
 
 def test_strategy_initialization():
     """Test strategy can be initialized"""
-    from llm_tts.strategies import StrategyMyStrategy
+    from thinkbooster.strategies import StrategyMyStrategy
     from unittest.mock import Mock
 
     mock_model = Mock()
@@ -177,8 +177,8 @@ def test_strategy_initialization():
 
 import os
 import pytest
-from llm_tts.models import BlackboxModelWithStreaming
-from llm_tts.strategies import StrategyMyStrategy
+from thinkbooster.models import BlackboxModelWithStreaming
+from thinkbooster.strategies import StrategyMyStrategy
 
 @pytest.mark.skipif(
     not os.getenv("OPENROUTER_API_KEY"),
@@ -206,9 +206,9 @@ def test_strategy_with_real_model():
 
 import os
 import pytest
-from llm_tts.models import BlackboxModelWithStreaming
-from llm_tts.strategies import StrategyMyStrategy
-from llm_tts.utils.confidence import extract_answer
+from thinkbooster.models import BlackboxModelWithStreaming
+from thinkbooster.strategies import StrategyMyStrategy
+from thinkbooster.utils.confidence import extract_answer
 
 MATH_PROBLEMS = [
     {"problem": "15² - 8²? Answer in \\boxed{}", "expected": "161"},
@@ -246,7 +246,7 @@ REGISTERED_STRATEGIES = [
     StrategyInfo(
         name="my_strategy",
         class_name="StrategyMyStrategy",
-        module_path="llm_tts/strategies/strategy_my_strategy.py",
+        module_path="thinkbooster/strategies/strategy_my_strategy.py",
         test_dir="tests/my_strategy",
         required_tests=[
             "test_my_strategy_logic.py",
@@ -274,7 +274,7 @@ pytest tests/my_strategy/ -v
 #### 7. Commit and Push
 
 ```bash
-git add llm_tts/strategies/strategy_my_strategy.py
+git add thinkbooster/strategies/strategy_my_strategy.py
 git add tests/my_strategy/
 git add tests/strategy_registry.py
 
@@ -307,7 +307,7 @@ Total strategies: 1
 1. deepconf
    Class: StrategyDeepConf
    Description: Confidence-based test-time scaling with trace filtering
-   Module: llm_tts/strategies/deepconf/strategy.py
+   Module: thinkbooster/strategies/deepconf/strategy.py
    Test dir: tests/deepconf
    Required tests:
      - test_deepconf_accurate.py
@@ -345,7 +345,7 @@ Output:
 StrategyInfo(
     name="beam_search",
     class_name="StrategyBeamSearch",
-    module_path="llm_tts/strategies/strategy_beam_search.py",
+    module_path="thinkbooster/strategies/strategy_beam_search.py",
     test_dir="tests/beam_search",
     required_tests=[
         "test_beam_search_logic.py",

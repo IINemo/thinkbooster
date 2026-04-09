@@ -23,7 +23,7 @@ load_dotenv()
 
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from llm_tts.evaluation.llm_as_a_judge import (  # noqa: E402
+from thinkbooster.evaluation.llm_as_a_judge import (  # noqa: E402
     PROMPT_ANSWER_ONLY,
     PROMPT_FULL_SOLUTION,
 )

@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 
 from openai import OpenAI
 
-from llm_tts.strategies.strategy_self_consistency import StrategySelfConsistency
+from thinkbooster.strategies.strategy_self_consistency import StrategySelfConsistency
 
 from .config import settings
 from .prm_scorer_factory import prm_scorer_factory
@@ -80,9 +80,9 @@ class StrategyManager:
         from lm_polygraph.utils import VLLMWithUncertainty
         from vllm import LLM
 
-        from llm_tts.generators.vllm import VLLMStepGenerator
-        from llm_tts.scorers.step_scorer_confidence import StepScorerConfidence
-        from llm_tts.step_boundary_detectors.thinking import ThinkingMarkerDetector
+        from thinkbooster.generators.vllm import VLLMStepGenerator
+        from thinkbooster.scorers.step_scorer_confidence import StepScorerConfidence
+        from thinkbooster.step_boundary_detectors.thinking import ThinkingMarkerDetector
 
         log.info(f"Loading vLLM model: {settings.vllm_model_path}")
 
@@ -197,7 +197,7 @@ class StrategyManager:
         if scorer_type == "prm":
             return prm_scorer_factory.get_scorer()
 
-        from llm_tts.scorers.step_scorer_confidence import StepScorerConfidence
+        from thinkbooster.scorers.step_scorer_confidence import StepScorerConfidence
 
         if not supports_logprobs:
             log.warning(
@@ -411,7 +411,7 @@ class StrategyManager:
         scorer = self._get_scorer(scorer_type)
 
         if strategy_type == "offline_bon":
-            from llm_tts.strategies.strategy_offline_best_of_n import (
+            from thinkbooster.strategies.strategy_offline_best_of_n import (
                 StrategyOfflineBestOfN,
             )
 
@@ -424,7 +424,7 @@ class StrategyManager:
                 batch_generation=True,
             )
         elif strategy_type == "online_bon":
-            from llm_tts.strategies.strategy_online_best_of_n import (
+            from thinkbooster.strategies.strategy_online_best_of_n import (
                 StrategyOnlineBestOfN,
             )
 
@@ -436,7 +436,7 @@ class StrategyManager:
                 batch_generation=True,
             )
         elif strategy_type == "beam_search":
-            from llm_tts.strategies.strategy_beam_search import StrategyBeamSearch
+            from thinkbooster.strategies.strategy_beam_search import StrategyBeamSearch
 
             strategy = StrategyBeamSearch(
                 step_generator=self._step_generator,
@@ -469,17 +469,17 @@ class StrategyManager:
     ):
         """Create a strategy backed by an OpenAI-compatible HTTP API.
 
-        Uses llm_tts library classes: BlackboxModelWithStreaming,
+        Uses thinkbooster library classes: BlackboxModelWithStreaming,
         StepCandidateGeneratorThroughAPI, and the matching strategy class.
         """
         from lm_polygraph.utils.generation_parameters import GenerationParameters
 
-        from llm_tts.early_stopping import BoundaryEarlyStopping
-        from llm_tts.generators.api import StepCandidateGeneratorThroughAPI
-        from llm_tts.models.blackboxmodel_with_streaming import (
+        from thinkbooster.early_stopping import BoundaryEarlyStopping
+        from thinkbooster.generators.api import StepCandidateGeneratorThroughAPI
+        from thinkbooster.models.blackboxmodel_with_streaming import (
             BlackboxModelWithStreaming,
         )
-        from llm_tts.step_boundary_detectors import ThinkingMarkerDetector
+        from thinkbooster.step_boundary_detectors import ThinkingMarkerDetector
 
         provider = config.get("provider", "openrouter")
         model_base_url = config.get("model_base_url")
@@ -607,8 +607,8 @@ class StrategyManager:
 
     @staticmethod
     def _build_self_consistency(step_generator, config, budget):
-        from llm_tts.scorers import ChainMajorityVotingScorer
-        from llm_tts.strategies import StrategySelfConsistency
+        from thinkbooster.scorers import ChainMajorityVotingScorer
+        from thinkbooster.strategies import StrategySelfConsistency
 
         chain_scorer = ChainMajorityVotingScorer()
         return StrategySelfConsistency(
@@ -620,10 +620,10 @@ class StrategyManager:
 
     @staticmethod
     def _build_offline_bon(step_generator, config, budget, scorer=None):
-        from llm_tts.strategies import StrategyOfflineBestOfN
+        from thinkbooster.strategies import StrategyOfflineBestOfN
 
         if scorer is None:
-            from llm_tts.scorers import StepScorerConfidence
+            from thinkbooster.scorers import StepScorerConfidence
 
             scorer = StepScorerConfidence()
         return StrategyOfflineBestOfN(
@@ -637,10 +637,10 @@ class StrategyManager:
 
     @staticmethod
     def _build_online_bon(step_generator, config, budget, scorer=None):
-        from llm_tts.strategies import StrategyOnlineBestOfN
+        from thinkbooster.strategies import StrategyOnlineBestOfN
 
         if scorer is None:
-            from llm_tts.scorers import StepScorerConfidence
+            from thinkbooster.scorers import StepScorerConfidence
 
             scorer = StepScorerConfidence()
         return StrategyOnlineBestOfN(
@@ -653,10 +653,10 @@ class StrategyManager:
 
     @staticmethod
     def _build_beam_search(step_generator, config, budget, scorer=None):
-        from llm_tts.strategies import StrategyBeamSearch
+        from thinkbooster.strategies import StrategyBeamSearch
 
         if scorer is None:
-            from llm_tts.scorers import StepScorerConfidence
+            from thinkbooster.scorers import StepScorerConfidence
 
             scorer = StepScorerConfidence()
         return StrategyBeamSearch(

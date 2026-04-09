@@ -31,8 +31,8 @@ export OPENROUTER_API_KEY="your-key"
 ### Basic Usage
 
 ```python
-from llm_tts.models import BlackboxModelWithStreaming
-from llm_tts.strategies.deepconf import StrategyDeepConf
+from thinkbooster.models import BlackboxModelWithStreaming
+from thinkbooster.strategies.deepconf import StrategyDeepConf
 
 # Create model
 model = BlackboxModelWithStreaming(
@@ -260,7 +260,7 @@ strategy:
 ### Key Files
 
 ```
-llm_tts/
+thinkbooster/
 ├── models/
 │   ├── blackboxmodel_with_streaming.py # Unified streaming with logprobs support
 │   └── base.py                         # Base model interface

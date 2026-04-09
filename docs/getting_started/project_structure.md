@@ -8,7 +8,7 @@ Overview of the ThinkBooster codebase organization.
 
 ```
 thinkbooster/
-├── llm_tts/                              # Main library package
+├── thinkbooster/                              # Main library package
 │   ├── strategies/                       # TTS strategy implementations
 │   │   ├── strategy_base.py             # Abstract base class (generate_trajectories_batch)
 │   │   ├── deepconf/                    # DeepConf (offline/online confidence-based)
@@ -131,8 +131,7 @@ thinkbooster/
 │   ├── service_app/                     # API integration tests
 │   └── run_tts_eval/                    # Eval pipeline integration test
 │
-├── lm-polygraph/                         # Submodule: uncertainty estimation library
-├── setup.sh                              # Installation script (all dependencies)
+├── setup.sh                              # Optional: install GitHub-only deps (UHead, KernelAct)
 ├── pyproject.toml                        # Package configuration
 ├── docker-compose.yml                    # Docker deployment
 ├── Makefile                              # Dev commands (format, lint, test)
@@ -143,7 +142,7 @@ thinkbooster/
 
 ## Core Components
 
-### 1. Strategies (`llm_tts/strategies/`)
+### 1. Strategies (`thinkbooster/strategies/`)
 
 All strategies inherit from `StrategyBase` and implement `generate_trajectories_batch()`:
 
@@ -160,7 +159,7 @@ All strategies inherit from `StrategyBase` and implement `generate_trajectories_
 | Extended Thinking | `strategy_extended_thinking.py` | Wrapper for thinking-mode models |
 | Baseline | `strategy_baseline.py` | Single-shot generation (no scaling) |
 
-### 2. Generators (`llm_tts/generators/`)
+### 2. Generators (`thinkbooster/generators/`)
 
 Backend-agnostic step candidate generation. Strategies call generators to produce step candidates.
 
@@ -170,7 +169,7 @@ Backend-agnostic step candidate generation. Strategies call generators to produc
 | `vllm.py` | vLLM | Fast local GPU inference with batching |
 | `huggingface.py` | HuggingFace transformers | Local inference without vLLM |
 
-### 3. Scorers (`llm_tts/scorers/`)
+### 3. Scorers (`thinkbooster/scorers/`)
 
 Score reasoning steps to guide strategy decisions.
 
@@ -208,7 +207,7 @@ defaults:
   - _self_
 ```
 
-### 6. Evaluation (`llm_tts/evaluation/`)
+### 6. Evaluation (`thinkbooster/evaluation/`)
 
 - **Exact match** — Qwen2.5-Math official grading logic (numeric, LaTeX, boolean, char, string)
 - **LLM judge** — Multi-vote LLM-based correctness verification

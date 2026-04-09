@@ -4,7 +4,7 @@ from lm_polygraph.stat_calculators import EntropyCalculator, InferCausalLMCalcul
 from lm_polygraph.utils.causal_lm_with_uncertainty import CausalLMWithUncertainty
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from llm_tts.utils import get_torch_dtype
+from thinkbooster.utils import get_torch_dtype
 
 # ===============================================
 

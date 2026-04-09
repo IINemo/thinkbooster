@@ -79,10 +79,10 @@ Issues = "https://github.com/IINemo/thinkbooster/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["llm_tts*", "service_app*"]
+include = ["thinkbooster*", "service_app*"]
 
 [tool.setuptools.package-data]
-llm_tts = [
+thinkbooster = [
     "datasets/kernelact/kb_prompts/*.toml",
 ]
 
@@ -109,8 +109,8 @@ extend-exclude = '''
 profile = "black"
 multi_line_output = 3
 line_length = 88
-known_first_party = ["llm_tts"]
-skip = ["llm_tts/evaluation/latex2sympy"]
+known_first_party = ["thinkbooster"]
+skip = ["thinkbooster/evaluation/latex2sympy"]
 
 [tool.mypy]
 python_version = "3.10"
@@ -148,7 +148,7 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "-m", "not integration",
-    "--cov=llm_tts",
+    "--cov=thinkbooster",
     "--cov=service_app",
     "--cov-report=term-missing",
     "--cov-report=html",
@@ -156,7 +156,7 @@ addopts = [
 ]
 
 [tool.coverage.run]
-source = ["llm_tts", "service_app"]
+source = ["thinkbooster", "service_app"]
 omit = [
     "*/tests/*",
     "*/test_*",

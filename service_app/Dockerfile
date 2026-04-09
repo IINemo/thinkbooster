@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy pyproject.toml and source code for installation
 COPY pyproject.toml .
-COPY llm_tts/ ./llm_tts/
+COPY thinkbooster/ ./thinkbooster/
 
 # Install package with service dependencies
 RUN pip install --no-cache-dir --user -e ".[service]"
@@ -42,7 +42,7 @@ WORKDIR /app
 COPY --from=builder /root/.local /home/tts/.local
 
 # Copy application code
-COPY --chown=tts:tts llm_tts/ ./llm_tts/
+COPY --chown=tts:tts thinkbooster/ ./thinkbooster/
 COPY --chown=tts:tts service_app/ ./service_app/
 
 # Switch to non-root user

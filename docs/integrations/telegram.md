@@ -44,7 +44,7 @@ Remove or leave empty `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` in `.env`. Notif
 This section is only relevant if the bot needs to be restarted or moved to a different machine:
 
 ```bash
-python -m llm_tts.utils.telegram_bot
+python -m thinkbooster.utils.telegram_bot
 ```
 
 It reads `TELEGRAM_BOT_TOKEN` from `.env` automatically. Logs are saved to `telegram_bot_logs/<date>/`.

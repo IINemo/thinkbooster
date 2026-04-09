@@ -92,7 +92,7 @@ class TestSSEStreaming:
 
     def test_cancel_streaming_yields_cancelled_event(self):
         """Cancelling a running streaming request produces a 'cancelled' SSE event."""
-        from llm_tts.strategies.strategy_base import StrategyBase
+        from thinkbooster.strategies.strategy_base import StrategyBase
 
         captured_cancel_events = []
 
@@ -167,7 +167,7 @@ class TestSSEStreaming:
             def generate_trajectories_batch(self, requests, **kw):
                 for _ in range(40):
                     if self.cancel_event and self.cancel_event.is_set():
-                        from llm_tts.strategies.strategy_base import StrategyCancelled
+                        from thinkbooster.strategies.strategy_base import StrategyCancelled
                         raise StrategyCancelled("cancelled")
                     time.sleep(0.5)
                 return []

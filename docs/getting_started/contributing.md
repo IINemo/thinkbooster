@@ -15,10 +15,10 @@ Start by reading the core documentation:
 Quick architecture overview:
 
 ```
-llm_tts/strategies/     → TTS strategy implementations
-llm_tts/models/         → Model wrappers with streaming support
-llm_tts/scorers/        → Step scoring functions (PRM, uncertainty)
-llm_tts/evaluation/     → Correctness evaluation methods
+thinkbooster/strategies/     → TTS strategy implementations
+thinkbooster/models/         → Model wrappers with streaming support
+thinkbooster/scorers/        → Step scoring functions (PRM, uncertainty)
+thinkbooster/evaluation/     → Correctness evaluation methods
 config/                 → Hydra configuration system
 tests/                  → Test suite with strategy registry
 ```
@@ -36,20 +36,20 @@ cd thinkbooster
 conda create -n thinkbooster python=3.11 -y
 conda activate thinkbooster
 
-# Install all dependencies (lm-polygraph, vLLM, latex2sympy2, etc.)
-./setup.sh
-
-# Install dev dependencies and git hooks
+# Install package with dev dependencies and git hooks
 pip install -e ".[dev]"
 make hooks
+
+# Optional: install advanced scorers (UHead, KernelAct)
+# ./setup.sh
 ```
 
 **What this does:**
 
 - Creates isolated conda environment with Python 3.11
-- `setup.sh` installs the package in editable mode with vLLM, lm-polygraph, latex2sympy2, and all dependency pins
-- `.[dev]` adds pytest, black, isort, flake8
+- `pip install -e ".[dev]"` installs the package in editable mode with all core dependencies (vLLM, lm-polygraph, etc.) plus pytest, black, isort, flake8
 - Sets up pre-commit hooks (black, isort, flake8)
+- `setup.sh` is only needed for GitHub-only deps (llm-uncertainty-head, vllm-speculators, KernelAct)
 
 ### Configure HuggingFace Cache (Recommended)
 
@@ -153,7 +153,7 @@ If the log contains a **WandB run URL**, you can track progress in real time fro
 
 ```bash
 # 1. Create strategy file
-touch llm_tts/strategies/strategy_my_new.py
+touch thinkbooster/strategies/strategy_my_new.py
 
 # 2. Implement your strategy (inherit from StrategyBase)
 

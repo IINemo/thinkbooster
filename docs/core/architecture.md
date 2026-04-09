@@ -296,18 +296,18 @@ if selected_candidate.is_trajectory_complete:
 ## File References
 
 ### Offline Strategies
-- Self-Consistency: `llm_tts/strategies/strategy_self_consistency.py`
-- DeepConf: `llm_tts/strategies/deepconf/strategy.py`
-- Chain of Thought: `llm_tts/strategies/strategy_chain_of_thought.py`
+- Self-Consistency: `thinkbooster/strategies/strategy_self_consistency.py`
+- DeepConf: `thinkbooster/strategies/deepconf/strategy.py`
+- Chain of Thought: `thinkbooster/strategies/strategy_chain_of_thought.py`
 
 ### Online Strategies
-- Strategy base: `llm_tts/strategies/strategy_base.py`
-- Online Best-of-N: `llm_tts/strategies/strategy_online_best_of_n.py`
-- Phi Decoding: `llm_tts/strategies/phi.py`
-- Adaptive Scaling: `llm_tts/strategies/adaptive_scaling_best_of_n.py`
-- Beam Search: `llm_tts/strategies/strategy_beam_search.py`
+- Strategy base: `thinkbooster/strategies/strategy_base.py`
+- Online Best-of-N: `thinkbooster/strategies/strategy_online_best_of_n.py`
+- Phi Decoding: `thinkbooster/strategies/phi.py`
+- Adaptive Scaling: `thinkbooster/strategies/adaptive_scaling_best_of_n.py`
+- Beam Search: `thinkbooster/strategies/strategy_beam_search.py`
 
 ### Shared Components
-- Step generators: `llm_tts/generators/`
-- Step boundary detectors: `llm_tts/step_boundary_detectors/`
-- Scorers: `llm_tts/scorers/`
+- Step generators: `thinkbooster/generators/`
+- Step boundary detectors: `thinkbooster/step_boundary_detectors/`
+- Scorers: `thinkbooster/scorers/`

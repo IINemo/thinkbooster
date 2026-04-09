@@ -256,8 +256,8 @@ model:
 vLLM now supports thinking mode step detection using a stop-and-validate approach:
 
 ```python
-from llm_tts.generators.vllm import StepCandidateGeneratorThroughVLLM
-from llm_tts.step_boundary_detectors.thinking.vllm import get_stop_tokens_compact
+from thinkbooster.generators.vllm import StepCandidateGeneratorThroughVLLM
+from thinkbooster.step_boundary_detectors.thinking.vllm import get_stop_tokens_compact
 
 # Generate stop tokens from semantic markers
 stop_tokens = get_stop_tokens_compact(

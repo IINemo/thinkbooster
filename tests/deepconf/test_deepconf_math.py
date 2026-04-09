@@ -28,8 +28,8 @@ import sys
 sys.path.insert(0, os.path.abspath("."))
 
 # Import models and strategies normally
-from llm_tts.models import BlackboxModelWithStreaming
-from llm_tts.strategies import StrategyDeepConf
+from thinkbooster.models import BlackboxModelWithStreaming
+from thinkbooster.strategies import StrategyDeepConf
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"

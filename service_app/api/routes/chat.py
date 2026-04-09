@@ -19,7 +19,6 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from llm_tts.strategies.strategy_base import StrategyCancelled
 from service_app.api.models.openai_compat import (
     ChatCompletionChoice,
     ChatCompletionRequest,
@@ -37,6 +36,7 @@ from service_app.core.visual_debugger_demo import (
     SUPPORTED_SCORERS,
     SUPPORTED_STRATEGIES,
 )
+from thinkbooster.strategies.strategy_base import StrategyCancelled
 
 log = logging.getLogger(__name__)
 
@@ -264,7 +264,7 @@ def _handle_streaming(request: ChatCompletionRequest) -> StreamingResponse:
     def _run() -> None:
         # Attach progress handler to strategy + PRM loggers
         loggers_to_monitor = [
-            logging.getLogger("llm_tts.strategies"),
+            logging.getLogger("thinkbooster.strategies"),
             logging.getLogger("service_app.core.prm_scorer_factory"),
         ]
         handler = StrategyProgressHandler(_progress_callback)

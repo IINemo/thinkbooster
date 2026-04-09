@@ -36,7 +36,7 @@ REGISTERED_STRATEGIES = [
     StrategyInfo(
         name="deepconf",
         class_name="StrategyDeepConf",
-        module_path="llm_tts/strategies/deepconf/strategy.py",
+        module_path="thinkbooster/strategies/deepconf/strategy.py",
         test_dir="tests/deepconf",
         required_tests=[
             "test_deepconf_accurate.py",  # Unit tests (pytest)
@@ -51,7 +51,7 @@ REGISTERED_STRATEGIES = [
     # StrategyInfo(
     #     name="self_consistency",
     #     class_name="StrategySelfConsistency",
-    #     module_path="llm_tts/strategies/strategy_self_consistency.py",
+    #     module_path="thinkbooster/strategies/strategy_self_consistency.py",
     #     test_dir="tests/self_consistency",
     #     required_tests=[
     #         "test_self_consistency.py",
@@ -62,7 +62,7 @@ REGISTERED_STRATEGIES = [
     # StrategyInfo(
     #     name="chain_of_thought",
     #     class_name="StrategyChainOfThought",
-    #     module_path="llm_tts/strategies/strategy_chain_of_thought.py",
+    #     module_path="thinkbooster/strategies/strategy_chain_of_thought.py",
     #     test_dir="tests/chain_of_thought",
     #     required_tests=[
     #         "test_chain_of_thought.py",
@@ -226,7 +226,7 @@ def get_strategy_template(name: str) -> str:
 StrategyInfo(
     name="{name}",
     class_name="{class_name}",
-    module_path="llm_tts/strategies/strategy_{name}.py",
+    module_path="thinkbooster/strategies/strategy_{name}.py",
     test_dir="tests/{name}",
     required_tests=[
         "test_{name}_logic.py",      # Unit tests (no API)

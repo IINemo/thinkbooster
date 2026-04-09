@@ -432,7 +432,7 @@ These can be set via URL path (strategy, scorer) or `extra_body` (all params):
 For LangChain users, we provide `ChatTTS` — a custom `BaseChatModel` that wraps the service and provides first-class access to TTS parameters and metadata:
 
 ```python
-from llm_tts.integrations import ChatTTS
+from thinkbooster.integrations import ChatTTS
 
 llm = ChatTTS(
     base_url="<THINKBOOSTER_ENDPOINT>/v1",

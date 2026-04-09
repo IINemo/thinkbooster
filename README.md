@@ -4,7 +4,8 @@
 </div>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![PyPI](https://img.shields.io/pypi/v/thinkbooster)](https://pypi.org/project/thinkbooster/)
 [![arXiv](https://img.shields.io/badge/arXiv-b31b1b.svg)](https://thinkbooster.s3.us-east-1.amazonaws.com/thinkbooster.pdf)
 
 [Quick Start](#quick-start) | [Key Features](#key-features) | [Strategies](#supported-strategies) | [Visual Debugger](#visual-debugger) | [Documentation](#documentation)
@@ -28,25 +29,54 @@ ThinkBooster is an open-source framework for **test-time compute scaling** of la
 ### Installation
 
 ```bash
-# Clone the repository
+pip install thinkbooster
+```
+
+Or install from source for development:
+
+```bash
 git clone https://github.com/IINemo/thinkbooster.git
 cd thinkbooster
+pip install -e ".[dev]"
+```
 
-# Create conda environment
-conda create -n thinkbooster python=3.11 -y
-conda activate thinkbooster
+<details>
+<summary>Optional: additional scorers (UHead, KernelAct)</summary>
 
-# Install dependencies
+Some advanced scorers require GitHub-only dependencies. Run `setup.sh` after pip install:
+
+```bash
 ./setup.sh
+```
 
-# Configure API keys
+This installs `llm-uncertainty-head`, `vllm-speculators`, and `KernelAct`. Core functionality (all strategies, PRM/entropy/probability scorers, evaluation) works without these.
+
+</details>
+
+```bash
+# Configure API keys (optional, for LLM judge and OpenRouter)
 cp .env.example .env
-# Edit .env and add your OPENROUTER_API_KEY
+```
+
+### Python API
+
+```python
+# Strategies
+from thinkbooster.strategies.strategy_baseline import StrategyBaseline
+from thinkbooster.strategies.strategy_self_consistency import StrategySelfConsistency
+from thinkbooster.strategies.strategy_beam_search import StrategyBeamSearch
+from thinkbooster.strategies.strategy_offline_best_of_n import StrategyOfflineBestOfN
+
+# Evaluation utilities
+from thinkbooster.evaluation.grader import math_equal
+from thinkbooster.evaluation.parser import extract_answer
 ```
 
 ### REST API
 
 ```bash
+git clone https://github.com/IINemo/thinkbooster.git
+cd thinkbooster
 pip install -e ".[service]"
 python service_app/main.py   # starts on http://localhost:8001
 ```
@@ -140,7 +170,7 @@ See [service_app/README.md](service_app/README.md) for details on cached example
 
 ```
 thinkbooster/
-├── llm_tts/              # Core library
+├── thinkbooster/         # Core library (pip install thinkbooster)
 │   ├── strategies/       # TTS strategy implementations
 │   ├── models/           # Model wrappers (vLLM, HuggingFace, API)
 │   ├── scorers/          # Step scoring (PRM, uncertainty, voting)
@@ -151,7 +181,7 @@ thinkbooster/
 ├── service_app/          # REST API service + visual debugger
 ├── tests/                # Test suite with strategy registry
 ├── docs/                 # Documentation
-└── lm-polygraph/         # Submodule: uncertainty estimation
+└── setup.sh              # Optional: install GitHub-only deps (UHead, KernelAct)
 ```
 
 See [Project Structure](docs/getting_started/project_structure.md) for a detailed architecture overview.

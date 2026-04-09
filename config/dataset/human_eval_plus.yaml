@@ -18,7 +18,7 @@ question_field: "question"  # EvalPlus loader uses "question" field
 answer_field: "answer"  # EvalPlus loader uses "answer" field
 data_name: "human_eval_plus"  # Used for evaluation routing and EvalPlus API loading
 
-# Fields from EvalPlus API loader (llm_tts/datasets/human_eval_plus.py):
+# Fields from EvalPlus API loader (thinkbooster/datasets/human_eval_plus.py):
 # - question: Problem prompt with docstring and example (correct format!)
 # - answer: Canonical solution code
 # - task_id: Unique identifier (e.g., "HumanEval/0")

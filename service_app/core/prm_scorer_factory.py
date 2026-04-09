@@ -7,7 +7,7 @@ Provides factory for creating StepScorerPRM instances with service config.
 import logging
 from typing import Optional
 
-from llm_tts.scorers.step_scorer_prm import StepScorerPRM
+from thinkbooster.scorers.step_scorer_prm import StepScorerPRM
 
 from .config import settings
 
