@@ -58,6 +58,20 @@ This installs `llm-uncertainty-head`, `vllm-speculators`, and `KernelAct`. Core 
 cp .env.example .env
 ```
 
+### Python API
+
+```python
+# Strategies
+from llm_tts.strategies.strategy_baseline import StrategyBaseline
+from llm_tts.strategies.strategy_self_consistency import StrategySelfConsistency
+from llm_tts.strategies.strategy_beam_search import StrategyBeamSearch
+from llm_tts.strategies.strategy_offline_best_of_n import StrategyOfflineBestOfN
+
+# Evaluation utilities
+from llm_tts.evaluation.grader import math_equal
+from llm_tts.evaluation.parser import extract_answer
+```
+
 ### REST API
 
 ```bash
