@@ -7,10 +7,10 @@ name = "thinkbooster"
 version = "0.1.0"
 description = "ThinkBooster: a unified framework for test-time compute scaling of LLM reasoning"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-    {name = "Your Name", email = "your.email@example.com"},
+    {name = "List of contributors: https://github.com/IINemo/thinkbooster/graphs/contributors", email = "artemshelmanov@gmail.com"},
 ]
 keywords = ["llm", "reasoning", "test-time-scaling", "best-of-n", "reasoning-evaluation"]
 classifiers = [
@@ -27,22 +27,21 @@ dependencies = [
     "torch>=1.9.0",
     "transformers>=4.56.0",  # vLLM 0.12.0+ requires ALLOWED_LAYER_TYPES from transformers
     "datasets>=2.14.0",  # HuggingFace datasets for loading benchmarks
-    "numpy>=2.0.0,<2.3.0",  # vLLM requires >=2.0; numba 0.61.2 (vLLM dep) requires <2.3
-    "thinc>=8.3.0",  # 8.3+ required for numpy 2.x binary compatibility
+    "numpy>=1.23.5",
     "tqdm>=4.64.0",
     "parse>=1.19.0",
     "hydra-core>=1.2.0",
     "omegaconf>=2.2.0",
     "python-dotenv>=0.19.0",
-    # "lm-polygraph>=0.0.1",  # Installed separately via setup.sh (dev branch)
+    "lm-polygraph>=0.6.0",
     "pylatexenc>=2.10",
     "sympy>=1.12",  # For Game of 24 answer validation and LaTeX parsing
-    # latex2sympy2 installed separately with --no-deps due to antlr4 version conflict with hydra
     "regex>=2023.0.0",  # For advanced regex in grader
     "plotly>=5.0.0",  # For interactive reasoning visualization
     "word2number>=1.1",  # For converting word numbers to digits in math normalization
     "wandb>=0.15.0",  # Weights & Biases for experiment tracking
     "evalplus>=0.3.1",  # EvalPlus for MBPP+/HumanEval+ dataset loading and evaluation
+    "vllm>=0.12.0,<0.13.0",  # vLLM backend for fast inference with PagedAttention
 ]
 
 [project.optional-dependencies]
@@ -72,19 +71,11 @@ service = [
     "python-json-logger>=2.0.7",
 ]
 
-vllm = [
-    # vLLM backend for fast inference with PagedAttention
-    # Pin to 0.12.x - vLLM 0.13.0+ requires numpy>=2.0 which breaks thinc/spacy
-    "vllm>=0.12.0,<0.13.0",
-]
 
 [project.urls]
 Homepage = "https://github.com/IINemo/thinkbooster"
 Repository = "https://github.com/IINemo/thinkbooster"
 Issues = "https://github.com/IINemo/thinkbooster/issues"
-
-[project.scripts]
-run-tts-eval = "scripts.run_tts_eval:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -92,14 +83,12 @@ include = ["llm_tts*", "service_app*"]
 
 [tool.setuptools.package-data]
 llm_tts = [
-    "config/**/*.yaml",
-    "config/**/*.txt",
     "datasets/kernelact/kb_prompts/*.toml",
 ]
 
 [tool.black]
 line-length = 88
-target-version = ['py38', 'py39', 'py310', 'py311']
+target-version = ['py310', 'py311', 'py312']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -124,7 +113,7 @@ known_first_party = ["llm_tts"]
 skip = ["llm_tts/evaluation/latex2sympy"]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

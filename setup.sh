@@ -35,23 +35,17 @@ pip_install() {
 }
 
 install_lm_polygraph() {
-    echo -e "${YELLOW}Setting up lm-polygraph dev branch...${NC}"
+    echo -e "${YELLOW}Setting up lm-polygraph...${NC}"
 
     if [ -d "$LM_POLYGRAPH_DIR" ]; then
         echo -e "  Pulling latest changes..."
         cd "$LM_POLYGRAPH_DIR"
-        git pull origin dev 2>&1 | grep -E "(Already|Updating)" || true
+        git pull origin main 2>&1 | grep -E "(Already|Updating)" || true
         cd "$SCRIPT_DIR"
     else
-        echo -e "  Cloning lm-polygraph dev branch..."
-        git clone -b dev https://github.com/IINemo/lm-polygraph.git
+        echo -e "  Cloning lm-polygraph..."
+        git clone https://github.com/IINemo/lm-polygraph.git
     fi
-
-    # Patch lm-polygraph requirements to allow newer transformers and spacy (needed for vLLM/numpy 2.x compatibility)
-    echo -e "  Patching version constraints..."
-    sed -i 's/transformers>=4.48.0,<4.52.0/transformers>=4.48.0/' "$LM_POLYGRAPH_DIR/requirements.txt"
-    sed -i 's/spacy>=3.4.0,<3.8.0/spacy>=3.8.0/' "$LM_POLYGRAPH_DIR/requirements.txt"
-    sed -i '/unbabel-comet/d' "$LM_POLYGRAPH_DIR/requirements.txt"
 
     echo -e "  Installing lm-polygraph..."
     pip_install -e "$LM_POLYGRAPH_DIR"
@@ -126,13 +120,6 @@ install_kernelact
 
 # Install llm-uncertainty-head (luh) for UHead scorer
 install_luh
-
-# Pin numpy and fix thinc/spacy AFTER all installs
-# (lm-polygraph deps downgrade numpy to 1.x; vLLM needs >=2.0; numba requires <2.3)
-echo -e "${YELLOW}Pinning numpy and fixing thinc/spacy for numpy 2.x compatibility...${NC}"
-pip_install "numpy>=2.0.0,<2.3.0"  # pin after vLLM (vLLM pulls 2.4+; numba 0.61.2 requires <2.3)
-pip_install "thinc>=8.3.0" "spacy>=3.8.0"
-echo -e "${GREEN}✓ Dependencies pinned${NC}"
 
 echo -e "\n${GREEN}✅ Setup complete!${NC}"
 echo -e "\nNext: Copy .env.example to .env and add your API keys"
