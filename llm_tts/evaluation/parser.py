@@ -2,7 +2,7 @@ import re
 from typing import Any, Dict
 
 import regex
-from latex2sympy2 import latex2sympy
+from llm_tts.evaluation.latex2sympy import latex2sympy
 from word2number import w2n
 
 # from utils import *

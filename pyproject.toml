@@ -33,15 +33,15 @@ dependencies = [
     "hydra-core>=1.2.0",
     "omegaconf>=2.2.0",
     "python-dotenv>=0.19.0",
-    # "lm-polygraph>=0.0.1",  # Installed separately via setup.sh (dev branch)
+    "lm-polygraph @ git+https://github.com/IINemo/lm-polygraph.git@main",
     "pylatexenc>=2.10",
     "sympy>=1.12",  # For Game of 24 answer validation and LaTeX parsing
-    # latex2sympy2 installed separately with --no-deps due to antlr4 version conflict with hydra
     "regex>=2023.0.0",  # For advanced regex in grader
     "plotly>=5.0.0",  # For interactive reasoning visualization
     "word2number>=1.1",  # For converting word numbers to digits in math normalization
     "wandb>=0.15.0",  # Weights & Biases for experiment tracking
     "evalplus>=0.3.1",  # EvalPlus for MBPP+/HumanEval+ dataset loading and evaluation
+    "vllm>=0.12.0,<0.13.0",  # vLLM backend for fast inference with PagedAttention
 ]
 
 [project.optional-dependencies]
@@ -71,11 +71,6 @@ service = [
     "python-json-logger>=2.0.7",
 ]
 
-vllm = [
-    # vLLM backend for fast inference with PagedAttention
-    # Pin to 0.12.x - tested and stable; 0.13.x not yet verified
-    "vllm>=0.12.0,<0.13.0",
-]
 
 [project.urls]
 Homepage = "https://github.com/IINemo/thinkbooster"

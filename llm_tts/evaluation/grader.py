@@ -12,7 +12,7 @@ from math import isclose
 from typing import Union
 
 import regex
-from latex2sympy2 import latex2sympy
+from llm_tts.evaluation.latex2sympy import latex2sympy
 from sympy import N, simplify
 from sympy.parsing.latex import parse_latex
 from sympy.parsing.sympy_parser import parse_expr

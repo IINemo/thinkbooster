@@ -35,24 +35,17 @@ pip_install() {
 }
 
 install_lm_polygraph() {
-    echo -e "${YELLOW}Setting up lm-polygraph dev branch...${NC}"
+    echo -e "${YELLOW}Setting up lm-polygraph...${NC}"
 
     if [ -d "$LM_POLYGRAPH_DIR" ]; then
         echo -e "  Pulling latest changes..."
         cd "$LM_POLYGRAPH_DIR"
-        git pull origin dev 2>&1 | grep -E "(Already|Updating)" || true
+        git pull origin main 2>&1 | grep -E "(Already|Updating)" || true
         cd "$SCRIPT_DIR"
     else
-        echo -e "  Cloning lm-polygraph dev branch..."
-        git clone -b dev https://github.com/IINemo/lm-polygraph.git
+        echo -e "  Cloning lm-polygraph..."
+        git clone https://github.com/IINemo/lm-polygraph.git
     fi
-
-    # Patch lm-polygraph requirements until upstream PRs are merged
-    # (lm-polygraph/pull/440: relax transformers, lm-polygraph/issues/437)
-    echo -e "  Patching version constraints..."
-    sed -i 's/transformers==4.50.0/transformers>=4.50.0/' "$LM_POLYGRAPH_DIR/requirements.txt"
-    sed -i 's/transformers>=4.48.0,<4.52.0/transformers>=4.48.0/' "$LM_POLYGRAPH_DIR/requirements.txt"
-    sed -i '/unbabel-comet/d' "$LM_POLYGRAPH_DIR/requirements.txt"
 
     echo -e "  Installing lm-polygraph..."
     pip_install -e "$LM_POLYGRAPH_DIR"
