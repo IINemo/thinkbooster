@@ -71,6 +71,12 @@ if __name__ == "__main__":
         default="true",
         help="Trust remote code",
     )
+    parser.add_argument(
+        "--model-impl",
+        type=str,
+        default=None,
+        help="Model implementation backend (e.g. 'transformers' for unsupported architectures)",
+    )
     args = parser.parse_args()
 
     local_ip = get_local_ip()
@@ -100,6 +106,9 @@ if __name__ == "__main__":
         str(args.gpu_memory_utilization),
         "--trust-remote-code",
     ]
+
+    if args.model_impl:
+        cmd.extend(["--model-impl", args.model_impl])
 
     log.info("Running: %s", " ".join(cmd))
     sys.exit(subprocess.call(cmd))

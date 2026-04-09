@@ -35,6 +35,7 @@ def create_scorer_task(
     port: int = 8000,
     max_model_len: int = 4096,
     gpu_memory_utilization: float = 0.9,
+    model_impl: str = None,
     use_docker: bool = True,
 ):
     docker_args = DEFAULT_DOCKER_ARGS
@@ -58,6 +59,8 @@ def create_scorer_task(
         f"gpu-memory-utilization={gpu_memory_utilization}",
         "trust-remote-code=true",
     ]
+    if model_impl:
+        argparse_args.append(f"model-impl={model_impl}")
 
     if use_docker:
         task = Task.create(
@@ -108,6 +111,9 @@ if __name__ == "__main__":
     parser.add_argument("--max-model-len", type=int, default=4096)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.9)
     parser.add_argument("--no-docker", action="store_true", help="Run without Docker")
+    parser.add_argument(
+        "--model-impl", default=None, help="Model impl backend (e.g. 'transformers')"
+    )
     args = parser.parse_args()
 
     create_scorer_task(
@@ -118,5 +124,6 @@ if __name__ == "__main__":
         port=args.port,
         max_model_len=args.max_model_len,
         gpu_memory_utilization=args.gpu_memory_utilization,
+        model_impl=args.model_impl,
         use_docker=not args.no_docker,
     )
