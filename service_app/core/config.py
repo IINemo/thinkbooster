@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     # Model Settings
     default_model: str = "openai/gpt-4o-mini"
     default_strategy: str = "self_consistency"
-    model_cache_dir: str = os.path.expanduser("~/.cache/llm_tts_service")
+    model_cache_dir: str = os.path.expanduser("~/.cache/thinkbooster_service")
 
     # vLLM backend config
     vllm_model_path: Optional[str] = None  # e.g. "Qwen/Qwen2.5-Coder-7B-Instruct"

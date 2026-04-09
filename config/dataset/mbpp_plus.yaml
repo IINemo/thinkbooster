@@ -18,7 +18,7 @@ question_field: "question"  # EvalPlus loader uses "question" field
 answer_field: "answer"  # EvalPlus loader uses "answer" field
 data_name: "mbpp_plus"  # Used for evaluation routing and EvalPlus API loading
 
-# Fields from EvalPlus API loader (llm_tts/datasets/mbpp_plus.py):
+# Fields from EvalPlus API loader (thinkbooster/datasets/mbpp_plus.py):
 # - question: Problem prompt with docstring and example assertion (correct format!)
 # - answer: Canonical solution code
 # - task_id: Unique identifier (e.g., "Mbpp/2")

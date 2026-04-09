@@ -58,14 +58,14 @@ LangGraph Agent
          ▼
 ┌─────────────────┐
 │  TTS Strategy   │ ◄── DeepConf, Self-Consistency, etc.
-│  (llm_tts)      │
+│  (thinkbooster)      │
 └─────────────────┘
 ```
 
 **Implementation**:
 
 ```python
-# llm_tts/integrations/langchain_tool.py
+# thinkbooster/integrations/langchain_tool.py
 
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
@@ -103,7 +103,7 @@ def tts_reasoning(
     Returns:
         TTSResult with answer, confidence, uncertainty, and reasoning trace
     """
-    from llm_tts.integrations.langgraph_adapter import run_tts_strategy
+    from thinkbooster.integrations.langgraph_adapter import run_tts_strategy
 
     result = run_tts_strategy(
         question=question,
@@ -173,11 +173,11 @@ def tts_reasoning(
 **Implementation**:
 
 ```python
-# llm_tts/integrations/langgraph_nodes.py
+# thinkbooster/integrations/langgraph_nodes.py
 
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Literal
-from llm_tts.integrations.langchain_tool import tts_reasoning
+from thinkbooster.integrations.langchain_tool import tts_reasoning
 
 class AgentState(TypedDict):
     question: str
@@ -342,7 +342,7 @@ def run_with_uncertainty_routing(question: str) -> AgentState:
 │                 (GPU server / container)                    │
 │  ┌─────────────────┐    ┌─────────────────┐                │
 │  │  FastAPI        │───►│  TTS Strategies │                │
-│  │  /v1/tts/       │    │  (llm_tts)      │                │
+│  │  /v1/tts/       │    │  (thinkbooster)      │                │
 │  └─────────────────┘    └─────────────────┘                │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -418,7 +418,7 @@ async def health_check():
 **2. LangGraph tool that calls the API:**
 
 ```python
-# llm_tts/integrations/langchain_api_tool.py
+# thinkbooster/integrations/langchain_api_tool.py
 
 import httpx
 from langchain_core.tools import tool
@@ -595,7 +595,7 @@ services:
 ## Implementation Checklist
 
 ### Immediate (Approach 1)
-- [ ] Create `llm_tts/integrations/` directory
+- [ ] Create `thinkbooster/integrations/` directory
 - [ ] Implement `langchain_tool.py` with TTSResult schema
 - [ ] Add adapter for DeepConf strategy
 - [ ] Write unit tests
@@ -625,7 +625,7 @@ services:
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langchain_openai import ChatOpenAI
-from llm_tts.integrations.langchain_tool import tts_reasoning
+from thinkbooster.integrations.langchain_tool import tts_reasoning
 
 # Create agent with TTS tool
 llm = ChatOpenAI(model="gpt-4o-mini")
@@ -675,7 +675,7 @@ When integrating with LangChain, there are two ways to pass `tts_metadata` (conf
 ### Option A: ChatTTS (Custom ChatModel) - RECOMMENDED
 
 ```python
-from llm_tts.integrations import ChatTTS
+from thinkbooster.integrations import ChatTTS
 
 llm = ChatTTS(
     base_url="http://localhost:8000/v1",

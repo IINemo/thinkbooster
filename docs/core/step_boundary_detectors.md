@@ -189,7 +189,7 @@ Comparing where detectors place step boundaries:
 - Zero API cost
 
 ```python
-from llm_tts.step_boundary_detectors import ThinkingMarkerDetector
+from thinkbooster.step_boundary_detectors import ThinkingMarkerDetector
 
 detector = ThinkingMarkerDetector(
     use_sequence=True,
@@ -217,7 +217,7 @@ steps = detector.detect_steps(thinking_content)
 
 ## Files
 
-- **Detectors implementation**: [`llm_tts/step_boundary_detectors/`](../llm_tts/step_boundary_detectors/)
+- **Detectors implementation**: [`thinkbooster/step_boundary_detectors/`](../thinkbooster/step_boundary_detectors/)
   - `base.py` - Abstract base class (`StepBoundaryDetectorBase`)
   - `non_thinking/` - Detectors for non-thinking mode (structured responses with explicit markers)
     - `structured.py` - `StructuredStepDetector` for "- Step 1:", "- Step 2:" formats

@@ -15,10 +15,10 @@ Start by reading the core documentation:
 Quick architecture overview:
 
 ```
-llm_tts/strategies/     → TTS strategy implementations
-llm_tts/models/         → Model wrappers with streaming support
-llm_tts/scorers/        → Step scoring functions (PRM, uncertainty)
-llm_tts/evaluation/     → Correctness evaluation methods
+thinkbooster/strategies/     → TTS strategy implementations
+thinkbooster/models/         → Model wrappers with streaming support
+thinkbooster/scorers/        → Step scoring functions (PRM, uncertainty)
+thinkbooster/evaluation/     → Correctness evaluation methods
 config/                 → Hydra configuration system
 tests/                  → Test suite with strategy registry
 ```
@@ -153,7 +153,7 @@ If the log contains a **WandB run URL**, you can track progress in real time fro
 
 ```bash
 # 1. Create strategy file
-touch llm_tts/strategies/strategy_my_new.py
+touch thinkbooster/strategies/strategy_my_new.py
 
 # 2. Implement your strategy (inherit from StrategyBase)
 

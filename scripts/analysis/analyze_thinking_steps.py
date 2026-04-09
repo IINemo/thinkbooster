@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from llm_tts.step_boundary_detectors import (  # noqa: E402
+from thinkbooster.step_boundary_detectors import (  # noqa: E402
     ThinkingAdaptiveDetector,
     ThinkingHybridDetector,
     ThinkingLLMDetector,

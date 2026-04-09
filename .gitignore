@@ -187,7 +187,7 @@ workdir/
 # deepconf/
 # tree-of-thought-llm/
 lm-polygraph/
-llm_tts/datasets/KernelAct/
+thinkbooster/datasets/KernelAct/
 
 # External Qwen repositories
 # Qwen2.5-Math/

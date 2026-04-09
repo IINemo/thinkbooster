@@ -2,7 +2,7 @@
 
 This document describes the full pipeline for estimating inference compute cost (FLOPs/TFLOPs) across all strategies and scorers. It covers the theoretical formulas, per-component token tracking, PRM-specific accounting, and how metrics are aggregated and reported.
 
-**Implementation**: [`llm_tts/utils/flops.py`](../../llm_tts/utils/flops.py)
+**Implementation**: [`thinkbooster/utils/flops.py`](../../thinkbooster/utils/flops.py)
 
 ---
 
@@ -421,11 +421,11 @@ The default `simple` method ignores attention costs that scale with sequence len
 
 | File | Role |
 |------|------|
-| [`llm_tts/utils/flops.py`](../../llm_tts/utils/flops.py) | `FLOPCalculator` class, formulas, model architectures |
-| [`llm_tts/generators/base.py`](../../llm_tts/generators/base.py) | `_per_sample_stats`, `record_sample_tokens()`, `get_sample_stats_for()` |
-| [`llm_tts/generators/vllm.py`](../../llm_tts/generators/vllm.py) | Token counting in `_generate_step_candidates_impl()` |
-| [`llm_tts/scorers/step_scorer_prm.py`](../../llm_tts/scorers/step_scorer_prm.py) | PRM token tracking, `_record_prm_tokens()`, `get_prm_stats_for()` |
-| [`llm_tts/strategies/strategy_beam_search.py`](../../llm_tts/strategies/strategy_beam_search.py) | `_finalize_sample()`: merges gen + PRM stats |
+| [`thinkbooster/utils/flops.py`](../../thinkbooster/utils/flops.py) | `FLOPCalculator` class, formulas, model architectures |
+| [`thinkbooster/generators/base.py`](../../thinkbooster/generators/base.py) | `_per_sample_stats`, `record_sample_tokens()`, `get_sample_stats_for()` |
+| [`thinkbooster/generators/vllm.py`](../../thinkbooster/generators/vllm.py) | Token counting in `_generate_step_candidates_impl()` |
+| [`thinkbooster/scorers/step_scorer_prm.py`](../../thinkbooster/scorers/step_scorer_prm.py) | PRM token tracking, `_record_prm_tokens()`, `get_prm_stats_for()` |
+| [`thinkbooster/strategies/strategy_beam_search.py`](../../thinkbooster/strategies/strategy_beam_search.py) | `_finalize_sample()`: merges gen + PRM stats |
 | [`scripts/run_tts_eval.py`](../../scripts/run_tts_eval.py) | Final aggregation, metrics.json output |
 
 ---

@@ -12,7 +12,7 @@ NC='\033[0m'
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 LM_POLYGRAPH_DIR="$SCRIPT_DIR/lm-polygraph"
-KERNELACT_DIR="$SCRIPT_DIR/llm_tts/datasets/KernelAct"
+KERNELACT_DIR="$SCRIPT_DIR/thinkbooster/datasets/KernelAct"
 LUH_DIR="$SCRIPT_DIR/llm-uncertainty-head"
 
 # Parse arguments
@@ -84,7 +84,7 @@ install_kernelact() {
         git pull origin feat/tts-service-integration 2>&1 | grep -E "(Already|Updating)" || true
         cd "$SCRIPT_DIR"
     else
-        echo -e "  Cloning KernelAct to llm_tts/datasets..."
+        echo -e "  Cloning KernelAct to thinkbooster/datasets..."
         if ! git clone -b feat/tts-service-integration https://github.com/ai-nikolai/KernelAct.git "$KERNELACT_DIR" 2>/dev/null; then
             echo -e "${RED}✗ Failed to clone KernelAct (skipping)${NC}"
             echo -e "  ${YELLOW}Note: KernelAct is optional, required only for KernelBench dataset${NC}"
@@ -115,7 +115,7 @@ echo -e "${GREEN}✓ Package installed${NC}\n"
 # Install lm-polygraph dev branch
 install_lm_polygraph
 
-# Install KernelAct for KernelBench prompt generation (cloned to llm_tts/datasets)
+# Install KernelAct for KernelBench prompt generation (cloned to thinkbooster/datasets)
 install_kernelact
 
 # Install llm-uncertainty-head (luh) for UHead scorer

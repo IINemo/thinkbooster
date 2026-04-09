@@ -2,8 +2,8 @@ from lm_polygraph.stat_calculators import InferCausalLMCalculator
 from lm_polygraph.utils.causal_lm_with_uncertainty import CausalLMWithUncertainty
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from llm_tts.scorers.estimator_uncertainty_pd import PDGap
-from llm_tts.utils import get_torch_dtype
+from thinkbooster.scorers.estimator_uncertainty_pd import PDGap
+from thinkbooster.utils import get_torch_dtype
 
 
 def create_uncertainty_model(config):

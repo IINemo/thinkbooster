@@ -146,7 +146,7 @@ class TestStrategyProgressHandler:
         result = []
         handler = StrategyProgressHandler(lambda msg: result.append(msg))
         record = logging.LogRecord(
-            name="llm_tts.strategies",
+            name="thinkbooster.strategies",
             level=logging.INFO,
             pathname="",
             lineno=0,

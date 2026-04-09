@@ -105,7 +105,7 @@ When you create a new strategy, you **MUST** add it to the registry:
 StrategyInfo(
     name="my_strategy",                                    # Strategy name
     class_name="StrategyMyStrategy",                       # Class name
-    module_path="llm_tts/strategies/strategy_my_strategy.py",  # Strategy file
+    module_path="thinkbooster/strategies/strategy_my_strategy.py",  # Strategy file
     test_dir="tests/my_strategy",                          # Test directory
     required_tests=[
         "test_my_strategy_logic.py",       # Unit tests (required)
@@ -133,7 +133,7 @@ python tests/strategy_registry.py --template my_strategy
 
 For each registered strategy, the validator checks:
 
-1. ✅ Strategy module exists (`llm_tts/strategies/strategy_*.py`)
+1. ✅ Strategy module exists (`thinkbooster/strategies/strategy_*.py`)
 2. ✅ Test directory exists (`tests/[strategy_name]/`)
 3. ✅ All required test files exist
 4. ✅ Test files contain at least one `def test_*()` function
@@ -147,7 +147,7 @@ For each registered strategy, the validator checks:
 python tests/strategy_registry.py --template my_strategy
 
 # 2. Create strategy file
-touch llm_tts/strategies/strategy_my_strategy.py
+touch thinkbooster/strategies/strategy_my_strategy.py
 
 # 3. Create test directory and files
 mkdir tests/my_strategy
@@ -165,7 +165,7 @@ python tests/strategy_registry.py --validate
 # ...
 
 # 7. Commit and push (CI will validate automatically)
-git add tests/strategy_registry.py llm_tts/strategies/ tests/my_strategy/
+git add tests/strategy_registry.py thinkbooster/strategies/ tests/my_strategy/
 git commit -m "feat: add my_strategy with tests"
 ```
 
@@ -346,8 +346,8 @@ touch tests/your_strategy/test_your_strategy_math.py
 # tests/your_strategy/test_your_strategy_logic.py
 
 import pytest
-from llm_tts.strategies import YourStrategy
-from llm_tts.strategies.deepconf.utils import extract_answer
+from thinkbooster.strategies import YourStrategy
+from thinkbooster.strategies.deepconf.utils import extract_answer
 
 def test_answer_extraction():
     """Test answer extraction logic"""
@@ -383,8 +383,8 @@ def test_filtering_logic():
 
 import os
 import pytest
-from llm_tts.models import BlackboxModelWithStreaming
-from llm_tts.strategies import YourStrategy
+from thinkbooster.models import BlackboxModelWithStreaming
+from thinkbooster.strategies import YourStrategy
 
 @pytest.mark.skipif(
     not os.getenv("OPENROUTER_API_KEY"),
@@ -432,9 +432,9 @@ def test_handles_errors():
 
 import os
 import pytest
-from llm_tts.models import BlackboxModelWithStreaming
-from llm_tts.strategies import YourStrategy
-from llm_tts.strategies.deepconf.utils import extract_answer
+from thinkbooster.models import BlackboxModelWithStreaming
+from thinkbooster.strategies import YourStrategy
+from thinkbooster.strategies.deepconf.utils import extract_answer
 
 MATH_PROBLEMS = [
     {"problem": "Calculate 15² - 8². Put answer in \\boxed{}.", "expected": "161"},
@@ -503,7 +503,7 @@ def test_your_strategy_pipeline():
 pytest tests/ -v
 
 # Run with coverage
-pytest tests/ --cov=llm_tts --cov-report=html
+pytest tests/ --cov=thinkbooster --cov-report=html
 ```
 
 ### Run Specific Test Suites

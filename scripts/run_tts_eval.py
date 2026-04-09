@@ -112,35 +112,35 @@ from utils.results import (
     save_results_json,
 )
 
-from llm_tts.evaluation import (
+from thinkbooster.evaluation import (
     EvaluatorAlignScore,
     EvaluatorExactMatch,
     EvaluatorHumanEvalPlus,
     EvaluatorLLMAsAJudge,
     EvaluatorMBPPPlus,
 )
-from llm_tts.evaluation.grader import get_timeout_count
-from llm_tts.generators import (
+from thinkbooster.evaluation.grader import get_timeout_count
+from thinkbooster.generators import (
     StepCandidateGeneratorThroughAPI,
     StepCandidateGeneratorThroughHuggingface,
 )
-from llm_tts.models.blackboxmodel_with_streaming import BlackboxModelWithStreaming
-from llm_tts.scorers import (
+from thinkbooster.models.blackboxmodel_with_streaming import BlackboxModelWithStreaming
+from thinkbooster.scorers import (
     StepScorerConfidence,
     StepScorerLLMCritic,
     StepScorerPRM,
     StepScorerUncertainty,
 )
-from llm_tts.step_boundary_detectors import ThinkingMarkerDetector
+from thinkbooster.step_boundary_detectors import ThinkingMarkerDetector
 
 # vLLM step generator (optional)
 try:
-    from llm_tts.generators.vllm import VLLMStepGenerator
+    from thinkbooster.generators.vllm import VLLMStepGenerator
 
     VLLM_GENERATOR_AVAILABLE = True
 except ImportError:
     VLLM_GENERATOR_AVAILABLE = False
-from llm_tts.strategies import (
+from thinkbooster.strategies import (
     AdaptiveScalingBestOfN,
     PhiDecoding,
     StrategyBaseline,
@@ -152,8 +152,8 @@ from llm_tts.strategies import (
     StrategySelfConsistency,
     StrategyUncertaintyCoT,
 )
-from llm_tts.utils import get_torch_dtype
-from llm_tts.utils.flops import FLOPCalculator
+from thinkbooster.utils import get_torch_dtype
+from thinkbooster.utils.flops import FLOPCalculator
 
 # Load environment variables from .env file
 load_dotenv()
@@ -506,7 +506,7 @@ def create_model(config):
             if not VLLM_GENERATOR_AVAILABLE:
                 raise ImportError(
                     "vLLM step generator not available. "
-                    "Ensure llm_tts.step_candidate_generator_through_vllm is installed."
+                    "Ensure thinkbooster.step_candidate_generator_through_vllm is installed."
                 )
 
             # Self-consistency, baseline, extended_thinking, and llm_critic don't need uncertainty wrapper
@@ -540,7 +540,7 @@ def create_model(config):
                     estimator = MaximumSequenceProbability()
                 elif scorer_type == "uncertainty_pd":
                     # PD-Gap scoring using top-k logprobs matrix
-                    from llm_tts.scorers.estimator_uncertainty_pd import PDGap
+                    from thinkbooster.scorers.estimator_uncertainty_pd import PDGap
 
                     stat_calculators = [VLLMLogprobsCalculator(output_matrix=True)]
                     estimator = PDGap()
@@ -766,7 +766,7 @@ def create_model(config):
             # Other strategies use boundary detection via early stopping
             from lm_polygraph.utils import APIWithUncertainty
 
-            from llm_tts.early_stopping import BoundaryEarlyStopping
+            from thinkbooster.early_stopping import BoundaryEarlyStopping
 
             # Determine thinking mode (same logic as vLLM)
             disable_thinking_mode = config.model.get("disable_thinking_mode", None)
@@ -820,7 +820,7 @@ def create_model(config):
                     stat_calculators = [VLLMLogprobsCalculator()]
                     estimator = MaximumSequenceProbability()
                 elif scorer_type == "uncertainty_pd":
-                    from llm_tts.scorers.estimator_uncertainty_pd import PDGap
+                    from thinkbooster.scorers.estimator_uncertainty_pd import PDGap
 
                     stat_calculators = [VLLMLogprobsCalculator(output_matrix=True)]
                     estimator = PDGap()
@@ -1307,7 +1307,7 @@ def _generate_trajectories_batch(
         # Handle answer with fallback for Game of 24
         if answer_field and answer_field in instance and instance[answer_field]:
             if "####" in instance[answer_field]:
-                from llm_tts.datasets.gsm8k import extract_answer_from_gsm8k
+                from thinkbooster.datasets.gsm8k import extract_answer_from_gsm8k
 
                 gold_answer_num = extract_answer_from_gsm8k(instance[answer_field])
             else:
@@ -2603,7 +2603,7 @@ def main(config):
     machine_name = os.environ.get("MACHINE_NAME", hostname)
     log.info(f"Host: {machine_name} ({ip_addr})")
 
-    from llm_tts.utils.telegram import TelegramNotifier
+    from thinkbooster.utils.telegram import TelegramNotifier
 
     notifier = TelegramNotifier()
     _experiment_info.update(
@@ -2717,7 +2717,7 @@ def main(config):
     # Special handling for EvalPlus datasets to use EvalPlus API (provides correct prompt format)
     data_name = config.dataset.get("data_name", "")
     if data_name == "mbpp_plus" or "mbppplus" in config.dataset.dataset_path.lower():
-        from llm_tts.datasets.mbpp_plus import load_mbpp_plus
+        from thinkbooster.datasets.mbpp_plus import load_mbpp_plus
 
         log.info(
             "Using EvalPlus API for MBPP+ (provides correct prompt format with function name)"
@@ -2741,7 +2741,7 @@ def main(config):
         data_name == "human_eval_plus"
         or "humanevalplus" in config.dataset.dataset_path.lower()
     ):
-        from llm_tts.datasets.human_eval_plus import load_human_eval_plus
+        from thinkbooster.datasets.human_eval_plus import load_human_eval_plus
 
         log.info(
             "Using EvalPlus API for HumanEval+ (provides correct prompt format with function signature)"
@@ -2762,7 +2762,7 @@ def main(config):
         data_name == "kernelbench"
         or "kernelbench" in config.dataset.dataset_path.lower()
     ):
-        from llm_tts.datasets.kernelbench import load_kernelbench_with_prompts
+        from thinkbooster.datasets.kernelbench import load_kernelbench_with_prompts
 
         # Get prompt_type and trial from config or use defaults
         kb_prompt_type = config.dataset.get("prompt_type", "improve")
@@ -3054,7 +3054,7 @@ if __name__ == "__main__":
 
         # Send Telegram "crashed" notification
         try:
-            from llm_tts.utils.telegram import TelegramNotifier
+            from thinkbooster.utils.telegram import TelegramNotifier
 
             _notifier = TelegramNotifier()
             _wandb_url = None

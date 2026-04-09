@@ -1,4 +1,4 @@
-from llm_tts.evaluation.exact_match import EvaluatorExactMatch
+from thinkbooster.evaluation.exact_match import EvaluatorExactMatch
 
 
 class TestEvaluatorExactMatch:

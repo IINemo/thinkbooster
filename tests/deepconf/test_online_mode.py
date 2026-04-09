@@ -7,8 +7,8 @@ import sys
 
 import pytest
 
-from llm_tts.models.blackboxmodel_with_streaming import BlackboxModelWithStreaming
-from llm_tts.strategies.deepconf import StrategyDeepConf
+from thinkbooster.models.blackboxmodel_with_streaming import BlackboxModelWithStreaming
+from thinkbooster.strategies.deepconf import StrategyDeepConf
 
 # Add project root to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))

@@ -23,7 +23,7 @@ accuracy = correct_answers / total_samples * 100
 ```
 
 - Uses string matching after normalization
-- Implementation: [`llm_tts/evaluation/exact_match.py`](../../llm_tts/evaluation/exact_match.py)
+- Implementation: [`thinkbooster/evaluation/exact_match.py`](../../thinkbooster/evaluation/exact_match.py)
 
 **Reported as**: `XX.X%` (e.g., `26.7%`)
 
@@ -105,10 +105,10 @@ During autoregressive inference with a **KV cache**, the second term simplifies 
 
 #### Implementation
 
-FLOP calculation is implemented in [`FLOPCalculator`](../../llm_tts/utils/flops.py):
+FLOP calculation is implemented in [`FLOPCalculator`](../../thinkbooster/utils/flops.py):
 
 ```python
-from llm_tts.utils import FLOPCalculator
+from thinkbooster.utils import FLOPCalculator
 
 # Initialize with model name (auto-loads architecture from HuggingFace)
 calc = FLOPCalculator("Qwen/Qwen3-8B")

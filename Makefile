@@ -24,13 +24,13 @@ hooks:
 
 lint:
 	@echo "Running flake8..."
-	@flake8 llm_tts scripts service_app
+	@flake8 thinkbooster scripts service_app
 
 format:
 	@echo "Formatting with black..."
-	@black llm_tts scripts service_app
+	@black thinkbooster scripts service_app
 	@echo "Sorting imports with isort..."
-	@isort llm_tts scripts service_app
+	@isort thinkbooster scripts service_app
 	@echo "✓ Code formatted"
 
 fix:
