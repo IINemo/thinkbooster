@@ -26,17 +26,16 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
+    - name: Free disk space
+      run: |
+        sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+        df -h /
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
           python-version: '3.11'
           cache: 'pip'
-    - name: Run setup.sh
-      run: |
-        ./setup.sh --verbose
-    - name: Install dev dependencies
+    - name: Install package and dev dependencies
       run: |
         pip install -e ".[dev]"
     - name: Validate strategy registry
@@ -54,17 +53,16 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
+    - name: Free disk space
+      run: |
+        sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+        df -h /
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
           python-version: '3.11'
           cache: 'pip'
-    - name: Run setup.sh
-      run: |
-        ./setup.sh --verbose
-    - name: Install dev dependencies
+    - name: Install package and dev dependencies
       run: |
         pip install -e ".[dev]"
     - name: Run integration tests
