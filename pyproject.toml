@@ -7,10 +7,10 @@ name = "thinkbooster"
 version = "0.1.0"
 description = "ThinkBooster: a unified framework for test-time compute scaling of LLM reasoning"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-    {name = "Your Name", email = "your.email@example.com"},
+    {name = "List of contributors: https://github.com/IINemo/thinkbooster/graphs/contributors", email = "artemshelmanov@gmail.com"},
 ]
 keywords = ["llm", "reasoning", "test-time-scaling", "best-of-n", "reasoning-evaluation"]
 classifiers = [
@@ -77,23 +77,18 @@ Homepage = "https://github.com/IINemo/thinkbooster"
 Repository = "https://github.com/IINemo/thinkbooster"
 Issues = "https://github.com/IINemo/thinkbooster/issues"
 
-[project.scripts]
-run-tts-eval = "scripts.run_tts_eval:main"
-
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["llm_tts*", "service_app*"]
 
 [tool.setuptools.package-data]
 llm_tts = [
-    "config/**/*.yaml",
-    "config/**/*.txt",
     "datasets/kernelact/kb_prompts/*.toml",
 ]
 
 [tool.black]
 line-length = 88
-target-version = ['py38', 'py39', 'py310', 'py311']
+target-version = ['py310', 'py311', 'py312']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -118,7 +113,7 @@ known_first_party = ["llm_tts"]
 skip = ["llm_tts/evaluation/latex2sympy"]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
