@@ -75,6 +75,8 @@ from thinkbooster.evaluation.parser import extract_answer
 ### REST API
 
 ```bash
+git clone https://github.com/IINemo/thinkbooster.git
+cd thinkbooster
 pip install -e ".[service]"
 python service_app/main.py   # starts on http://localhost:8001
 ```
