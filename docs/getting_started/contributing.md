@@ -36,20 +36,20 @@ cd thinkbooster
 conda create -n thinkbooster python=3.11 -y
 conda activate thinkbooster
 
-# Install all dependencies (lm-polygraph, vLLM, latex2sympy2, etc.)
-./setup.sh
-
-# Install dev dependencies and git hooks
+# Install package with dev dependencies and git hooks
 pip install -e ".[dev]"
 make hooks
+
+# Optional: install advanced scorers (UHead, KernelAct)
+# ./setup.sh
 ```
 
 **What this does:**
 
 - Creates isolated conda environment with Python 3.11
-- `setup.sh` installs the package in editable mode with vLLM, lm-polygraph, latex2sympy2, and all dependency pins
-- `.[dev]` adds pytest, black, isort, flake8
+- `pip install -e ".[dev]"` installs the package in editable mode with all core dependencies (vLLM, lm-polygraph, etc.) plus pytest, black, isort, flake8
 - Sets up pre-commit hooks (black, isort, flake8)
+- `setup.sh` is only needed for GitHub-only deps (llm-uncertainty-head, vllm-speculators, KernelAct)
 
 ### Configure HuggingFace Cache (Recommended)
 

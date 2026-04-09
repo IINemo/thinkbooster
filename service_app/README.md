@@ -17,11 +17,11 @@ This service exposes TTS strategies through an **OpenAI-compatible API**. You ca
 
 ## Quick Start
 
-### Automated Setup
+### Setup
 
 ```bash
 # From repository root
-./setup.sh          # Install dependencies
+pip install -e ".[service]"
 export OPENROUTER_API_KEY="your-key"
 python service_app/main.py
 ```

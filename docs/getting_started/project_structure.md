@@ -131,8 +131,7 @@ thinkbooster/
 │   ├── service_app/                     # API integration tests
 │   └── run_tts_eval/                    # Eval pipeline integration test
 │
-├── lm-polygraph/                         # Submodule: uncertainty estimation library
-├── setup.sh                              # Installation script (all dependencies)
+├── setup.sh                              # Optional: install GitHub-only deps (UHead, KernelAct)
 ├── pyproject.toml                        # Package configuration
 ├── docker-compose.yml                    # Docker deployment
 ├── Makefile                              # Dev commands (format, lint, test)
