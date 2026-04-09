@@ -38,10 +38,15 @@ def create_scorer_task(
     model_impl: str = None,
     reasoning_parser: str = None,
     tensor_parallel_size: int = None,
+    cuda_devices: str = None,
     docker_image: str = DEFAULT_DOCKER_IMAGE,
     use_docker: bool = True,
 ):
     docker_args = DEFAULT_DOCKER_ARGS
+
+    if cuda_devices:
+        docker_args += f" -e CUDA_VISIBLE_DEVICES={cuda_devices}"
+        print(f"CUDA_VISIBLE_DEVICES={cuda_devices}")
 
     # Inject HF token for higher rate limits
     hf_token = os.environ.get("HF_TOKEN", "") or os.environ.get(
@@ -135,6 +140,9 @@ if __name__ == "__main__":
         default=None,
         help="Number of GPUs for tensor parallelism",
     )
+    parser.add_argument(
+        "--cuda-devices", default=None, help="CUDA_VISIBLE_DEVICES (e.g. '1' or '0,1')"
+    )
     args = parser.parse_args()
 
     create_scorer_task(
@@ -148,6 +156,7 @@ if __name__ == "__main__":
         model_impl=args.model_impl,
         reasoning_parser=args.reasoning_parser,
         tensor_parallel_size=args.tensor_parallel_size,
+        cuda_devices=args.cuda_devices,
         docker_image=args.docker_image,
         use_docker=not args.no_docker,
     )
