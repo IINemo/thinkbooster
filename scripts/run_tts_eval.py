@@ -99,7 +99,10 @@ try:
         MeanTokenEntropy,
         Perplexity,
     )
-    from lm_polygraph.stat_calculators import EntropyCalculator, VLLMLogprobsCalculator
+    from lm_polygraph.stat_calculators import (
+        EntropyCalculator,
+        VLLMLogprobsExtractionCalculator,
+    )
     from lm_polygraph.utils import VLLMWithUncertainty
 
     POLYGRAPH_UNCERTAINTY_AVAILABLE = True
@@ -532,26 +535,34 @@ def create_model(config):
                 scorer_type = config.scorer.type if config.scorer else "entropy"
                 vllm_with_uncertainty_arguments = {}
                 if scorer_type == "perplexity":
-                    stat_calculators = [VLLMLogprobsCalculator()]
+                    stat_calculators = [VLLMLogprobsExtractionCalculator()]
                     estimator = Perplexity()
                 elif scorer_type == "sequence_prob":
                     # Sequence probability scoring (sum of log-probs, not normalized)
-                    stat_calculators = [VLLMLogprobsCalculator()]
+                    stat_calculators = [VLLMLogprobsExtractionCalculator()]
                     estimator = MaximumSequenceProbability()
                 elif scorer_type == "uncertainty_pd":
                     # PD-Gap scoring using top-k logprobs matrix
                     from thinkbooster.scorers.estimator_uncertainty_pd import PDGap
 
-                    stat_calculators = [VLLMLogprobsCalculator(output_matrix=True)]
+                    stat_calculators = [
+                        VLLMLogprobsExtractionCalculator(output_matrix=True)
+                    ]
                     estimator = PDGap()
                 elif scorer_type == "entropy":
                     # Entropy-based scoring
-                    stat_calculators = [VLLMLogprobsCalculator(), EntropyCalculator()]
+                    stat_calculators = [
+                        VLLMLogprobsExtractionCalculator(),
+                        EntropyCalculator(),
+                    ]
                     estimator = MeanTokenEntropy()
                 elif scorer_type == "prm":
                     # PRM scorer uses its own model for scoring
                     # Use entropy wrapper for generation (scores not used for selection)
-                    stat_calculators = [VLLMLogprobsCalculator(), EntropyCalculator()]
+                    stat_calculators = [
+                        VLLMLogprobsExtractionCalculator(),
+                        EntropyCalculator(),
+                    ]
                     estimator = MeanTokenEntropy()
                 elif scorer_type == "uhead":
                     from luh import AutoUncertaintyHead
@@ -814,22 +825,30 @@ def create_model(config):
             scorer_type = config.scorer.type if config.scorer else None
             if supports_logprobs and scorer_type and POLYGRAPH_UNCERTAINTY_AVAILABLE:
                 if scorer_type == "perplexity":
-                    stat_calculators = [VLLMLogprobsCalculator()]
+                    stat_calculators = [VLLMLogprobsExtractionCalculator()]
                     estimator = Perplexity()
                 elif scorer_type == "sequence_prob":
-                    stat_calculators = [VLLMLogprobsCalculator()]
+                    stat_calculators = [VLLMLogprobsExtractionCalculator()]
                     estimator = MaximumSequenceProbability()
                 elif scorer_type == "uncertainty_pd":
                     from thinkbooster.scorers.estimator_uncertainty_pd import PDGap
 
-                    stat_calculators = [VLLMLogprobsCalculator(output_matrix=True)]
+                    stat_calculators = [
+                        VLLMLogprobsExtractionCalculator(output_matrix=True)
+                    ]
                     estimator = PDGap()
                 elif scorer_type == "entropy":
-                    stat_calculators = [VLLMLogprobsCalculator(), EntropyCalculator()]
+                    stat_calculators = [
+                        VLLMLogprobsExtractionCalculator(),
+                        EntropyCalculator(),
+                    ]
                     estimator = MeanTokenEntropy()
                 elif scorer_type == "prm":
                     # PRM uses its own model; use entropy for generation scoring
-                    stat_calculators = [VLLMLogprobsCalculator(), EntropyCalculator()]
+                    stat_calculators = [
+                        VLLMLogprobsExtractionCalculator(),
+                        EntropyCalculator(),
+                    ]
                     estimator = MeanTokenEntropy()
                 else:
                     stat_calculators = None

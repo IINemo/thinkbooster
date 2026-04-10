@@ -75,7 +75,7 @@ class StrategyManager:
         from lm_polygraph.estimators import MeanTokenEntropy
         from lm_polygraph.stat_calculators import (
             EntropyCalculator,
-            VLLMLogprobsCalculator,
+            VLLMLogprobsExtractionCalculator,
         )
         from lm_polygraph.utils import VLLMWithUncertainty
         from vllm import LLM
@@ -127,7 +127,7 @@ class StrategyManager:
         self._current_reasoning_effort = effective_reasoning_effort
         llm = LLM(**llm_kwargs)
 
-        stat_calculators = [VLLMLogprobsCalculator(), EntropyCalculator()]
+        stat_calculators = [VLLMLogprobsExtractionCalculator(), EntropyCalculator()]
         estimator = MeanTokenEntropy()
         self._vllm_model = VLLMWithUncertainty(
             llm=llm, stat_calculators=stat_calculators, estimator=estimator
@@ -226,7 +226,7 @@ class StrategyManager:
             )
             from lm_polygraph.stat_calculators import (
                 EntropyCalculator,
-                VLLMLogprobsCalculator,
+                VLLMLogprobsExtractionCalculator,
             )
             from lm_polygraph.utils import APIWithUncertainty
         except ImportError:
@@ -237,13 +237,13 @@ class StrategyManager:
             return base_model
 
         if scorer_type == "perplexity":
-            stat_calculators = [VLLMLogprobsCalculator()]
+            stat_calculators = [VLLMLogprobsExtractionCalculator()]
             estimator = Perplexity()
         elif scorer_type == "sequence_prob":
-            stat_calculators = [VLLMLogprobsCalculator()]
+            stat_calculators = [VLLMLogprobsExtractionCalculator()]
             estimator = MaximumSequenceProbability()
         elif scorer_type in ("entropy", "uncertainty"):
-            stat_calculators = [VLLMLogprobsCalculator(), EntropyCalculator()]
+            stat_calculators = [VLLMLogprobsExtractionCalculator(), EntropyCalculator()]
             estimator = MeanTokenEntropy()
         else:
             return base_model
