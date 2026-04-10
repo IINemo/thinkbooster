@@ -292,7 +292,7 @@ def get_debugger_runtime_health() -> Dict[str, Any]:
                 "lm_polygraph.estimators:MeanTokenEntropy",
                 "lm_polygraph.estimators:MaximumSequenceProbability",
                 "lm_polygraph.stat_calculators:EntropyCalculator",
-                "lm_polygraph.stat_calculators:VLLMLogprobsCalculator",
+                "lm_polygraph.stat_calculators:VLLMLogprobsExtractionCalculator",
                 "lm_polygraph.utils:APIWithUncertainty",
             ],
         ),

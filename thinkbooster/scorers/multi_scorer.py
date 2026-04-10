@@ -37,18 +37,18 @@ _estimator_pd_gap = None
 def _get_basic_calculator():
     global _calc_basic
     if _calc_basic is None:
-        from lm_polygraph.stat_calculators import VLLMLogprobsCalculator
+        from lm_polygraph.stat_calculators import VLLMLogprobsExtractionCalculator
 
-        _calc_basic = VLLMLogprobsCalculator(output_matrix=False)
+        _calc_basic = VLLMLogprobsExtractionCalculator(output_matrix=False)
     return _calc_basic
 
 
 def _get_matrix_calculator():
     global _calc_matrix
     if _calc_matrix is None:
-        from lm_polygraph.stat_calculators import VLLMLogprobsCalculator
+        from lm_polygraph.stat_calculators import VLLMLogprobsExtractionCalculator
 
-        _calc_matrix = VLLMLogprobsCalculator(output_matrix=True)
+        _calc_matrix = VLLMLogprobsExtractionCalculator(output_matrix=True)
     return _calc_matrix
 
 
