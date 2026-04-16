@@ -310,6 +310,12 @@ class AdaptiveScalingBestOfN(StrategyBase):
             self.scorer.reset_prm_stats()
         needs_final_answer: List[bool] = [False for _ in range(num_samples)]
 
+        # Reset multi-step HS accumulator + vLLM prefix cache so the
+        # first step captures full hidden states for all prompt tokens.
+        model = getattr(self.step_generator, "model", None)
+        if model is not None and hasattr(model, "reset_hs_step_cache"):
+            model.reset_hs_step_cache()
+
         for step_num in range(self.max_steps):
             # Which samples are still active?
             active_indices = [idx for idx in range(num_samples) if not completed[idx]]

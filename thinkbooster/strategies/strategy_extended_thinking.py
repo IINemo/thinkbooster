@@ -109,6 +109,12 @@ class StrategyExtendedThinking(StrategyBase):
         completed = [False] * M  # sample is fully done
         needs_final_answer = [False] * M  # thinking done, needs answer generation
 
+        # Reset multi-step HS accumulator + vLLM prefix cache so the
+        # first step captures full hidden states for all prompt tokens.
+        model = getattr(self.step_generator, "model", None)
+        if model is not None and hasattr(model, "reset_hs_step_cache"):
+            model.reset_hs_step_cache()
+
         for step_num in range(self.max_steps):
             # Collect active (not completed, not waiting for answer) sample indices
             active_indices = [

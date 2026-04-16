@@ -91,6 +91,12 @@ class StrategyUncertaintyCoT(StrategyBase):
         num_greedy_steps = 0
         answer_step_text = None
 
+        # Reset multi-step HS accumulator + vLLM prefix cache so the
+        # first step captures full hidden states for all prompt tokens.
+        model = getattr(self.step_generator, "model", None)
+        if model is not None and hasattr(model, "reset_hs_step_cache"):
+            model.reset_hs_step_cache()
+
         for step_num in range(self.max_steps):
             log.info(f"=== PD step {step_num+1} ===")
 
