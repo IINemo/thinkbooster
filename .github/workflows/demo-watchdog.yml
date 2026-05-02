@@ -1,0 +1,139 @@
+name: Demo watchdog
+
+on:
+  schedule:
+    # Every 10 minutes. GitHub Actions cron drifts up to ~15 min in practice;
+    # pair this with an external monitor (UptimeRobot etc.) for stricter SLAs.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  URL: http://demo-thinkbooster.nlpresearch.group/
+  ISSUE_LABEL: demo-down
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe demo URL
+        id: probe
+        run: |
+          set +e
+          attempts=3
+          last_code=000
+          last_err=""
+          for i in $(seq 1 $attempts); do
+            out=$(curl -fsSL --max-time 15 \
+              -o /dev/null -w "%{http_code}" "$URL" 2>&1)
+            rc=$?
+            last_code=$out
+            if [ $rc -eq 0 ]; then
+              echo "status=up"          >> "$GITHUB_OUTPUT"
+              echo "code=$out"          >> "$GITHUB_OUTPUT"
+              echo "attempts=$i"        >> "$GITHUB_OUTPUT"
+              echo "Probe succeeded on attempt $i (HTTP $out)"
+              exit 0
+            fi
+            last_err="curl exit $rc"
+            echo "Attempt $i failed: $last_err (HTTP ${out:-none})"
+            sleep 5
+          done
+          echo "status=down"     >> "$GITHUB_OUTPUT"
+          echo "code=$last_code" >> "$GITHUB_OUTPUT"
+          echo "error=$last_err" >> "$GITHUB_OUTPUT"
+          echo "attempts=$attempts" >> "$GITHUB_OUTPUT"
+          # Don't fail the job — let the issue-management steps run.
+          exit 0
+
+      - name: Find existing watchdog issue
+        id: find_issue
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: process.env.ISSUE_LABEL,
+              state: 'open',
+              per_page: 1,
+            });
+            return issues[0]?.number?.toString() ?? '';
+
+      - name: Comment / open issue on failure
+        if: steps.probe.outputs.status == 'down'
+        uses: actions/github-script@v7
+        env:
+          ISSUE_NUMBER: ${{ steps.find_issue.outputs.result }}
+          PROBE_CODE: ${{ steps.probe.outputs.code }}
+          PROBE_ERROR: ${{ steps.probe.outputs.error }}
+          PROBE_ATTEMPTS: ${{ steps.probe.outputs.attempts }}
+        with:
+          script: |
+            const url = process.env.URL;
+            const code = process.env.PROBE_CODE || 'none';
+            const err = process.env.PROBE_ERROR || '';
+            const attempts = process.env.PROBE_ATTEMPTS || '?';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const ts = new Date().toISOString();
+            const lines = [
+              `Watchdog could not reach ${url} after ${attempts} attempts.`,
+              ``,
+              `- HTTP code: \`${code}\``,
+              err ? `- curl: \`${err}\`` : null,
+              `- Time (UTC): \`${ts}\``,
+              `- Run: ${runUrl}`,
+            ].filter(Boolean);
+
+            if (process.env.ISSUE_NUMBER) {
+              const num = parseInt(process.env.ISSUE_NUMBER, 10);
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: num,
+                body: `Still down at \`${ts}\` (HTTP \`${code}\`).\n\n${runUrl}`,
+              });
+              core.notice(`Updated issue #${num}`);
+            } else {
+              const { data: created } = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `Demo URL is down (${url})`,
+                labels: [process.env.ISSUE_LABEL],
+                body: lines.join('\n'),
+              });
+              core.notice(`Opened issue #${created.number}`);
+            }
+
+      - name: Close issue on recovery
+        if: steps.probe.outputs.status == 'up' && steps.find_issue.outputs.result != ''
+        uses: actions/github-script@v7
+        env:
+          ISSUE_NUMBER: ${{ steps.find_issue.outputs.result }}
+          PROBE_CODE: ${{ steps.probe.outputs.code }}
+          PROBE_ATTEMPTS: ${{ steps.probe.outputs.attempts }}
+        with:
+          script: |
+            const num = parseInt(process.env.ISSUE_NUMBER, 10);
+            const code = process.env.PROBE_CODE || '?';
+            const attempts = process.env.PROBE_ATTEMPTS || '?';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const ts = new Date().toISOString();
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: num,
+              body: `Recovered at \`${ts}\` (HTTP \`${code}\`, ${attempts} attempt(s)).\n\n${runUrl}`,
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: num,
+              state: 'closed',
+              state_reason: 'completed',
+            });
+            core.notice(`Closed issue #${num}`);
