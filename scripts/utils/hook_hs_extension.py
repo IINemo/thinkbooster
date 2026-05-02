@@ -17,9 +17,8 @@ from __future__ import annotations
 
 import logging
 import pickle
-from typing import Dict, List, Optional
+from typing import Dict, List
 
-import numpy as np
 import torch
 
 log = logging.getLogger(__name__)
@@ -139,11 +138,17 @@ class HookHiddenStatesExtension:
 
         base_model = self._get_base_model()
 
+        # The bookkeeping layer is the smallest hooked index — bookkeeping
+        # must run exactly once per generation step regardless of how many
+        # layers we hook, otherwise prefill_tokens / total_computed would be
+        # multiplied by len(layer_ids) and break gap-fill in lm-polygraph.
+        bookkeeping_layer = min(layer_ids) if layer_ids else None
+
         for layer_idx, layer in enumerate(base_model.layers):
             if layer_idx not in self._hs_target_layers:
                 continue
 
-            def _make_hook(idx: int):
+            def _make_hook(idx: int, do_bookkeeping: bool):
                 def _hook(module, inp, output):
                     # Only TP rank 0 captures
                     try:
@@ -188,9 +193,13 @@ class HookHiddenStatesExtension:
                             continue  # no tokens for this request in this step
                         chunk = hs[start:end].detach()
                         layer_store.setdefault(req_id, []).append(chunk)
-                        self._track_prefill_chunk(req_id, end - start)
+                        if do_bookkeeping:
+                            self._track_prefill_chunk(req_id, end - start)
 
-                    # Update request metadata
+                    if not do_bookkeeping:
+                        return
+
+                    # Update request metadata (once per step)
                     try:
                         for i, req_id in enumerate(req_ids):
                             s, e = slices[i]
@@ -207,7 +216,9 @@ class HookHiddenStatesExtension:
 
                 return _hook
 
-            handle = layer.register_forward_hook(_make_hook(layer_idx))
+            handle = layer.register_forward_hook(
+                _make_hook(layer_idx, do_bookkeeping=(layer_idx == bookkeeping_layer))
+            )
             self._hs_hook_handles.append(handle)
 
         log.info(
@@ -281,113 +292,3 @@ class HookHiddenStatesExtension:
     # Kept for API compatibility
     def _store_captured_states(self, states) -> None:
         pass
-
-
-def fill_prefix_gaps(
-    captured: Dict[str, np.ndarray],
-    metadata: Dict[str, Dict],
-    prompt_groups: Dict[str, List[str]],
-    prompt_tokens: Optional[Dict[str, List[int]]] = None,
-) -> Dict[str, np.ndarray]:
-    """
-    Fill prefix-cache gaps in two phases:
-
-    Phase 1 -- Within-group fill: for requests sharing the exact same prompt,
-    copy the missing prefix from the group's donor (the request that computed
-    the most prefill tokens).
-
-    Phase 2 -- Cross-group fill (requires prompt_tokens): vLLM also caches the
-    shared chat-template prefix across *different* prompts.  Using token-level
-    longest-common-prefix (LCP) with a global donor, fill the remaining gap.
-
-    Args:
-        captured:  {req_id: numpy_array}
-        metadata:  {req_id: {"total_computed": int, "prefill_tokens": int}}
-        prompt_groups: {group_name: [req_id, ...]} -- requests with identical prompts
-        prompt_tokens: {req_id: [token_ids]} -- full prompt token IDs per request.
-                       Required for cross-group gap filling.
-
-    Returns:
-        {req_id: numpy_array} -- with gaps filled
-    """
-    result = dict(captured)
-
-    # Track effective prefill count per request (updated as we fill)
-    eff_prefill: Dict[str, int] = {
-        rid: metadata.get(rid, {}).get("prefill_tokens", 0) for rid in result
-    }
-
-    # -- Phase 1: within-group fill (identical prompts) --
-    for _, req_ids in prompt_groups.items():
-        group_reqs = [rid for rid in req_ids if rid in result]
-        if len(group_reqs) < 2:
-            continue
-
-        donor_id = max(group_reqs, key=lambda rid: eff_prefill.get(rid, 0))
-        donor_prefill = eff_prefill[donor_id]
-        donor_arr = result[donor_id]
-
-        for req_id in group_reqs:
-            if req_id == donor_id:
-                continue
-            gap = donor_prefill - eff_prefill[req_id]
-            if gap > 0:
-                result[req_id] = np.concatenate(
-                    [donor_arr[:gap], result[req_id]], axis=0
-                )
-                eff_prefill[req_id] = donor_prefill
-
-    # -- Phase 2: cross-group fill (shared token prefix) --
-    if not prompt_tokens:
-        return result
-
-    all_req_ids = list(result.keys())
-    if len(all_req_ids) < 2:
-        return result
-
-    # Global donor: pick from requests with FULL prefill, then longest prompt
-    full_prefill_reqs = [
-        rid
-        for rid in all_req_ids
-        if eff_prefill.get(rid, 0) >= len(prompt_tokens.get(rid, []))
-    ]
-    if not full_prefill_reqs:
-        return result  # no request has full prefill
-
-    global_donor = max(
-        full_prefill_reqs,
-        key=lambda rid: len(prompt_tokens.get(rid, [])),
-    )
-    gd_prefill = eff_prefill[global_donor]
-    gd_tokens = prompt_tokens.get(global_donor, [])
-    gd_arr = result[global_donor]
-
-    for req_id in all_req_ids:
-        if req_id == global_donor:
-            continue
-
-        req_tokens = prompt_tokens.get(req_id, [])
-        req_prompt_len = len(req_tokens)
-        cur_prefill = eff_prefill[req_id]
-
-        if cur_prefill >= req_prompt_len:
-            continue  # already full
-
-        # Longest common prefix with global donor
-        lcp = 0
-        for a, b in zip(gd_tokens, req_tokens):
-            if a == b:
-                lcp += 1
-            else:
-                break
-
-        # Number of leading tokens still missing for this request
-        missing = req_prompt_len - cur_prefill
-
-        # We can fill up to min(missing, lcp, gd_prefill) tokens from global donor
-        fillable = min(missing, lcp, gd_prefill)
-        if fillable > 0:
-            result[req_id] = np.concatenate([gd_arr[:fillable], result[req_id]], axis=0)
-            eff_prefill[req_id] = cur_prefill + fillable
-
-    return result
