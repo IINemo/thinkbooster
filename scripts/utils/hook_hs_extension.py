@@ -150,7 +150,14 @@ class HookHiddenStatesExtension:
 
             def _make_hook(idx: int, do_bookkeeping: bool):
                 def _hook(module, inp, output):
-                    # Only TP rank 0 captures
+                    # Only TP rank 0 captures.
+                    # Assumption: the hooked layer's output is the post-allreduce
+                    # full-width hidden state, which is identical on every TP
+                    # rank for standard dense and KV-shard MoE architectures.
+                    # If a future model shards the hidden dimension across TP
+                    # ranks (rare; would require TP-scatter on the residual
+                    # stream), capturing only rank 0 yields a partial slice —
+                    # revisit this guard for such architectures.
                     try:
                         from vllm.distributed import get_tensor_model_parallel_rank
 
@@ -236,12 +243,26 @@ class HookHiddenStatesExtension:
 
     def _get_captured_states(self) -> Dict[int, Dict[str, bytes]]:
         """
-        Return captured hidden states, split per request.
+        Return captured hidden states, split per request, then clear the
+        states buffer.
 
         Returns:
             {layer_id: {request_id: pickle_dumps(numpy_array)}}
 
         Each numpy array has shape (num_captured_tokens, hidden_size).
+
+        Call protocol (canonical, used by lm-polygraph._raw_generate):
+            1. _setup_hidden_states_capture(layer_ids)   # once per estimator
+            2. _reset_capture()                          # before each generate
+            3. <vLLM generate calls accumulate via hooks>
+            4. states = _get_captured_states()           # flushes _hs_captured
+            5. metadata = _get_capture_metadata()        # flushes meta + prefill
+
+        ``_get_captured_states`` does NOT clear ``_hs_req_meta`` or
+        ``_hs_prefill_tokens`` — those are owned by ``_get_capture_metadata``.
+        Always pair the two calls in order so metadata aligns with the states
+        being returned. ``_reset_capture`` (or a fresh
+        ``_setup_hidden_states_capture``) starts a clean slate if needed.
         """
         # Concatenate chunks per request per layer
         combined_states: Dict[int, Dict[str, torch.Tensor]] = {}
@@ -256,7 +277,9 @@ class HookHiddenStatesExtension:
             result[layer_id] = {}
             for req_id, tensor in req_tensors.items():
                 arr = tensor.cpu().float().numpy()
-                log.info(
+                # log.debug because this can fire O(layers x requests) times
+                # per evaluation — log.info would flood at scale.
+                log.debug(
                     "Layer %d, req %s: final shape=%s",
                     layer_id,
                     req_id,
@@ -271,13 +294,17 @@ class HookHiddenStatesExtension:
 
     def _get_capture_metadata(self) -> Dict[str, Dict]:
         """
-        Return per-request capture metadata.
+        Return per-request capture metadata, then clear the metadata buffers.
 
         Returns:
             {request_id: {"total_computed": int, "prefill_tokens": int}}
 
         Use prefill_tokens to detect prefix-cache gaps:
         if prefill_tokens < prompt_len, the difference was cached.
+
+        Call protocol: see ``_get_captured_states``. This method is the second
+        half of the canonical pair; it clears ``_hs_req_meta`` and
+        ``_hs_prefill_tokens``.
         """
         meta = {}
         for req_id, info in self._hs_req_meta.items():
@@ -288,7 +315,3 @@ class HookHiddenStatesExtension:
         self._hs_req_meta = {}
         self._hs_prefill_tokens = {}
         return meta
-
-    # Kept for API compatibility
-    def _store_captured_states(self, states) -> None:
-        pass

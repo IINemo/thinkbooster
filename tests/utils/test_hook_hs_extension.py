@@ -240,6 +240,71 @@ def test_get_captured_states_returns_nested_dict():
     assert arr.shape == (3, 8)
 
 
+def test_canonical_call_protocol_states_then_metadata():
+    """Canonical lm-polygraph protocol: states first, then metadata.
+
+    1. _setup_hidden_states_capture (once)
+    2. _reset_capture (before each generate)
+    3. <hooks fire>
+    4. states = _get_captured_states()      # clears _hs_captured
+    5. metadata = _get_capture_metadata()   # clears _hs_req_meta + _hs_prefill_tokens
+
+    After step 5, ALL three buffers are empty so the next generate starts
+    clean even if the caller forgets _reset_capture.
+    """
+    worker, outer = _make_worker(req_ids=["r0", "r1"], offsets=[0, 3, 5])
+    worker._setup_hidden_states_capture([7])
+    outer.model.layers[7](torch.ones(5, 8))  # fire hook
+
+    # Sanity: data is captured
+    assert worker._hs_captured, "hook did not run"
+    assert worker._hs_req_meta, "metadata not populated"
+    assert worker._hs_prefill_tokens, "prefill tracking missing"
+
+    # Step 4: flush states
+    states = worker._get_captured_states()
+    assert {"r0", "r1"} == set(states[7])
+    assert worker._hs_captured == {}, "states must be cleared after _get_captured_states"
+    # Metadata must still be intact for the next call
+    assert worker._hs_req_meta, "metadata must remain until _get_capture_metadata is called"
+    assert worker._hs_prefill_tokens, "prefill must remain until _get_capture_metadata is called"
+
+    # Step 5: flush metadata
+    metadata = worker._get_capture_metadata()
+    assert {"r0", "r1"} == set(metadata)
+    assert worker._hs_req_meta == {}, "metadata must be cleared after _get_capture_metadata"
+    assert worker._hs_prefill_tokens == {}, "prefill must be cleared after _get_capture_metadata"
+
+    # Aligned keys across the canonical pair (the lm-polygraph contract)
+    assert set(states[7]) == set(metadata), (
+        "states and metadata returned in the canonical pair must have aligned req_ids"
+    )
+
+
+def test_setup_starts_clean_after_partial_protocol():
+    """Defensive: even if a caller flushes only states (without metadata),
+    a fresh _setup_hidden_states_capture wipes everything.
+
+    This documents the safety net: while the canonical protocol pairs
+    _get_captured_states with _get_capture_metadata, partial usage cannot
+    leak into the next estimator setup because _setup_hidden_states_capture
+    re-initialises all three dicts.
+    """
+    worker, outer = _make_worker(req_ids=["r0"], offsets=[0, 4])
+    worker._setup_hidden_states_capture([5])
+    outer.model.layers[5](torch.ones(4, 8))
+
+    # Partial protocol: flush states only, leave metadata behind
+    worker._get_captured_states()
+    assert worker._hs_req_meta != {}, "precondition: metadata is left over"
+
+    # Re-setup wipes everything
+    worker._setup_hidden_states_capture([5])
+    assert worker._hs_captured == {}
+    assert worker._hs_req_meta == {}
+    assert worker._hs_prefill_tokens == {}
+
+
 # --------------------------------------------------------------------------- #
 # Hook plumbing — TP, tuple/3D outputs, fallback, re-registration             #
 # --------------------------------------------------------------------------- #
