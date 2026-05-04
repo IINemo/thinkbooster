@@ -72,6 +72,12 @@ class PhiDecoding(StrategyBase):
         selected_steps = []
         validity_scores = []
 
+        # Reset multi-step HS accumulator + vLLM prefix cache so the
+        # first step captures full hidden states for all prompt tokens.
+        model = getattr(self.step_generator, "model", None)
+        if model is not None and hasattr(model, "reset_hs_step_cache"):
+            model.reset_hs_step_cache()
+
         for step_num in range(self.max_steps):
             log.info(f"\n=== Step {step_num} ===")
 

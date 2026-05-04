@@ -109,11 +109,7 @@ try:
 except ImportError:
     POLYGRAPH_UNCERTAINTY_AVAILABLE = False
     VLLMWithUncertainty = None
-from utils.results import (
-    load_results_json,
-    parse_resume_arguments,
-    save_results_json,
-)
+from utils.results import load_results_json, parse_resume_arguments, save_results_json
 
 from thinkbooster.evaluation import (
     EvaluatorAlignScore,
@@ -457,9 +453,9 @@ def create_model(config):
             "seed": config.system.seed,
         }
 
-        use_native_hs_capture = getattr(
-            config.model, "use_native_hs_capture", None
-        ) or (config.scorer.type == "uhead")
+        use_native_hs_capture = getattr(config.model, "use_native_hs_capture", None)
+        if use_native_hs_capture is None:
+            use_native_hs_capture = config.scorer.type == "uhead"
         if use_native_hs_capture:
             log.info("Using native hidden state capture via vLLM worker extension")
             llm_kwargs["enforce_eager"] = True
@@ -602,7 +598,11 @@ def create_model(config):
 
                 use_native_hs_capture = getattr(
                     config.model, "use_native_hs_capture", None
-                ) or vllm_with_uncertainty_arguments.get("output_hidden_states", False)
+                )
+                if use_native_hs_capture is None:
+                    use_native_hs_capture = vllm_with_uncertainty_arguments.get(
+                        "output_hidden_states", False
+                    )
                 vllm_model = VLLMWithUncertainty(
                     llm=llm,
                     stat_calculators=stat_calculators,

@@ -1,15 +1,15 @@
 """
-Hook-based hidden states worker extension for vLLM v1.
+Hook-based hidden states worker extension for vLLM v1 — with per-request attribution.
 
-Replaces HiddenStatesWorkerExtension's forward-patching approach with
-register_forward_hook — works correctly with enforce_eager=True where
-the compilation wrapper bypasses the patched forward method.
+Captures hidden states via register_forward_hook on transformer layers and
+uses model_runner.input_batch.req_ids + model_runner.query_start_loc to
+split the flat batch tensor into per-request segments.
 
 Usage:
     llm = LLM(
         model="...",
         enforce_eager=True,
-        worker_extension_cls="hook_hs_extension.HookHiddenStatesExtension",
+        worker_extension_cls="utils.hook_hs_extension.HookHiddenStatesExtension",
     )
 """
 
@@ -29,12 +29,11 @@ class HookHiddenStatesExtension:
     Captures hidden states via register_forward_hook on transformer layers.
 
     Injected into vllm.v1.worker.gpu_worker.Worker via worker_extension_cls.
-    In that context self == Worker instance, so self.model_runner.model is
-    the loaded model (Qwen2ForCausalLM / LlamaForCausalLM / …).
+    In that context self == Worker instance, so self.model_runner is available.
     """
 
     # ------------------------------------------------------------------ #
-    # RPC-callable methods (called via engine_core.collective_rpc)        #
+    # Internal helpers                                                    #
     # ------------------------------------------------------------------ #
 
     def _get_base_model(self):
@@ -58,6 +57,63 @@ class HookHiddenStatesExtension:
             f"Available attrs on model: {[a for a in dir(model) if not a.startswith('_')]}"
         )
 
+    def _get_request_segmentation(self):
+        """
+        Read model_runner.input_batch and query_start_loc to figure out
+        which slice of the flat token tensor belongs to which request.
+
+        Returns:
+            req_ids:  list[str]          -- request IDs in batch order
+            slices:   list[tuple[int,int]] -- (start, end) for each request
+        """
+        model_runner = self.model_runner  # type: ignore[attr-defined]
+        input_batch = model_runner.input_batch
+
+        req_ids: list[str] = list(input_batch.req_ids)
+        num_reqs = len(req_ids)
+
+        if num_reqs == 0:
+            return [], []
+
+        # query_start_loc is a CpuGpuBuffer; .cpu gives the CPU tensor
+        # shape: (num_reqs + 1,) -- cumulative token offsets
+        try:
+            qsl = model_runner.query_start_loc.cpu[: num_reqs + 1]
+        except Exception:
+            # Fallback: try .numpy or direct attribute
+            qsl_raw = getattr(model_runner, "query_start_loc", None)
+            if qsl_raw is None:
+                log.warning("query_start_loc not found on model_runner")
+                return req_ids, []
+            if hasattr(qsl_raw, "cpu"):
+                qsl = qsl_raw.cpu[: num_reqs + 1]
+            else:
+                qsl = qsl_raw[: num_reqs + 1]
+
+        slices = []
+        for i in range(num_reqs):
+            start = int(qsl[i])
+            end = int(qsl[i + 1])
+            slices.append((start, end))
+
+        return req_ids, slices
+
+    def _track_prefill_chunk(self, req_id: str, chunk_size: int) -> None:
+        """
+        Track prefill chunks per request.
+        A chunk is considered "prefill" if it has more than 1 token
+        (decode steps are always 1 token per request).
+        """
+        if req_id not in self._hs_prefill_tokens:
+            self._hs_prefill_tokens[req_id] = 0
+        # Prefill chunks have > 1 token; decode chunks have exactly 1
+        if chunk_size > 1:
+            self._hs_prefill_tokens[req_id] += chunk_size
+        elif self._hs_prefill_tokens[req_id] == 0:
+            # First chunk is 1 token -- single-token prefill or
+            # the request was fully cached except 1 token
+            self._hs_prefill_tokens[req_id] = chunk_size
+
     # ------------------------------------------------------------------ #
     # RPC-callable methods (called via engine_core.collective_rpc)        #
     # ------------------------------------------------------------------ #
@@ -65,28 +121,43 @@ class HookHiddenStatesExtension:
     def _setup_hidden_states_capture(self, layer_ids: List[int]) -> None:
         """
         Register forward hooks on the requested transformer layers.
-        Safe to call multiple times — old hooks are removed first.
+        Safe to call multiple times -- old hooks are removed first.
         """
         # Remove stale hooks from a previous call
         for handle in getattr(self, "_hs_hook_handles", []):
             handle.remove()
 
         self._hs_hook_handles: list = []
-        self._hs_captured: Dict[int, Dict] = {}
+        # Per-request captured states: {layer_id: {req_id: [tensor_chunks]}}
+        self._hs_captured: Dict[int, Dict[str, list]] = {}
         self._hs_target_layers = frozenset(layer_ids)
+        # Track per-request token counts for prefix-cache gap detection
+        self._hs_req_meta: Dict[str, Dict] = {}
+        # Track first chunk size per request (prefill size, for gap filling)
+        self._hs_prefill_tokens: Dict[str, int] = {}
 
         base_model = self._get_base_model()
+
+        # The bookkeeping layer is the smallest hooked index — bookkeeping
+        # must run exactly once per generation step regardless of how many
+        # layers we hook, otherwise prefill_tokens / total_computed would be
+        # multiplied by len(layer_ids) and break gap-fill in lm-polygraph.
+        bookkeeping_layer = min(layer_ids) if layer_ids else None
 
         for layer_idx, layer in enumerate(base_model.layers):
             if layer_idx not in self._hs_target_layers:
                 continue
 
-            def _make_hook(idx: int):
+            def _make_hook(idx: int, do_bookkeeping: bool):
                 def _hook(module, inp, output):
-                    # vLLM layers return bare hidden_states tensor;
-                    # some return (hidden_states, ...) — handle both.
-                    hs = output[0] if isinstance(output, tuple) else output
-                    # Only TP rank 0 captures (all ranks have identical values)
+                    # Only TP rank 0 captures.
+                    # Assumption: the hooked layer's output is the post-allreduce
+                    # full-width hidden state, which is identical on every TP
+                    # rank for standard dense and KV-shard MoE architectures.
+                    # If a future model shards the hidden dimension across TP
+                    # ranks (rare; would require TP-scatter on the residual
+                    # stream), capturing only rank 0 yields a partial slice —
+                    # revisit this guard for such architectures.
                     try:
                         from vllm.distributed import get_tensor_model_parallel_rank
 
@@ -95,106 +166,152 @@ class HookHiddenStatesExtension:
                     except Exception:
                         pass
 
-                    # Initialize buffer on first access
-                    if idx not in self._hs_captured:
-                        self._hs_captured[idx] = {
-                            "buffer": None,
-                            "size": 0,
-                            "capacity": 0,
-                        }
+                    hs = output[0] if isinstance(output, tuple) else output
 
-                    buf_info = self._hs_captured[idx]
-
-                    # Flatten all hidden states and append to buffer
-                    log.info(
-                        f"Capturing hidden states from layer {idx}: shape={hs.shape}, dtype={hs.dtype}, dim={hs.dim()}"
-                    )
-                    log.info(
-                        f"Input to hook: module={module.__class__.__name__}, inp_shapes={[i.shape for i in inp]}, output_shape={output.shape if isinstance(output, torch.Tensor) else [o.shape for o in output]}"
-                    )
+                    # Flatten to 2D if needed: [tokens, hidden]
                     if hs.dim() == 3:
-                        # [batch, seq, hidden] -> flatten all tokens
-                        hs_flat = hs.reshape(-1, hs.shape[-1])  # [batch*seq, hidden]
-                        log.info(
-                            f"  Prefill step: reshaped {hs.shape} -> {hs_flat.shape}"
+                        hs = hs.reshape(-1, hs.shape[-1])
+
+                    # Get per-request segmentation from model_runner
+                    req_ids, slices = self._get_request_segmentation()
+
+                    if not slices:
+                        # Fallback: no segmentation available
+                        log.warning(
+                            "Layer %d: no request segmentation available, "
+                            "storing %d tokens as __unknown__",
+                            idx,
+                            hs.shape[0],
                         )
-                    else:
-                        # [batch, hidden] -> already 2D
-                        hs_flat = hs
-                        log.info(f"  Decode step: shape {hs_flat.shape}")
-
-                    num_tokens = hs_flat.shape[0]
-                    hidden_size = hs_flat.shape[1]
-                    log.info(
-                        f"  Adding {num_tokens} tokens to buffer (current size: {buf_info['size']})"
-                    )
-
-                    # Initialize buffer if needed
-                    if buf_info["buffer"] is None:
-                        buf_info["buffer"] = torch.empty(
-                            (1024, hidden_size),
-                            device=hs_flat.device,
-                            dtype=hs_flat.dtype,
+                        if idx not in self._hs_captured:
+                            self._hs_captured[idx] = {}
+                        self._hs_captured[idx].setdefault("__unknown__", []).append(
+                            hs.detach()
                         )
-                        buf_info["capacity"] = 1024
+                        return
 
-                    buffer = buf_info["buffer"]
-                    size = buf_info["size"]
-                    capacity = buf_info["capacity"]
+                    if idx not in self._hs_captured:
+                        self._hs_captured[idx] = {}
 
-                    # Expand buffer if needed
-                    if size + num_tokens > capacity:
-                        new_capacity = max(capacity * 2, size + num_tokens)
-                        new_buffer = torch.empty(
-                            (new_capacity, hidden_size),
-                            device=hs_flat.device,
-                            dtype=hs_flat.dtype,
-                        )
-                        # Copy only the used portion of old buffer
-                        if size > 0:
-                            new_buffer[:size] = buffer[:size]
-                        buf_info["buffer"] = new_buffer
-                        buf_info["capacity"] = new_capacity
-                        buffer = new_buffer
+                    layer_store = self._hs_captured[idx]
 
-                    # Append all tokens to buffer
-                    buffer[size : size + num_tokens] = hs_flat
-                    buf_info["size"] = size + num_tokens
+                    for req_id, (start, end) in zip(req_ids, slices):
+                        if start >= end:
+                            continue  # no tokens for this request in this step
+                        chunk = hs[start:end].detach()
+                        layer_store.setdefault(req_id, []).append(chunk)
+                        if do_bookkeeping:
+                            self._track_prefill_chunk(req_id, end - start)
+
+                    if not do_bookkeeping:
+                        return
+
+                    # Update request metadata (once per step)
+                    try:
+                        for i, req_id in enumerate(req_ids):
+                            s, e = slices[i]
+                            computed_this_step = e - s
+                            if req_id not in self._hs_req_meta:
+                                self._hs_req_meta[req_id] = {
+                                    "total_computed": 0,
+                                }
+                            self._hs_req_meta[req_id][
+                                "total_computed"
+                            ] += computed_this_step
+                    except Exception:
+                        pass
 
                 return _hook
 
-            handle = layer.register_forward_hook(_make_hook(layer_idx))
+            handle = layer.register_forward_hook(
+                _make_hook(layer_idx, do_bookkeeping=(layer_idx == bookkeeping_layer))
+            )
             self._hs_hook_handles.append(handle)
 
         log.info(
-            "HookHiddenStatesExtension: hooks registered for layers %s "
+            "HookHiddenStatesExtension v2: hooks registered for layers %s "
             "(%d hooks total)",
             sorted(layer_ids),
             len(self._hs_hook_handles),
         )
 
     def _reset_capture(self) -> None:
-        """Clear the capture buffer before a new generate() call."""
+        """Clear the capture buffers before a new generate() call."""
         self._hs_captured = {}
+        self._hs_req_meta = {}
+        self._hs_prefill_tokens = {}
 
-    def _get_captured_states(self) -> Dict[int, bytes]:
+    def _get_captured_states(self) -> Dict[int, Dict[str, bytes]]:
         """
-        Return captured hidden states as flat concatenated tensor.
-        Returns: {layer_id: pickle_dumps(numpy_array)}
+        Return captured hidden states, split per request, then clear the
+        states buffer.
+
+        Returns:
+            {layer_id: {request_id: pickle_dumps(numpy_array)}}
+
+        Each numpy array has shape (num_captured_tokens, hidden_size).
+
+        Call protocol (canonical, used by lm-polygraph._raw_generate):
+            1. _setup_hidden_states_capture(layer_ids)   # once per estimator
+            2. _reset_capture()                          # before each generate
+            3. <vLLM generate calls accumulate via hooks>
+            4. states = _get_captured_states()           # flushes _hs_captured
+            5. metadata = _get_capture_metadata()        # flushes meta + prefill
+
+        ``_get_captured_states`` does NOT clear ``_hs_req_meta`` or
+        ``_hs_prefill_tokens`` — those are owned by ``_get_capture_metadata``.
+        Always pair the two calls in order so metadata aligns with the states
+        being returned. ``_reset_capture`` (or a fresh
+        ``_setup_hidden_states_capture``) starts a clean slate if needed.
         """
-        result: Dict[int, bytes] = {}
-        for layer_id, buf_info in self._hs_captured.items():
-            buffer = buf_info["buffer"]
-            size = buf_info["size"]
-            # Extract actual data and convert to numpy, then pickle
-            arr = buffer[:size].cpu().float().numpy()
-            log.info(
-                f"Captured hidden states for layer {layer_id}: shape={arr.shape}, dtype={arr.dtype}"
-            )
-            result[layer_id] = pickle.dumps(arr, protocol=pickle.HIGHEST_PROTOCOL)
+        # Concatenate chunks per request per layer
+        combined_states: Dict[int, Dict[str, torch.Tensor]] = {}
+        for layer_id, req_store in self._hs_captured.items():
+            combined_states[layer_id] = {}
+            for req_id, chunks in req_store.items():
+                combined_states[layer_id][req_id] = torch.cat(chunks, dim=0)
+
+        # Serialize to numpy + pickle
+        result: Dict[int, Dict[str, bytes]] = {}
+        for layer_id, req_tensors in combined_states.items():
+            result[layer_id] = {}
+            for req_id, tensor in req_tensors.items():
+                arr = tensor.cpu().float().numpy()
+                # log.debug because this can fire O(layers x requests) times
+                # per evaluation — log.info would flood at scale.
+                log.debug(
+                    "Layer %d, req %s: final shape=%s",
+                    layer_id,
+                    req_id,
+                    arr.shape,
+                )
+                result[layer_id][req_id] = pickle.dumps(
+                    arr, protocol=pickle.HIGHEST_PROTOCOL
+                )
+
         self._hs_captured = {}
         return result
 
-    # Kept for API compatibility — not used in hook approach
-    def _store_captured_states(self, states) -> None:
-        pass
+    def _get_capture_metadata(self) -> Dict[str, Dict]:
+        """
+        Return per-request capture metadata, then clear the metadata buffers.
+
+        Returns:
+            {request_id: {"total_computed": int, "prefill_tokens": int}}
+
+        Use prefill_tokens to detect prefix-cache gaps:
+        if prefill_tokens < prompt_len, the difference was cached.
+
+        Call protocol: see ``_get_captured_states``. This method is the second
+        half of the canonical pair; it clears ``_hs_req_meta`` and
+        ``_hs_prefill_tokens``.
+        """
+        meta = {}
+        for req_id, info in self._hs_req_meta.items():
+            meta[req_id] = {
+                **info,
+                "prefill_tokens": self._hs_prefill_tokens.get(req_id, 0),
+            }
+        self._hs_req_meta = {}
+        self._hs_prefill_tokens = {}
+        return meta
