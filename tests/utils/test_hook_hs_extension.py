@@ -514,6 +514,7 @@ def test_contract_with_lm_polygraph_fill_prefix_gaps_multilayer(hooked_layers):
         ("thinkbooster.strategies.strategy_extended_thinking", "StrategyExtendedThinking"),
         ("thinkbooster.strategies.strategy_uncertainty_cot", "StrategyUncertaintyCoT"),
         ("thinkbooster.strategies.adaptive_scaling_best_of_n", "AdaptiveScalingBestOfN"),
+        ("thinkbooster.strategies.phi", "PhiDecoding"),
     ],
 )
 def test_strategy_calls_reset_hs_step_cache_when_available(module_path, class_name):
