@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/thinkbooster)](https://pypi.org/project/thinkbooster/)
-[![arXiv](https://img.shields.io/badge/arXiv-b31b1b.svg)](https://thinkbooster.s3.us-east-1.amazonaws.com/thinkbooster.pdf)
+[![arXiv]([https://img.shields.io/badge/arXiv-b31b1b.svg)](https://thinkbooster.s3.us-east-1.amazonaws.com/thinkbooster.pdf](https://arxiv.org/abs/2606.06915))
 
 [Quick Start](#quick-start) | [Key Features](#key-features) | [Strategies](#supported-strategies) | [Visual Debugger](#visual-debugger) | [Documentation](#documentation)
 
