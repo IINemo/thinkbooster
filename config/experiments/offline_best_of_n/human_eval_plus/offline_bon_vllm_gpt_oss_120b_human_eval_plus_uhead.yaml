@@ -1,0 +1,86 @@
+# @package _global_
+# Run: python scripts/run_tts_eval.py --config-path=../config --config-name=experiments/offline_best_of_n/human_eval_plus/offline_bon_vllm_gpt_oss_120b_human_eval_plus_uhead
+# Offline Best-of-N with GPT-OSS-120B (vLLM) + uhead scorer on HumanEval+
+# Generates N complete trajectories, splits post-hoc, selects best based on min step uhead score
+
+defaults:
+  - /config
+  - /model/vllm_qwen3
+  - /generation/default
+  - /system/default
+  - /strategy/offline_bon
+  - /scorer/uhead_vllm
+  - /evaluation/human_eval_plus/default
+  - _self_
+
+# Run naming
+run_name: "offline_bon_vllm_gpt_oss_120b_human_eval_plus_uhead_${scorer.uq_head_path}_seed${system.seed}_${now:%H-%M-%S}"
+
+# Main configuration
+verbose: true
+report_to: wandb
+wandb_project: llm-tts-human-eval-plus
+wandb_group: "offline_bon_vllm_gpt_oss_120b_human_eval_plus_uhead"
+
+model:
+  type: "vllm"
+  model_path: "openai/gpt-oss-120b"
+  model_short_name: "vllm_gpt_oss_120b"
+  gpu_memory_utilization: 0.7
+  tensor_parallel_size: 2
+  enable_prefix_caching: true
+  trust_remote_code: true
+  max_context_budget: 32768
+  disable_thinking_mode: false
+
+# System configuration
+system:
+  device: cuda
+  seed: 0
+
+# UHead scorer configuration
+scorer:
+  type: uhead
+  uq_head_path: "ArtemVazhentsev21/uhead_gpt_oss_120b_claim"  # Can be overridden via ++scorer.uq_head_path
+  max_model_len: 32000
+  gpu_memory_utilization: 0.2
+  tensor_parallel_size: 1
+  device: cuda:1
+  batch_size: 1
+
+# Generation configuration
+generation:
+  max_new_tokens: 32000
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+  batch_size: 1
+  max_length: 65536
+
+# Strategy - Offline Best-of-N
+strategy:
+  type: offline_best_of_n 
+  max_steps: 100
+  max_step_tokens: 1024
+  num_trajectories: 8  # Number of complete trajectories to generate per question
+
+# Dataset configuration - HumanEval+
+dataset:
+  data_name: "human_eval_plus"
+  dataset_path: "evalplus/humanevalplus"
+  dataset_split: "test"
+  subset: null
+  offset: 0
+  question_field: "question"
+  answer_field: "answer"
+  answer_format: "code"
+  prompt_file: null
+  system_prompt: "Do not output any other code except for asked self-contained Python script. Do not provide any guides on how to run it. Code will be parsed from codeblock to check it's correct."
+
+# Evaluation configuration
+evaluation:
+  evaluators:
+    - human_eval_plus
+  human_eval_plus:
+    mode: full  # "test" and "syntax" modes are deprecated, use "full" only
+    timeout: 10

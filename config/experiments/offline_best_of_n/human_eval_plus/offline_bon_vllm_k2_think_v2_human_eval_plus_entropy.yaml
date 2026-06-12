@@ -1,8 +1,8 @@
 # @package _global_
-# Run: python scripts/run_tts_eval.py --config-path=../config --config-name=experiments/offline_best_of_n/human_eval_plus/offline_bon_vllm_k2_think_v2_human_eval_plus_uhead
+# Run: python scripts/run_tts_eval.py --config-path=../config --config-name=experiments/offline_best_of_n/human_eval_plus/offline_bon_vllm_k2_think_v2_human_eval_plus_entropy
 # Note: Do NOT specify CUDA_VISIBLE_DEVICES when submitting via scripts/slurm/submit.sh - SLURM assigns GPUs automatically
-# Offline Best-of-N with K2-Think-V2 (vLLM) + uhead scorer on HumanEval+
-# Generates N complete trajectories, splits post-hoc, selects best based on min step uhead score
+# Offline Best-of-N with K2-Think-V2 (vLLM) + entropy scorer on HumanEval+
+# Generates N complete trajectories, splits post-hoc, selects best based on min step entropy score
 
 defaults:
   - /config
@@ -10,18 +10,18 @@ defaults:
   - /generation/default
   - /system/default
   - /strategy/offline_bon
-  - /scorer/uhead_vllm
+  - /scorer/entropy
   - /evaluation/human_eval_plus/default
   - _self_
 
 # Run naming
-run_name: "offline_bon_vllm_k2_think_v2_human_eval_uhead_seed${system.seed}_${now:%H-%M-%S}"
+run_name: "offline_bon_vllm_k2_think_v2_human_eval_entropy_seed${system.seed}_${now:%H-%M-%S}"
 
 # Main configuration
 verbose: true
 report_to: wandb
 wandb_project: llm-tts-human-eval-plus
-wandb_group: "offline_bon_k2_think_v2_human_eval_uhead"
+wandb_group: "offline_bon_k2_think_v2_human_eval_entropy"
 
 model:
   type: "vllm"
@@ -39,13 +39,10 @@ system:
   device: cuda
   seed: 42
 
+# Entropy scorer configuration
 scorer:
-  type: uhead
-  uq_head_path: "rediska0123/uhead_hs_K2-Think-V2_10epochs"
-  max_model_len: 32000
-  gpu_memory_utilization: 0.1
-  tensor_parallel_size: 1
-  device: cuda:0
+  type: entropy
+  batch_size: 1
 
 # Generation configuration
 generation:
