@@ -27,4 +27,12 @@ echo "Launching ThinkBooster (PRM-only) on port ${PORT}"
 echo "  CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES}  PRM_MODEL_PATH=${PRM_MODEL_PATH}"
 echo "  PRM_USE_VLLM=${PRM_USE_VLLM}  PRM_GPU_MEMORY_UTILIZATION=${PRM_GPU_MEMORY_UTILIZATION}"
 
-exec python service_app/main.py
+# Run via uvicorn CLI WITHOUT --reload. Auto-reload is fatal here: it watches the
+# repo dir and restarts the app on any file change (including clients writing to
+# outputs/), which re-inits the vLLM PRM engine while the old one still holds VRAM
+# -> "Engine core initialization failed" / GPU OOM. Never enable reload with a GPU
+# model loaded.
+exec python -m uvicorn service_app.main:app \
+    --host 0.0.0.0 \
+    --port "${PORT}" \
+    --log-level info

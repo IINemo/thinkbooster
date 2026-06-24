@@ -298,17 +298,32 @@ async def global_exception_handler(request, exc):
 
 
 if __name__ == "__main__":
+    import os
+
     import uvicorn
+
+    # Auto-reload watches the whole repo dir and restarts the app on any file
+    # change. That is fine for pure-API dev, but FATAL when a model (e.g. the PRM
+    # vLLM engine) is loaded on the GPU: a restart tries to re-init the engine
+    # while the old process still holds VRAM -> "Engine core initialization failed".
+    # It also fires when clients write outputs/ inside the repo. So reload is OFF
+    # by default; opt in with SERVICE_RELOAD=1 only for API-only development.
+    reload_enabled = os.environ.get("SERVICE_RELOAD", "0").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
     log.info(f"Starting {settings.api_title} v{settings.api_version}")
     log.info(f"Server running on http://{settings.host}:{settings.port}")
     log.info(f"OpenAPI docs: http://{settings.host}:{settings.port}/docs")
+    log.info(f"Auto-reload: {reload_enabled}")
 
     uvicorn.run(
         "service_app.main:app",
         host=settings.host,
         port=settings.port,
-        reload=True,  # Enable auto-reload for development
-        reload_excludes=["logs/*"],
+        reload=reload_enabled,
+        reload_excludes=["logs/*", "outputs/*", "wandb/*", "clearml-outputs/*"],
         log_level="info",
     )
