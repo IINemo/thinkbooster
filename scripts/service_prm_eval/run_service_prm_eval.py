@@ -502,7 +502,9 @@ def run_cell(
     samples_path = cell_dir / "samples.jsonl"
 
     if strategy == "cot":
-        client = OpenAI(base_url=args.openrouter_base, api_key=api_key)
+        client = OpenAI(
+            base_url=args.openrouter_base, api_key=api_key, timeout=args.timeout
+        )
         runner = lambda p: run_cot(client, p, args)  # noqa: E731
         config = {
             "strategy": "cot_baseline",
@@ -515,6 +517,7 @@ def run_cell(
         client = OpenAI(
             base_url=f"{args.service_url.rstrip('/')}/v1/offline_bon/prm",
             api_key="unused",  # service reads the key from extra_body["tts_api_key"]
+            timeout=args.timeout,
         )
         runner = lambda p: run_prm(client, p, args, api_key)  # noqa: E731
         config = {
@@ -633,6 +636,7 @@ def write_report(summaries: List[CellSummary], out_dir: Path, args) -> None:
                     "max_tokens": args.max_tokens,
                     "service_url": args.service_url,
                     "concurrency": args.concurrency,
+                    "timeout": args.timeout,
                 },
                 "cells": rows,
             },
@@ -792,6 +796,13 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         type=int,
         default=3,
         help="Retry attempts per request (exponential backoff).",
+    )
+    p.add_argument(
+        "--timeout",
+        type=float,
+        default=600.0,
+        help="Per-request client timeout in seconds (OpenAI client). Raise for long "
+        "best-of-N on long-output datasets (e.g. 1800) to avoid timeouts.",
     )
     p.add_argument(
         "--resume",
