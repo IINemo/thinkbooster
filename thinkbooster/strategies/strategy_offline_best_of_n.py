@@ -501,13 +501,16 @@ class StrategyOfflineBestOfN(StrategyBase):
         self.step_generator.reset_per_sample_stats()
         if hasattr(self.scorer, "reset_prm_stats"):
             self.scorer.reset_prm_stats()
-        # Build stop tokens list, including </think> for thinking mode
+        # Build stop tokens list, including the thinking close tag for thinking
+        # mode. Use the generator's budget-aware tag (K2-Think: </think_fast> for
+        # reasoning_effort=medium, </think_faster> for low) so generation actually
+        # stops at end-of-thinking instead of running to EOS and re-generating the
+        # answer phase.
         stop_tokens = ["<end of response>"]
-        if (
-            getattr(self.step_generator, "thinking_mode", False)
-            and "</think>" not in stop_tokens
-        ):
-            stop_tokens.append("</think>")
+        if getattr(self.step_generator, "thinking_mode", False):
+            close_tag = getattr(self.step_generator, "think_close_tag", "</think>")
+            if close_tag not in stop_tokens:
+                stop_tokens.append(close_tag)
 
         batch_results = self.step_generator.generate_step_candidates_batch(
             requests=requests,

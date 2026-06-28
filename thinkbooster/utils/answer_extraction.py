@@ -38,7 +38,8 @@ def extract_answer(text: str, answer_format: str = "auto") -> str:
         # content so fenced code blocks survive for code benchmarks.
         xml_answer = _extract_xml_answer(text)
         if xml_answer:
-            return xml_answer
+            # Clean any \boxed{} wrapper (math), harmless for code blocks
+            return _clean_boxed_from_answer(xml_answer)
         # Fall back to boxed format
         answer = _extract_boxed_answer(text)
     elif answer_format == "default":
