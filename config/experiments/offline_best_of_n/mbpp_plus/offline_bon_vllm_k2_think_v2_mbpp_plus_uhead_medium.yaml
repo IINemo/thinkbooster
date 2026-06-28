@@ -1,0 +1,96 @@
+# @package _global_
+# Run: python scripts/run_tts_eval.py --config-path=../config --config-name=experiments/offline_best_of_n/mbpp_plus/offline_bon_vllm_k2_think_v2_mbpp_plus_uhead_medium
+#
+# Offline Best-of-N with K2-Think-V2 (vLLM) + UHead scorer on MBPP+.
+# Generates N complete trajectories, splits post-hoc into steps, selects the
+# trajectory with the best (min) step-level UHead uncertainty score.
+#
+# This variant uses the NEW UHead checkpoint and the prompt/thinking-budget the
+# UHead was trained on (author guidance):
+#   * scorer.uq_head_path -> rediska0123/uhead_hs_K2-Think-V2_mixed_code10K_steps_vllm_10epochs
+#   * dataset.prompt_file -> config/prompts/k2_think_answer.txt  (the "<answer></answer>" wrapper)
+#   * model.reasoning_effort: medium -> K2 chat template emits the <think_fast> budget token,
+#     reproducing the exact "medium" completion prefix the UHead was trained with.
+#     (reasoning_effort=low -> <think_faster>; see the _low.yaml sibling config.)
+
+defaults:
+  - /config
+  - /model/vllm_qwen3
+  - /generation/default
+  - /system/default
+  - /strategy/offline_bon
+  - /scorer/uhead_vllm
+  - /evaluation/mbpp_plus/default
+  - _self_
+
+# Run naming
+run_name: "offline_bon_vllm_k2_think_v2_mbpp_plus_uhead_medium_seed${system.seed}_${now:%H-%M-%S}"
+
+# Main configuration
+verbose: true
+report_to: wandb
+wandb_project: llm-tts-mbpp-plus
+wandb_group: "offline_bon_k2_think_v2_mbpp_plus_uhead_medium"
+
+model:
+  type: "vllm"
+  model_path: "LLM360/K2-Think-V2"
+  model_short_name: "vllm_thinking_k2_think_v2"
+  gpu_memory_utilization: 0.87
+  tensor_parallel_size: 2
+  enable_prefix_caching: true
+  trust_remote_code: true
+  max_context_budget: 32768
+  disable_thinking_mode: false   # ENABLE native thinking mode
+  reasoning_effort: medium       # K2 chat template -> <think_fast> (the "medium" training prefix)
+
+# System configuration
+system:
+  device: cuda
+  seed: 42
+
+scorer:
+  type: uhead
+  uq_head_path: "rediska0123/uhead_hs_K2-Think-V2_mixed_code10K_steps_vllm_10epochs"
+  max_model_len: 32000
+  gpu_memory_utilization: 0.1
+  tensor_parallel_size: 1
+  device: cuda:0
+
+# Generation configuration
+generation:
+  max_new_tokens: 32000
+  temperature: 0.65
+  top_p: 0.95
+  top_k: 20
+  batch_size: 1
+  max_length: 65536
+
+# Strategy - Offline Best-of-N
+strategy:
+  max_steps: 100
+  # Step boundary detector settings - used for post-hoc step splitting
+  max_step_tokens: 4096
+  num_trajectories: 4   # N in best-of-N (effective N; override on the CLI to sweep)
+
+# Dataset configuration - mbpp_plus
+dataset:
+  data_name: "mbpp_plus"
+  dataset_path: "evalplus/mbppplus"
+  dataset_split: "test"   # 378 problems
+  subset: null            # null = full split; override with dataset.subset=N for a smoke test
+  offset: 0
+  question_field: "question"
+  answer_field: "answer"
+  answer_format: "code"
+  # UHead training prompt: wraps the MBPP+ question and asks for <answer></answer>.
+  # The K2 chat template + model.reasoning_effort supply the <think_fast> budget token.
+  prompt_file: "${hydra:runtime.cwd}/config/prompts/k2_think_answer.txt"
+
+# Evaluation configuration
+evaluation:
+  evaluators:
+    - mbpp_plus
+  mbpp_plus:
+    mode: full
+    timeout: 10
