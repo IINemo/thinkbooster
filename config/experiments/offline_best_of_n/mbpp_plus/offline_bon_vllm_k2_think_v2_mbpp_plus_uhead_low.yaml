@@ -65,6 +65,10 @@ generation:
   top_k: 20
   batch_size: 1
   max_length: 65536
+  # Process the dataset in chunks (problems per vLLM call). The default is the
+  # whole dataset, which sends 378 x N trajectories to vLLM at once and OOMs the
+  # native hidden-state capture on a 2x GH200 setup. 16 -> ~64 sequences/chunk.
+  checkpoint_batch_size: 16
 
 # Strategy - Offline Best-of-N
 strategy:

@@ -40,8 +40,14 @@ def extract_answer(text: str, answer_format: str = "auto") -> str:
         if xml_answer:
             # Clean any \boxed{} wrapper (math), harmless for code blocks
             return _clean_boxed_from_answer(xml_answer)
-        # Fall back to boxed format
-        answer = _extract_boxed_answer(text)
+        # Then boxed format
+        boxed = _extract_boxed_answer(text)
+        if boxed:
+            return _clean_boxed_from_answer(boxed)
+        # Last resort: a bare fenced code block. Code models often emit a
+        # ```python ... ``` block with no <answer> wrapper (e.g. K2-Think low
+        # budget), which the evaluators can still grade.
+        return _extract_code_fence(text)
     elif answer_format == "default":
         answer = _extract_default_answer(text)
     else:
@@ -67,6 +73,23 @@ def _extract_xml_answer(text: str) -> str:
         if m.strip()
     ]
     return matches[-1] if matches else ""
+
+
+def _extract_code_fence(text: str) -> str:
+    """Extract the LAST fenced code block, re-wrapped as ```python ... ```.
+
+    Fallback for code models that emit a bare code block without an <answer>
+    wrapper. Returns the block with fences so downstream code extractors
+    (e.g. EvalPlus) re-detect it; empty string if there is no non-empty block.
+    """
+    blocks = [
+        b.strip()
+        for b in re.findall(r"```[a-zA-Z0-9_+\-]*\n(.*?)```", text, re.DOTALL)
+        if b.strip()
+    ]
+    if not blocks:
+        return ""
+    return "```python\n" + blocks[-1] + "\n```"
 
 
 def _extract_default_answer(text: str) -> str:
