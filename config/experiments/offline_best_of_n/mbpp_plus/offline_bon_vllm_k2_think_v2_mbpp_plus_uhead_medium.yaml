@@ -59,7 +59,7 @@ scorer:
 
 # Generation configuration
 generation:
-  max_new_tokens: 15000
+  max_new_tokens: 6000   # cap degenerate rambling (avg ~978); 15000 ramblers OOM the HS buffer
   temperature: 0.65
   top_p: 0.95
   top_k: 20
