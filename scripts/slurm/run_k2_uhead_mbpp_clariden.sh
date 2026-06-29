@@ -66,10 +66,9 @@ export HUGGING_FACE_HUB_TOKEN="${HF_TOKEN}"
 export WANDB_MODE="${WANDB_MODE:-offline}"
 export HYDRA_FULL_ERROR=1
 export VLLM_WORKER_MULTIPROC_METHOD=spawn
-# Avoid CUDA fragmentation OOM: across chunks the native HS capture leaves
-# reserved-but-unallocated memory that fragments until a large alloc fails.
-# expandable_segments lets the allocator reuse it. (vLLM honours this too.)
-export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+# NOTE: do NOT set PYTORCH_CUDA_ALLOC_CONF=expandable_segments here — it hangs
+# vLLM during weight loading on this stack. Cross-chunk OOM is handled instead
+# via lower gpu_memory_utilization + smaller checkpoint_batch_size in the config.
 
 mkdir -p "$REPO/logs"
 
