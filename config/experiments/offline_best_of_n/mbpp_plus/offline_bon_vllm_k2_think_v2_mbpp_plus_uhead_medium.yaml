@@ -36,7 +36,7 @@ model:
   type: "vllm"
   model_path: "LLM360/K2-Think-V2"
   model_short_name: "vllm_thinking_k2_think_v2"
-  gpu_memory_utilization: 0.82   # KV needs budget; 0.72 starved it (negative KV cache)
+  gpu_memory_utilization: 0.87   # proven to init KV (morning runs); OOM handled by small chunks + short max_model_len
   tensor_parallel_size: 2
   enable_prefix_caching: true
   trust_remote_code: true
@@ -69,7 +69,7 @@ generation:
   # whole dataset, which sends 378 x N trajectories to vLLM at once and OOMs the
   # native hidden-state capture on a 2x GH200 setup. 8 -> ~32 sequences/chunk
   # (the size validated in the subset=8 smoke), keeping per-chunk memory low.
-  checkpoint_batch_size: 8
+  checkpoint_batch_size: 4   # ~16 seqs/chunk: minimal per-chunk HS-capture memory
 
 # Strategy - Offline Best-of-N
 strategy:
