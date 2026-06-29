@@ -61,6 +61,11 @@ if [[ -z "${HF_TOKEN:-}" && -f "$HOME/.hf_token" ]]; then
 fi
 export HF_TOKEN="${HF_TOKEN:-}"
 export HUGGING_FACE_HUB_TOKEN="${HF_TOKEN}"
+# Model + UHead are fully cached in the shared store; force offline so a flaky
+# compute-node network can't stall weight loading on an HF revision/remote-code
+# check (observed: load hangs after "Starting to load model" with no progress).
+export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
+export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"
 
 # ---- wandb offline (compute nodes have no outbound network for wandb) ----
 export WANDB_MODE="${WANDB_MODE:-offline}"
