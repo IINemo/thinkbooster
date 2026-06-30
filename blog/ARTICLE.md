@@ -2,7 +2,7 @@
 
 *Plus a benchmark that finally tells you what the extra accuracy costs.*
 
-> _[Figure: hero — framework diagram (`images/thinkbooster.png`) or the gateway diagram (`images/endpoint.pdf`)]_
+> _[Figure: hero — the endpoint gateway diagram. Upload `blog/endpoint_hero.png` (1392×889, 149 KB; exported from `images/endpoint.pdf`).]_
 
 ---
 
@@ -36,8 +36,6 @@ base_url = "<THINKBOOSTER_ENDPOINT>/v1/beam_search/prm"
 ```
 
 Point your existing OpenAI client at that, and the same model now runs beam search scored by a reward model. Change it to `.../v1/offline_bon/entropy` and you have swapped the entire scaling method, with no other edit to your code. Agents, copilots, and enterprise stacks already speak OpenAI, so you add reasoning scaling by editing a string, and you keep the compute budget in your hands.
-
-> _[Figure: the endpoint gateway diagram (`images/endpoint.pdf`)]_
 
 ## Does it actually work?
 
