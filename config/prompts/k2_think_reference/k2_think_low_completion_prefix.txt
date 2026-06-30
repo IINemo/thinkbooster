@@ -1,0 +1,5 @@
+<|im_start|>user
+Answer the following question. Enclose your answer in <answer></answer>.
+<Question>: {q}<|im_end|>
+<|im_start|>assistant
+<think_faster>
