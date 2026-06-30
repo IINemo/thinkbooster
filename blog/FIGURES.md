@@ -43,12 +43,20 @@ CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 | `fig_ttc_frameworks.png` | §6, framework comparison |
 | `fig_strategies.png` | §2, the nine strategies |
 
-## Already raster — use as-is from the paper assets
+## Debugger figures (from the paper's composited PDFs)
 
-The visual-debugger section uses three screenshots directly (PNG already, no conversion):
+```bash
+IMG="../_ACL_2026__ThinkBooster_demo (1)/images"
+pdftoppm -png -r 200 -singlefile "$IMG/main-1-new.pdf" fig_debugger_a
+pdftoppm -png -r 200 -singlefile "$IMG/main-2-new.pdf" fig_debugger_b
+# then trim the card whitespace to content with Pillow:
+#   diff vs white, threshold >28, crop to getbbox()+14px margin
+```
 
-| File | View |
-|------|------|
-| `images/demo-config.png` | main interface (pick model / strategy / scorer) |
-| `images/demo-result.png` | reasoning timeline + step inspector |
-| `images/demo-treeview.png` | trajectory tree (selected path highlighted) |
+| PNG | View |
+|-----|------|
+| `fig_debugger_a.png` | the debugger: run config, strategy comparison, reasoning timeline, step inspector |
+| `fig_debugger_b.png` | trajectory tree (selected path in orange) |
+
+The individual raw screenshots `images/demo-config.png` / `demo-result.png` /
+`demo-treeview.png` are alternatives if you prefer one view per image.
