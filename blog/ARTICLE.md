@@ -2,6 +2,8 @@
 
 *Plus a benchmark that finally tells you what the extra accuracy costs.*
 
+*Read the paper on [arXiv](https://arxiv.org/abs/2606.06915).*
+
 > _[Figure: hero — the endpoint gateway diagram. Upload `blog/endpoint_hero.png` (1392×889, 149 KB; exported from `images/endpoint.pdf`).]_
 
 ---
