@@ -43,7 +43,12 @@ CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 | `fig_ttc_frameworks.png` | §6, framework comparison |
 | `fig_strategies.png` | §2, the nine strategies |
 
-## Still to do
+## Already raster — use as-is from the paper assets
 
-- **§7 — visual debugger**: use `images/demo-treeview.png` / `demo-result.png` directly
-  (already raster; no conversion needed).
+The visual-debugger section uses three screenshots directly (PNG already, no conversion):
+
+| File | View |
+|------|------|
+| `images/demo-config.png` | main interface (pick model / strategy / scorer) |
+| `images/demo-result.png` | reasoning timeline + step inspector |
+| `images/demo-treeview.png` | trajectory tree (selected path highlighted) |

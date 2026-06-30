@@ -86,6 +86,22 @@ The other frameworks are narrower. LLM Reasoners is a strong modular research li
 
 > _[Figure: framework comparison (`blog/fig_ttc_frameworks.png`)]_
 
+## See why a trajectory wins: the visual debugger
+
+A scaling run makes decisions you never normally see: which candidates it sampled, what each one scored, which branch it kept, where it stopped. ThinkBooster ships an interactive debugger that opens all of it in the browser. Pick a provider, model, strategy, and scorer, type in a problem, and run it. No notebook, no setup.
+
+> _[Figure: the debugger's main interface — pick a model, strategy, and scorer and run any problem in the browser (`images/demo-config.png`)]_
+
+The run comes back as a reasoning timeline. Every step shows its score, the alternative candidates the strategy considered, and which one was selected versus pruned. Click a step and the inspector shows the full candidate text and the number behind the decision.
+
+> _[Figure: the reasoning timeline and step inspector — per-step scores, the candidates considered, and selected vs. pruned (`images/demo-result.png`)]_
+
+The trajectory tree shows the whole search at once. The highlighted path is the trajectory that was selected; the other branches were explored and dropped. It is the quickest way to see how beam search or best-of-N spends its compute and where it walks away from a dead end.
+
+> _[Figure: the trajectory tree — the selected path highlighted, pruned branches in gray (`images/demo-treeview.png`)]_
+
+You can also run two strategies on the same problem under the same compute budget and compare them side by side, which turns "which method is better" from an argument into something you can watch.
+
 ## Try it in five minutes
 
 Install:
@@ -157,9 +173,7 @@ print(results[0]["trajectory"])
 print("Answer:", results[0]["extracted_answer"])
 ```
 
-From there you can run the compute-aware benchmark with one command to get accuracy and TFLOPs side by side, or open the visual debugger at `localhost:8001/debugger`. The debugger replays a run step by step, showing each step's score, the alternative candidates it weighed, and why one was kept. It can also put two strategies side by side on the same prompt under the same compute budget, which is the quickest way to see what the extra compute actually buys.
-
-> _[Figure: visual debugger screenshot (`images/demo-treeview.png` or `demo-result.png`)]_
+From there you can run the compute-aware benchmark with one command to get accuracy and TFLOPs side by side, or open the visual debugger from the section above at `localhost:8001/debugger`.
 
 ## Limitations
 
