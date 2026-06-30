@@ -1,0 +1,74 @@
+# @package _global_
+# Run: python scripts/run_tts_eval.py --config-path=../config --config-name=experiments/baseline/mbpp_plus/baseline_vllm_k2_think_v2_mbpp_plus_medium
+#
+# Baseline (single-shot CoT, no TTS strategy, no UHead) for K2-Think-V2 on MBPP+,
+# at the MEDIUM thinking budget. This is the control for the offline best-of-N +
+# UHead runs: same model, prompt, budget, seed, and generation settings — only the
+# strategy differs (1 sample, no UHead selection). Baseline uses raw vLLM with no
+# hidden-state capture, so the BoN memory constraints don't apply here.
+
+defaults:
+  - /config
+  - /model/vllm_qwen3
+  - /generation/default
+  - /system/default
+  - /strategy/baseline
+  - /scorer/entropy        # unused for baseline (raw vLLM path), kept for compose
+  - /evaluation/mbpp_plus/default
+  - _self_
+
+# Run naming
+run_name: "baseline_vllm_k2_think_v2_mbpp_plus_medium_seed${system.seed}_${now:%H-%M-%S}"
+
+verbose: true
+report_to: wandb
+wandb_project: llm-tts-mbpp-plus
+wandb_group: "baseline_vllm_k2_think_v2_mbpp_plus_medium"
+
+model:
+  type: "vllm"
+  model_path: "LLM360/K2-Think-V2"
+  model_short_name: "vllm_thinking_k2_think_v2"
+  gpu_memory_utilization: 0.9
+  tensor_parallel_size: 2
+  enable_prefix_caching: true
+  trust_remote_code: true
+  max_context_budget: 16384
+  disable_thinking_mode: false   # native thinking mode
+  reasoning_effort: medium       # K2 chat template -> <think_fast> (the medium budget)
+
+system:
+  device: cuda
+  seed: 42
+
+# Match the offline-BoN medium run's generation settings (single sample here).
+generation:
+  max_new_tokens: 6000   # avg medium output is ~978; caps degenerate rambling
+  temperature: 0.65
+  top_p: 0.95
+  top_k: 20
+  batch_size: 32
+  checkpoint_batch_size: 64   # progressive saves (crash-resistant)
+
+strategy:
+  batch_generation: true
+
+dataset:
+  data_name: "mbpp_plus"
+  dataset_path: "evalplus/mbppplus"
+  dataset_split: "test"   # 378 problems
+  subset: null
+  offset: 0
+  question_field: "question"
+  answer_field: "answer"
+  answer_format: "code"
+  # Same prompt wrapper as the BoN runs (the UHead training prompt). The K2 chat
+  # template + reasoning_effort supply the <think_fast> budget token.
+  prompt_file: "${hydra:runtime.cwd}/config/prompts/k2_think_answer.txt"
+
+evaluation:
+  evaluators:
+    - mbpp_plus
+  mbpp_plus:
+    mode: full
+    timeout: 10
