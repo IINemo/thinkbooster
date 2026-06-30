@@ -88,7 +88,7 @@ The other frameworks are narrower. LLM Reasoners is a strong modular research li
 
 ## See why a trajectory wins: the visual debugger
 
-A scaling run makes decisions you never normally see: which candidates it sampled, what each one scored, which branch it kept, where it stopped. ThinkBooster ships an interactive debugger that opens all of it in the browser. Pick a provider, model, strategy, and scorer, type in a problem, and run it. The run comes back as a reasoning timeline: every step with its score, the candidates the strategy considered, and which one was selected versus pruned. Click a step and the inspector shows the full candidate text and the number behind the decision.
+A scaling run makes decisions you never normally see: which candidates it sampled, what each one scored, which branch it kept, where it stopped. ThinkBooster ships an interactive debugger that opens all of it in the browser, and it is live: open the [demo](http://demo-thinkbooster.nlpresearch.group), pick a provider, model, strategy, and scorer, type in a problem, and run it. The run comes back as a reasoning timeline: every step with its score, the candidates the strategy considered, and which one was selected versus pruned. Click a step and the inspector shows the full candidate text and the number behind the decision.
 
 > _[Figure: the debugger — run config, strategy comparison, reasoning timeline, and step inspector in one place (`blog/fig_debugger_a.png`)]_
 
