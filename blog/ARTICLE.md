@@ -1,6 +1,6 @@
 # Your model can think longer. ThinkBooster helps you decide how.
 
-*One URL turns any LLM into its own "Pro reasoning mode," plus a benchmark that finally tells you what the extra accuracy costs.*
+*One URL gives any LLM a configurable "Pro reasoning mode," plus a benchmark that finally tells you what the extra accuracy costs.*
 
 > _[Figure: hero — framework diagram (`images/thinkbooster.png`) or the gateway diagram (`images/endpoint.pdf`)]_
 
@@ -43,11 +43,11 @@ Point your existing OpenAI client at that, and the same model now runs beam sear
 
 Three results from the benchmark are worth pulling out, because each one cuts against the obvious intuition.
 
-**Confidence can beat a trained reward model, and confidence is free.** On HumanEval+, pairing the MUR strategy (which spends extra compute only on uncertain steps) with a plain entropy signal takes Qwen3-8B from 79.3 to 88.8, the best coding score in the study and higher than any reward-model setup. Entropy is read off the tokens the model already produced, so it adds almost nothing, while a reward model is a second network you have to run. Against the most accurate reward-model setup, beam search with a PRM, confidence is both more accurate and under a quarter of the compute. The honest scope: on math, a real reward model still wins. This is a coding finding, not a universal law.
+**Confidence can beat a trained reward model, and confidence is free.** On HumanEval+, pairing the MUR strategy (which spends extra compute only on uncertain steps) with a plain entropy signal takes Qwen3-8B from 79.3 to 88.8, the best coding score in the study and higher than any reward-model setup. Entropy is read off the tokens the model already produced, so it adds almost nothing, while a reward model is a second network you have to run. Against the most accurate reward-model setup, beam search with a PRM, confidence is both more accurate and under a quarter of the compute. The scope is narrow: this is a coding result. On math, a trained reward model still wins.
 
-**Spending more does not reliably buy more.** With the cheap scorers, beam search trails plain best-of-N and even self-consistency, despite searching much harder. Its one strong configuration, beam search with a reward model, does reach the top math accuracy. But it costs 17 to 24 times more than best-of-N with the same reward model to get there, often for a tie or a single point. For most budgets, best-of-N with a reward model sits at the better accuracy-per-FLOP point.
+**Spending more does not reliably buy more.** With the cheap scorers, beam search trails plain best-of-N and even self-consistency, despite searching much harder. Its one strong configuration, beam search with a reward model, reaches the top math accuracy on several of the benchmarks, such as OlympiadBench and Gaokao, though best-of-N with the same reward model ties or beats it on the hardest sets. And it costs 17 to 24 times more than best-of-N to get there, often for a tie or a single point. For most budgets, best-of-N with a reward model sits at the better accuracy-per-FLOP point.
 
-**A drop-in change can improve real engineering output.** On GPT-OSS-120B writing CUDA kernels, adding best-of-N with a reward model raised end-to-end correctness from 26 to 30 and cut syntax errors by five points. Compilation rate dipped by one point, because the reward model tends to pick more ambitious kernels that are likelier to fail to compile, a trade the correctness gain pays for.
+**A drop-in change can improve real engineering output.** On GPT-OSS-120B writing CUDA kernels, adding best-of-N with a reward model raised end-to-end correctness from 26 to 30 and cut syntax errors by five points. Compilation rate dipped by one point, consistent with the reward model favoring more ambitious kernels that are likelier to fail to compile, a trade the correctness gain pays for.
 
 None of this shows up in an accuracy column on its own. Because ThinkBooster's benchmark logs TFLOPs and tokens next to accuracy, you can see the trade and pick the point you can afford.
 
@@ -74,7 +74,7 @@ ThinkBooster is not the only tool here, and the closest one is good. OptiLLM is 
 What ThinkBooster adds that the others do not ship:
 
 - uncertainty and ReProbe-style internal-state scoring as first-class, swappable scorer families, built on LM-Polygraph, our group's uncertainty library;
-- process-reward-model scoring and FLOPs-level compute accounting (OptiLLM has neither);
+- first-class process-reward-model scoring and FLOPs-level compute accounting, which OptiLLM does not foreground;
 - a benchmark that reports accuracy and compute together, with bundled, judged datasets across math, coding, and science;
 - a visual debugger for reasoning trajectories.
 
@@ -113,7 +113,7 @@ You can also use it as a library, importing a strategy and running it yourself; 
 
 > _[Figure: visual debugger screenshot (`images/demo-treeview.png` or `demo-result.png`)]_
 
-## The honest limitations
+## Limitations
 
 The dynamic, confidence-driven strategies (MUR, DeepConf, uncertainty CoT) need logits or hidden states, so they want open-weight or self-hosted models. Against a closed API you get the black-box subset: best-of-N, majority voting, extended thinking, and LLM-as-judge scoring. Splitting native, unstructured "thinking" traces into clean steps is still hard, which can affect step-level scoring. And the evidence so far covers math, coding, and science QA; compute is reported as theoretical TFLOPs and tokens, with wall-clock logged but not yet studied.
 
@@ -132,6 +132,6 @@ PRE-PUBLISH CHECKLIST
 - Confirm the live demo URL is up before linking it (reviewers flagged it down).
 - Verify any tts_metadata field names against the shipped service if that example is added.
 - Confirm OptiLLM's current technique count so the loose "20+" stays accurate.
-- K2-Think-V2 + ReProbe number is single-seed; replace with multi-seed mean once available.
+- K2-Think-V2 + ReProbe vs baseline: matched single-shot (N=1) vs best-of-N (N=4) at seed 42 on the same 378-problem MBPP+ split (baseline = SLURM job 2651567, posted to PR #257). Single-seed; replace with a multi-seed mean once available.
 - Insert figures at the marked spots; export tables (tab:gpt_oss, tab:ttc_frameworks) as images.
 -->
