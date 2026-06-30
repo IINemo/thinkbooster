@@ -1,0 +1,137 @@
+# Your model can think longer. ThinkBooster helps you decide how.
+
+*One URL turns any LLM into its own "Pro reasoning mode," plus a benchmark that finally tells you what the extra accuracy costs.*
+
+> _[Figure: hero — framework diagram (`images/thinkbooster.png`) or the gateway diagram (`images/endpoint.pdf`)]_
+
+---
+
+Every frontier model now ships a "thinking" mode. Ask o1, R1, or Qwen3 a hard question and it spends more compute before answering, and usually does better for it. Test-time compute scaling is the name for that move: you pay more at answer time, not training time, to get a better answer.
+
+The catch is that "spend more compute" is not one method. You can sample ten answers and keep the best. You can search a tree of reasoning steps and prune the weak branches. You can let the model run until it is confident, then stop. You can add compute only on the steps where it hesitates. These cost very different amounts, and almost no paper reports the cost. So the question every practitioner actually has, *for the accuracy I need, which method is cheapest?*, has no clean answer.
+
+ThinkBooster is built to answer it.
+
+## What ThinkBooster is
+
+ThinkBooster is an open-source (MIT) framework for test-time compute scaling. It puts nine scaling strategies and four scorer families behind one API, measures accuracy and compute together, and ships as an OpenAI-compatible proxy with a visual debugger.
+
+The one design idea worth knowing: strategy and scorer are separate. The strategy decides the shape of the search, such as how many samples to draw, whether to follow a single line or branch into a tree, and when to stop. The scorer decides which partial answer looks best. ThinkBooster ships four kinds of scorer:
+
+- a **process reward model**: a separate critic model trained to grade reasoning steps;
+- the model's own **confidence**, read straight off its token probabilities, with no extra model to run;
+- an **LLM-as-judge**: ask a model to grade the work;
+- **ReProbe**: a light supervised probe on the model's internal states (our own work; more on it below).
+
+Any strategy pairs with any scorer. That is the point. You can ask for "beam search with a reward model" or "best-of-N with confidence" without rewriting anything.
+
+> _[Figure: the nine strategies table (`tab:tts_strategies`)]_
+
+## The hook, in one line of code
+
+The proxy is the part most people touch first. ThinkBooster sits in front of your model as an OpenAI-compatible endpoint, and the strategy and scorer live in the URL:
+
+```
+base_url = "<THINKBOOSTER_ENDPOINT>/v1/beam_search/prm"
+```
+
+Point your existing OpenAI client at that, and the same model now runs beam search scored by a reward model. Change it to `.../v1/best_of_n/confidence` and you have swapped the entire scaling method, with no other edit to your code. Agents, copilots, and enterprise stacks already speak OpenAI, so you add reasoning scaling by editing a string, and you keep the compute budget in your hands.
+
+> _[Figure: the endpoint gateway diagram (`images/endpoint.pdf`)]_
+
+## Does it actually work?
+
+Three results from the benchmark are worth pulling out, because each one cuts against the obvious intuition.
+
+**Confidence can beat a trained reward model, and confidence is free.** On HumanEval+, pairing the MUR strategy (which spends extra compute only on uncertain steps) with a plain entropy signal takes Qwen3-8B from 79.3 to 88.8, the best coding score in the study and higher than any reward-model setup. Entropy is read off the tokens the model already produced, so it adds almost nothing, while a reward model is a second network you have to run. Against the most accurate reward-model setup, beam search with a PRM, confidence is both more accurate and under a quarter of the compute. The honest scope: on math, a real reward model still wins. This is a coding finding, not a universal law.
+
+**Spending more does not reliably buy more.** With the cheap scorers, beam search trails plain best-of-N and even self-consistency, despite searching much harder. Its one strong configuration, beam search with a reward model, does reach the top math accuracy. But it costs 17 to 24 times more than best-of-N with the same reward model to get there, often for a tie or a single point. For most budgets, best-of-N with a reward model sits at the better accuracy-per-FLOP point.
+
+**A drop-in change can improve real engineering output.** On GPT-OSS-120B writing CUDA kernels, adding best-of-N with a reward model raised end-to-end correctness from 26 to 30 and cut syntax errors by five points. Compilation rate dipped by one point, because the reward model tends to pick more ambitious kernels that are likelier to fail to compile, a trade the correctness gain pays for.
+
+None of this shows up in an accuracy column on its own. Because ThinkBooster's benchmark logs TFLOPs and tokens next to accuracy, you can see the trade and pick the point you can afford.
+
+> _[Figure: accuracy-vs-compute plots (`qwen3_humaneval_ratio.pdf`, `qwen25_aggregate_ratio.pdf`) and the GPT-OSS results table (`tab:gpt_oss`)]_
+
+## ReProbe, on a model the paper never tested
+
+The internal-state scorer above, ReProbe, is its own line of work: *ReProbe: Efficient Test-Time Scaling of Multi-Step Reasoning by Probing Internal States of Large Language Models*. Instead of a full reward model or a single confidence number, it trains a small probe to read a model's hidden states and predict whether a reasoning step is on track. It is the kind of scorer no other framework ships, and because ThinkBooster keeps the model backend swappable, we can point it at models the original paper never benchmarked.
+
+We did that with K2-Think-V2, the reasoning model from MBZUAI and G42. With no changes to the model, ReProbe-guided best-of-N inside ThinkBooster lifts K2-Think-V2's MBPP+ pass rate over plain single-shot decoding: from 80.7 to 81.7 on the base tests, and from 66.1 to 66.9 on the harder plus set. The gain is small and comes from a single run, and we are scaling it up. But it makes the point that matters here: a new model and a research-grade scorer drop into the same framework and the same benchmark with no special-casing.
+
+## Which one should you use?
+
+A rough rule of thumb from the numbers above:
+
+- **Closed API, no access to logits:** best-of-N, majority voting, or extended thinking.
+- **Self-hosted and cost-sensitive:** best-of-N or MUR with a confidence scorer, which is free to compute and needs no second model.
+- **Need the most accuracy and willing to pay:** beam search with a reward model.
+
+## How it compares to OptiLLM and the rest
+
+ThinkBooster is not the only tool here, and the closest one is good. OptiLLM is an OpenAI-compatible proxy with a wide menu of inference techniques, and by a loose count it covers more tricks than ThinkBooster does. Our framework table uses a strict rule, counting genuine search, scoring, and decoding methods and excluding prompt-engineering scaffolds, and by that rule it is nine strategies to OptiLLM's seven. Counted loosely, both cover 20-plus methods. We are not claiming more tricks.
+
+What ThinkBooster adds that the others do not ship:
+
+- uncertainty and ReProbe-style internal-state scoring as first-class, swappable scorer families, built on LM-Polygraph, our group's uncertainty library;
+- process-reward-model scoring and FLOPs-level compute accounting (OptiLLM has neither);
+- a benchmark that reports accuracy and compute together, with bundled, judged datasets across math, coding, and science;
+- a visual debugger for reasoning trajectories.
+
+The other frameworks are narrower. LLM Reasoners is a strong modular research library, but it has no OpenAI endpoint, no native vLLM backend, and no joint performance–compute benchmark. The rest each specialize in one strategy, one reproduction, or visualization. The cells in our comparison are our own assessment rather than an audited score, but the gaps in uncertainty scoring and compute accounting are real.
+
+> _[Figure: the framework comparison table (`tab:ttc_frameworks`)]_
+
+## Try it in five minutes
+
+Install:
+
+```bash
+pip install thinkbooster
+```
+
+Use it as a proxy. Change the `base_url`, keep the rest of your code:
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="<THINKBOOSTER_ENDPOINT>/v1/beam_search/prm",
+    api_key="<YOUR_API_KEY>",
+)
+response = client.chat.completions.create(
+    model="Qwen/Qwen3-30B-A3B",
+    messages=[{"role": "user", "content":
+        "Find the number of ordered pairs (x, y) of "
+        "positive integers satisfying x + 2y = 2xy."}],
+    extra_body={"max_tokens": 8192, "tts_beam_size": 4},
+)
+print(response.choices[0].message.content)
+```
+
+You can also use it as a library, importing a strategy and running it yourself; run the compute-aware benchmark with one command to get accuracy and TFLOPs side by side; or open the visual debugger at `localhost:8001/debugger` and watch a strategy generate, score, prune, and select, one step at a time.
+
+> _[Figure: visual debugger screenshot (`images/demo-treeview.png` or `demo-result.png`)]_
+
+## The honest limitations
+
+The dynamic, confidence-driven strategies (MUR, DeepConf, uncertainty CoT) need logits or hidden states, so they want open-weight or self-hosted models. Against a closed API you get the black-box subset: best-of-N, majority voting, extended thinking, and LLM-as-judge scoring. Splitting native, unstructured "thinking" traces into clean steps is still hard, which can affect step-level scoring. And the evidence so far covers math, coding, and science QA; compute is reported as theoretical TFLOPs and tokens, with wall-clock logged but not yet studied.
+
+## Why you should try it
+
+Test-time compute scaling is here to stay; the useful question is which method, at what cost. ThinkBooster is the first tool that lets you measure that and ship the answer by changing a URL. If you research reasoning, you get a reproducible, compute-aware benchmark and scorers, including uncertainty and ReProbe, that you will not find elsewhere. If you build with LLMs, you get a drop-in proxy with the budget in your control.
+
+```bash
+pip install thinkbooster
+```
+
+Code and docs are on [GitHub](https://github.com/IINemo/thinkbooster); the paper is on [arXiv](https://arxiv.org/abs/2606.06915). Bring a strategy, a scorer, or a dataset.
+
+<!--
+PRE-PUBLISH CHECKLIST
+- Confirm the live demo URL is up before linking it (reviewers flagged it down).
+- Verify any tts_metadata field names against the shipped service if that example is added.
+- Confirm OptiLLM's current technique count so the loose "20+" stays accurate.
+- K2-Think-V2 + ReProbe number is single-seed; replace with multi-seed mean once available.
+- Insert figures at the marked spots; export tables (tab:gpt_oss, tab:ttc_frameworks) as images.
+-->
