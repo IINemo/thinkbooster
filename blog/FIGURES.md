@@ -42,6 +42,8 @@ CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 | `fig_gpt_oss.png` | §4, after the "drop-in change / CUDA kernels" paragraph |
 | `fig_ttc_frameworks.png` | §6, framework comparison |
 | `fig_strategies.png` | §2, the nine strategies |
+| `fig_k2_base.png` | ReProbe section — K2-Think-V2 on MBPP+ base (source `fig_k2_base.html`, window 660x352) |
+| `fig_k2_plus.png` | ReProbe section — K2-Think-V2 on MBPP+ plus (source `fig_k2_plus.html`, window 660x352) |
 
 ## Debugger figures (from the paper's composited PDFs)
 

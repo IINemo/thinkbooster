@@ -61,7 +61,13 @@ None of this shows up in an accuracy column on its own. Because ThinkBooster's b
 
 The internal-state scorer above, ReProbe, is its own line of work: *ReProbe: Efficient Test-Time Scaling of Multi-Step Reasoning by Probing Internal States of Large Language Models*. Instead of a full reward model or a single confidence number, it trains a small probe to read a model's hidden states and predict whether a reasoning step is on track. No other framework in our comparison offers it as a first-class scorer, and because ThinkBooster keeps the model backend swappable, we can point it at models the original paper never benchmarked.
 
-We did that with K2-Think-V2, the reasoning model from MBZUAI and G42. With no changes to the model, ReProbe-guided best-of-N inside ThinkBooster lifts K2-Think-V2's MBPP+ pass rate over plain single-shot decoding: from 80.7 to 81.7 on the base tests, and from 66.1 to 66.9 on the harder plus set. The point it makes is the one that matters here: a new model and a research-grade scorer drop into the same framework and the same benchmark with no special-casing.
+We did that with K2-Think-V2, the reasoning model from MBZUAI and G42. With no changes to the model, ReProbe-guided best-of-N inside ThinkBooster lifts K2-Think-V2's MBPP+ pass rate over plain single-shot decoding, on both the base tests and the harder plus set.
+
+> _[Figure: K2-Think-V2 + ReProbe best-of-N vs single-shot on MBPP+ base (`blog/fig_k2_base.png`)]_
+
+> _[Figure: K2-Think-V2 + ReProbe best-of-N vs single-shot on MBPP+ plus (`blog/fig_k2_plus.png`)]_
+
+The point it makes is the one that matters here: a new model and a research-grade scorer drop into the same framework and the same benchmark with no special-casing.
 
 ## Which one should you use?
 
