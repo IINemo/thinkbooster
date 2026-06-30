@@ -8,7 +8,7 @@
 
 Every frontier model now ships a "thinking" mode. Ask o1, R1, or Qwen3 a hard question and it spends more compute before answering, and usually does better for it. Test-time compute scaling is the name for that move: you pay more at answer time, not training time, to get a better answer.
 
-The catch is that "spend more compute" is not one method. You can sample ten answers and keep the best. You can search a tree of reasoning steps and prune the weak branches. You can let the model run until it is confident, then stop. You can add compute only on the steps where it hesitates. These cost very different amounts, and almost no paper reports the cost. So the question every practitioner actually has, *for the accuracy I need, which method is cheapest?*, has no clean answer.
+The catch is that "spend more compute" is not one method. You can sample ten answers and keep the best. You can search a tree of reasoning steps and prune the weak branches. You can let the model run until it is confident, then stop. You can add compute only on the steps where it hesitates. These cost very different amounts, and most papers don't report the cost. So the question every practitioner actually has, *for the accuracy I need, which method is cheapest?*, has no clean answer.
 
 ThinkBooster is built to answer it.
 
@@ -35,7 +35,7 @@ The proxy is the part most people touch first. ThinkBooster sits in front of you
 base_url = "<THINKBOOSTER_ENDPOINT>/v1/beam_search/prm"
 ```
 
-Point your existing OpenAI client at that, and the same model now runs beam search scored by a reward model. Change it to `.../v1/best_of_n/confidence` and you have swapped the entire scaling method, with no other edit to your code. Agents, copilots, and enterprise stacks already speak OpenAI, so you add reasoning scaling by editing a string, and you keep the compute budget in your hands.
+Point your existing OpenAI client at that, and the same model now runs beam search scored by a reward model. Change it to `.../v1/offline_bon/entropy` and you have swapped the entire scaling method, with no other edit to your code. Agents, copilots, and enterprise stacks already speak OpenAI, so you add reasoning scaling by editing a string, and you keep the compute budget in your hands.
 
 > _[Figure: the endpoint gateway diagram (`images/endpoint.pdf`)]_
 
@@ -43,7 +43,7 @@ Point your existing OpenAI client at that, and the same model now runs beam sear
 
 Three results from the benchmark are worth pulling out, because each one cuts against the obvious intuition.
 
-**Confidence can beat a trained reward model, and confidence is free.** On HumanEval+, pairing the MUR strategy (which spends extra compute only on uncertain steps) with a plain entropy signal takes Qwen3-8B from 79.3 to 88.8, the best coding score in the study and higher than any reward-model setup. Entropy is read off the tokens the model already produced, so it adds almost nothing, while a reward model is a second network you have to run. Against the most accurate reward-model setup, beam search with a PRM, confidence is both more accurate and under a quarter of the compute. The scope is narrow: this is a coding result. On math, a trained reward model still wins.
+**Confidence can beat a trained reward model, and confidence is free.** On HumanEval+, pairing the MUR strategy (which spends extra compute only on uncertain steps) with a plain entropy signal takes Qwen3-8B from 79.3 to 88.8, the best coding score in the study and higher than any reward-model setup. Entropy is read off the tokens the model already produced, so it adds almost nothing, while a reward model is a second network you have to run. Against the most accurate reward-model setup, beam search with a PRM, confidence is both more accurate and under a quarter of the compute. The scope is narrow: this is a coding result. On math, the cheap signal does not win; there the strongest results come from a PRM, or from self-consistency on the hardest sets.
 
 **Spending more does not reliably buy more.** With the cheap scorers, beam search trails plain best-of-N and even self-consistency, despite searching much harder. Its one strong configuration, beam search with a reward model, reaches the top math accuracy on several of the benchmarks, such as OlympiadBench and Gaokao, though best-of-N with the same reward model ties or beats it on the hardest sets. And it costs 17 to 24 times more than best-of-N to get there, often for a tie or a single point. For most budgets, best-of-N with a reward model sits at the better accuracy-per-FLOP point.
 
@@ -55,7 +55,7 @@ None of this shows up in an accuracy column on its own. Because ThinkBooster's b
 
 ## ReProbe, on a model the paper never tested
 
-The internal-state scorer above, ReProbe, is its own line of work: *ReProbe: Efficient Test-Time Scaling of Multi-Step Reasoning by Probing Internal States of Large Language Models*. Instead of a full reward model or a single confidence number, it trains a small probe to read a model's hidden states and predict whether a reasoning step is on track. It is the kind of scorer no other framework ships, and because ThinkBooster keeps the model backend swappable, we can point it at models the original paper never benchmarked.
+The internal-state scorer above, ReProbe, is its own line of work: *ReProbe: Efficient Test-Time Scaling of Multi-Step Reasoning by Probing Internal States of Large Language Models*. Instead of a full reward model or a single confidence number, it trains a small probe to read a model's hidden states and predict whether a reasoning step is on track. No other framework in our comparison offers it as a first-class scorer, and because ThinkBooster keeps the model backend swappable, we can point it at models the original paper never benchmarked.
 
 We did that with K2-Think-V2, the reasoning model from MBZUAI and G42. With no changes to the model, ReProbe-guided best-of-N inside ThinkBooster lifts K2-Think-V2's MBPP+ pass rate over plain single-shot decoding: from 80.7 to 81.7 on the base tests, and from 66.1 to 66.9 on the harder plus set. The gain is small and comes from a single run, and we are scaling it up. But it makes the point that matters here: a new model and a research-grade scorer drop into the same framework and the same benchmark with no special-casing.
 
@@ -65,20 +65,20 @@ A rough rule of thumb from the numbers above:
 
 - **Closed API, no access to logits:** best-of-N, majority voting, or extended thinking.
 - **Self-hosted and cost-sensitive:** best-of-N or MUR with a confidence scorer, which is free to compute and needs no second model.
-- **Need the most accuracy and willing to pay:** beam search with a reward model.
+- **Want top accuracy on math and can pay for it:** beam search with a reward model, though best-of-N with the same model is often as good for far less.
 
 ## How it compares to OptiLLM and the rest
 
-ThinkBooster is not the only tool here, and the closest one is good. OptiLLM is an OpenAI-compatible proxy with a wide menu of inference techniques, and by a loose count it covers more tricks than ThinkBooster does. Our framework table uses a strict rule, counting genuine search, scoring, and decoding methods and excluding prompt-engineering scaffolds, and by that rule it is nine strategies to OptiLLM's seven. Counted loosely, both cover 20-plus methods. We are not claiming more tricks.
+ThinkBooster is not the only tool here, and the closest one is good. OptiLLM is an OpenAI-compatible proxy with a wide menu of inference techniques, and by a loose count it covers more tricks than ThinkBooster does. Our framework table uses a strict rule, counting genuine search, scoring, and decoding methods and excluding prompt-engineering scaffolds, and by that rule it is nine strategies to OptiLLM's seven. ThinkBooster's nine families span more than twenty recent methods, and OptiLLM likewise bundles many prompt and inference techniques. We are not claiming more tricks.
 
-What ThinkBooster adds that the others do not ship:
+What no other framework offers all at once:
 
 - uncertainty and ReProbe-style internal-state scoring as first-class, swappable scorer families, built on LM-Polygraph, our group's uncertainty library;
 - first-class process-reward-model scoring and FLOPs-level compute accounting, which OptiLLM does not foreground;
 - a benchmark that reports accuracy and compute together, with bundled, judged datasets across math, coding, and science;
 - a visual debugger for reasoning trajectories.
 
-The other frameworks are narrower. LLM Reasoners is a strong modular research library, but it has no OpenAI endpoint, no native vLLM backend, and no joint performance–compute benchmark. The rest each specialize in one strategy, one reproduction, or visualization. The cells in our comparison are our own assessment rather than an audited score, but the gaps in uncertainty scoring and compute accounting are real.
+The other frameworks are narrower. LLM Reasoners is a strong modular research library, but it has no OpenAI endpoint, no native vLLM backend, and no joint performance–compute benchmark. The rest are narrower in scope, each oriented around a specific algorithm, a reproduction recipe, or visualization. The cells in our comparison are our own assessment rather than an audited score, but the gaps in uncertainty scoring and compute accounting are real.
 
 > _[Figure: the framework comparison table (`tab:ttc_frameworks`)]_
 
@@ -163,7 +163,7 @@ The dynamic, confidence-driven strategies (MUR, DeepConf, uncertainty CoT) need 
 
 ## Why you should try it
 
-Test-time compute scaling is here to stay; the useful question is which method, at what cost. ThinkBooster is the first tool that lets you measure that and ship the answer by changing a URL. If you research reasoning, you get a reproducible, compute-aware benchmark and scorers, including uncertainty and ReProbe, that you will not find elsewhere. If you build with LLMs, you get a drop-in proxy with the budget in your control.
+Test-time compute scaling is here to stay; the useful question is which method, at what cost. ThinkBooster lets you measure that and ship the answer by changing a URL. If you research reasoning, you get a reproducible, compute-aware benchmark and scorers, including uncertainty and ReProbe, that you will not find elsewhere. If you build with LLMs, you get a drop-in proxy with the budget in your control.
 
 You can try it in your browser right now, no install needed: [the live demo](http://demo-thinkbooster.nlpresearch.group), or watch the [screencast](https://www.youtube.com/watch?v=7Idrcs_4kfQ) first. To run it locally:
 
@@ -172,14 +172,4 @@ pip install thinkbooster
 ```
 
 Code and docs are on [GitHub](https://github.com/IINemo/thinkbooster); the paper is on [arXiv](https://arxiv.org/abs/2606.06915).
-
-<!--
-PRE-PUBLISH CHECKLIST
-- Live demo linked in the CTA (http://demo-thinkbooster.nlpresearch.group, verified up 2026-06-30). It is http-only and runs on an ephemeral RunPod pod — keep the pod up through launch; serving https on the custom domain would be more robust.
-- Verify any tts_metadata field names against the shipped service if that example is added.
-- Confirm OptiLLM's current technique count so the loose "20+" stays accurate.
-- K2-Think-V2 + ReProbe vs baseline: matched single-shot (N=1) vs best-of-N (N=4) at seed 42 on the same 378-problem MBPP+ split (baseline = SLURM job 2651567, posted to PR #257). Single-seed; replace with a multi-seed mean once available.
-- Insert figures at the marked spots; export tables (tab:gpt_oss, tab:ttc_frameworks) as images.
-- Service guide link points to docs/service/running_locally.md on main (PR #259 merged).
--->
 
