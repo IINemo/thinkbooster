@@ -165,19 +165,21 @@ The dynamic, confidence-driven strategies (MUR, DeepConf, uncertainty CoT) need 
 
 Test-time compute scaling is here to stay; the useful question is which method, at what cost. ThinkBooster is the first tool that lets you measure that and ship the answer by changing a URL. If you research reasoning, you get a reproducible, compute-aware benchmark and scorers, including uncertainty and ReProbe, that you will not find elsewhere. If you build with LLMs, you get a drop-in proxy with the budget in your control.
 
+You can try it in your browser right now, no install needed: [the live demo](http://demo-thinkbooster.nlpresearch.group). To run it locally:
+
 ```bash
 pip install thinkbooster
 ```
 
-Code and docs are on [GitHub](https://github.com/IINemo/thinkbooster); the paper is on [arXiv](https://arxiv.org/abs/2606.06915). Bring a strategy, a scorer, or a dataset.
+Code and docs are on [GitHub](https://github.com/IINemo/thinkbooster); the paper is on [arXiv](https://arxiv.org/abs/2606.06915).
 
 <!--
 PRE-PUBLISH CHECKLIST
-- Confirm the live demo URL is up before linking it (reviewers flagged it down).
+- Live demo linked in the CTA (http://demo-thinkbooster.nlpresearch.group, verified up 2026-06-30). It is http-only and runs on an ephemeral RunPod pod — keep the pod up through launch; serving https on the custom domain would be more robust.
 - Verify any tts_metadata field names against the shipped service if that example is added.
 - Confirm OptiLLM's current technique count so the loose "20+" stays accurate.
 - K2-Think-V2 + ReProbe vs baseline: matched single-shot (N=1) vs best-of-N (N=4) at seed 42 on the same 378-problem MBPP+ split (baseline = SLURM job 2651567, posted to PR #257). Single-seed; replace with a multi-seed mean once available.
 - Insert figures at the marked spots; export tables (tab:gpt_oss, tab:ttc_frameworks) as images.
-- Service guide link points to docs/service/running_locally.md on main; confirm doc PR #259 is merged before publishing.
+- Service guide link points to docs/service/running_locally.md on main (PR #259 merged).
 -->
 
