@@ -47,10 +47,12 @@ CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 ```bash
 IMG="../_ACL_2026__ThinkBooster_demo (1)/images"
-pdftoppm -png -r 200 -singlefile "$IMG/main-1-new.pdf" fig_debugger_a
-pdftoppm -png -r 200 -singlefile "$IMG/main-2-new.pdf" fig_debugger_b
-# then trim the card whitespace to content with Pillow:
-#   diff vs white, threshold >28, crop to getbbox()+14px margin
+# Render full pages (1700x2200 at 200 dpi), then crop with the paper's LaTeX trim
+# values (trim=L B R T in pt). At 200 dpi, 1pt = 200/72 px; Pillow box = (L, T, W-R, H-B).
+pdftoppm -png -r 200 -singlefile "$IMG/main-1-new.pdf" /tmp/m1
+pdftoppm -png -r 200 -singlefile "$IMG/main-2-new.pdf" /tmp/m2
+#   fig_debugger_a  <- main-1-new, trim 75 105 75 116  (paper uses T=123; eased to 116 for a top margin)
+#   fig_debugger_b  <- main-2-new, trim 120 360 120 40 (paper's tree crop; drops the border + empty space)
 ```
 
 | PNG | View |
