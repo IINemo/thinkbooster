@@ -23,7 +23,7 @@ The one design idea worth knowing: strategy and scorer are separate. The strateg
 - an **LLM-as-judge**: ask a model to grade the work;
 - **ReProbe**: a light supervised probe on the model's internal states (our own work; more on it below).
 
-Any strategy pairs with any scorer. That is the point. You can ask for "beam search with a reward model" or "best-of-N with confidence" without rewriting anything.
+Any strategy pairs with any scorer through a registry, so you can ask for "beam search with a reward model" or "best-of-N with confidence" without writing glue code. That registry is also the extension point: add a strategy or scorer once as a subclass, and the gateway, the benchmark, and the debugger all pick it up. Generation runs on vLLM underneath, so the same code goes from one GPU to multi-node.
 
 > _[Figure: the nine strategies table (`tab:tts_strategies`)]_
 
@@ -153,7 +153,7 @@ print(results[0]["trajectory"])
 print("Answer:", results[0]["extracted_answer"])
 ```
 
-From there you can run the compute-aware benchmark with one command to get accuracy and TFLOPs side by side, or open the visual debugger at `localhost:8001/debugger` and watch a strategy generate, score, prune, and select, one step at a time.
+From there you can run the compute-aware benchmark with one command to get accuracy and TFLOPs side by side, or open the visual debugger at `localhost:8001/debugger`. The debugger replays a run step by step, showing each step's score, the alternative candidates it weighed, and why one was kept. It can also put two strategies side by side on the same prompt under the same compute budget, which is the quickest way to see what the extra compute actually buys.
 
 > _[Figure: visual debugger screenshot (`images/demo-treeview.png` or `demo-result.png`)]_
 
@@ -165,7 +165,7 @@ The dynamic, confidence-driven strategies (MUR, DeepConf, uncertainty CoT) need 
 
 Test-time compute scaling is here to stay; the useful question is which method, at what cost. ThinkBooster is the first tool that lets you measure that and ship the answer by changing a URL. If you research reasoning, you get a reproducible, compute-aware benchmark and scorers, including uncertainty and ReProbe, that you will not find elsewhere. If you build with LLMs, you get a drop-in proxy with the budget in your control.
 
-You can try it in your browser right now, no install needed: [the live demo](http://demo-thinkbooster.nlpresearch.group). To run it locally:
+You can try it in your browser right now, no install needed: [the live demo](http://demo-thinkbooster.nlpresearch.group), or watch the [screencast](https://www.youtube.com/watch?v=7Idrcs_4kfQ) first. To run it locally:
 
 ```bash
 pip install thinkbooster
