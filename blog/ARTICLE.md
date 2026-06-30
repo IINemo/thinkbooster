@@ -90,7 +90,7 @@ Install:
 pip install thinkbooster
 ```
 
-**Option 1 — run it as a service and call the endpoint.** Stand the gateway up locally (the [PRM service guide](https://github.com/IINemo/thinkbooster/blob/prm-service-guide/docs/service/running_with_prm.md) walks through serving a model together with a PRM scorer), then point any OpenAI client at it. The strategy and scorer live in the URL, so the rest of your code does not change:
+**Option 1 — run it as a service and call the endpoint.** Stand the service up locally (the [local service guide](https://github.com/IINemo/thinkbooster/blob/main/docs/service/running_locally.md) covers building it and calling it as an endpoint), then point any OpenAI client at it. The strategy and scorer live in the URL, so the rest of your code does not change:
 
 ```python
 from openai import OpenAI
@@ -178,6 +178,6 @@ PRE-PUBLISH CHECKLIST
 - Confirm OptiLLM's current technique count so the loose "20+" stays accurate.
 - K2-Think-V2 + ReProbe vs baseline: matched single-shot (N=1) vs best-of-N (N=4) at seed 42 on the same 378-problem MBPP+ split (baseline = SLURM job 2651567, posted to PR #257). Single-seed; replace with a multi-seed mean once available.
 - Insert figures at the marked spots; export tables (tab:gpt_oss, tab:ttc_frameworks) as images.
-- Service guide link points to the prm-service-guide branch; switch to the main-branch URL once that doc merges.
+- Service guide link points to docs/service/running_locally.md on main; confirm doc PR #259 is merged before publishing.
 -->
 
