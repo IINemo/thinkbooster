@@ -1,6 +1,6 @@
-# Your model can think longer. ThinkBooster helps you decide how.
+# ThinkBooster: unlock your LLM's Pro reasoning mode by changing one URL
 
-*One URL gives any LLM a configurable "Pro reasoning mode," plus a benchmark that finally tells you what the extra accuracy costs.*
+*Plus a benchmark that finally tells you what the extra accuracy costs.*
 
 > _[Figure: hero — framework diagram (`images/thinkbooster.png`) or the gateway diagram (`images/endpoint.pdf`)]_
 
