@@ -90,7 +90,7 @@ Install:
 pip install thinkbooster
 ```
 
-Use it as a proxy. Change the `base_url`, keep the rest of your code:
+**Option 1 — run it as a service and call the endpoint.** Stand the gateway up locally (the [PRM service guide](https://github.com/IINemo/thinkbooster/blob/prm-service-guide/docs/service/running_with_prm.md) walks through serving a model together with a PRM scorer), then point any OpenAI client at it. The strategy and scorer live in the URL, so the rest of your code does not change:
 
 ```python
 from openai import OpenAI
@@ -109,7 +109,51 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)
 ```
 
-You can also use it as a library, importing a strategy and running it yourself; run the compute-aware benchmark with one command to get accuracy and TFLOPs side by side; or open the visual debugger at `localhost:8001/debugger` and watch a strategy generate, score, prune, and select, one step at a time.
+**Option 2 — import the pieces as a library.** Compose a model, a step generator, and a strategy yourself, then run a question through it:
+
+```python
+import os
+
+from lm_polygraph.utils.generation_parameters import GenerationParameters
+from thinkbooster.models.blackboxmodel_with_streaming import BlackboxModelWithStreaming
+from thinkbooster.generators.api import StepCandidateGeneratorThroughAPI
+from thinkbooster.strategies.strategy_self_consistency import StrategySelfConsistency
+
+# 1. A model behind any OpenAI-compatible endpoint (OpenRouter here)
+model = BlackboxModelWithStreaming(
+    openai_api_key=os.environ["OPENROUTER_API_KEY"],
+    model_path="openai/gpt-4o-mini",
+    base_url="https://openrouter.ai/api/v1",
+    supports_logprobs=True,
+    generation_parameters=GenerationParameters(
+        max_new_tokens=2048, temperature=0.7, top_p=0.8,
+    ),
+)
+
+# 2. A step generator over that model
+generator = StepCandidateGeneratorThroughAPI(
+    model=model, max_new_tokens=2048, temperature=0.7, top_p=0.8,
+)
+
+# 3. A strategy: self-consistency over 8 sampled paths
+strategy = StrategySelfConsistency(
+    step_generator=generator, num_paths=8, data_name="math",
+)
+
+# 4. Run it on a question
+request = [
+    {"role": "system", "content":
+        "Please reason step by step, and put your final answer within \\boxed{}."},
+    {"role": "user", "content": "What is 2^10 + 3^5?"},
+]
+results = strategy.generate_trajectories_batch(
+    requests=[request], sample_indices=[0],
+)
+print(results[0]["trajectory"])
+print("Answer:", results[0]["extracted_answer"])
+```
+
+From there you can run the compute-aware benchmark with one command to get accuracy and TFLOPs side by side, or open the visual debugger at `localhost:8001/debugger` and watch a strategy generate, score, prune, and select, one step at a time.
 
 > _[Figure: visual debugger screenshot (`images/demo-treeview.png` or `demo-result.png`)]_
 
@@ -134,4 +178,6 @@ PRE-PUBLISH CHECKLIST
 - Confirm OptiLLM's current technique count so the loose "20+" stays accurate.
 - K2-Think-V2 + ReProbe vs baseline: matched single-shot (N=1) vs best-of-N (N=4) at seed 42 on the same 378-problem MBPP+ split (baseline = SLURM job 2651567, posted to PR #257). Single-seed; replace with a multi-seed mean once available.
 - Insert figures at the marked spots; export tables (tab:gpt_oss, tab:ttc_frameworks) as images.
+- Service guide link points to the prm-service-guide branch; switch to the main-branch URL once that doc merges.
 -->
+
