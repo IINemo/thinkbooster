@@ -43,13 +43,17 @@ Three results from the benchmark are worth pulling out, because each one cuts ag
 
 **Confidence can beat a trained reward model, and confidence is free.** On HumanEval+, pairing the MUR strategy (which spends extra compute only on uncertain steps) with a plain entropy signal takes Qwen3-8B from 79.3 to 88.8, the best coding score in the study and higher than any reward-model setup. Entropy is read off the tokens the model already produced, so it adds almost nothing, while a reward model is a second network you have to run. Against the most accurate reward-model setup, beam search with a PRM, confidence is both more accurate and under a quarter of the compute. The scope is narrow: this is a coding result. On math, the cheap signal does not win; there the strongest results come from a PRM, or from self-consistency on the hardest sets.
 
+> _[Figure: Qwen3-8B on HumanEval+ — accuracy vs. compute (`blog/fig_qwen3_humaneval.png`)]_
+
 **Spending more does not reliably buy more.** With the cheap scorers, beam search trails plain best-of-N and even self-consistency, despite searching much harder. Its one strong configuration, beam search with a reward model, reaches the top math accuracy on several of the benchmarks, such as OlympiadBench and Gaokao, though best-of-N with the same reward model ties or beats it on the hardest sets. And it costs 17 to 24 times more than best-of-N to get there, often for a tie or a single point. For most budgets, best-of-N with a reward model sits at the better accuracy-per-FLOP point.
+
+> _[Figure: Qwen2.5-Math — accuracy vs. compute, aggregate over MATH-500, OlympiadBench, Gaokao (`blog/fig_qwen25_aggregate.png`)]_
 
 **A drop-in change can improve real engineering output.** On GPT-OSS-120B writing CUDA kernels, adding best-of-N with a reward model raised end-to-end correctness from 26 to 30 and cut syntax errors by five points. Compilation rate dipped by one point, consistent with the reward model favoring more ambitious kernels that are likelier to fail to compile, a trade the correctness gain pays for.
 
-None of this shows up in an accuracy column on its own. Because ThinkBooster's benchmark logs TFLOPs and tokens next to accuracy, you can see the trade and pick the point you can afford.
+> _[Figure: GPT-OSS-120B results (`blog/fig_gpt_oss.png`)]_
 
-> _[Figure: accuracy-vs-compute plots (`qwen3_humaneval_ratio.pdf`, `qwen25_aggregate_ratio.pdf`) and the GPT-OSS results table (`tab:gpt_oss`)]_
+None of this shows up in an accuracy column on its own. Because ThinkBooster's benchmark logs TFLOPs and tokens next to accuracy, you can see the trade and pick the point you can afford.
 
 ## ReProbe, on a model the paper never tested
 
@@ -78,7 +82,7 @@ What no other framework offers all at once:
 
 The other frameworks are narrower. LLM Reasoners is a strong modular research library, but it has no OpenAI endpoint, no native vLLM backend, and no joint performance–compute benchmark. The rest are narrower in scope, each oriented around a specific algorithm, a reproduction recipe, or visualization. The cells in our comparison are our own assessment rather than an audited score, but the gaps in uncertainty scoring and compute accounting are real.
 
-> _[Figure: the framework comparison table (`tab:ttc_frameworks`)]_
+> _[Figure: framework comparison (`blog/fig_ttc_frameworks.png`)]_
 
 ## Try it in five minutes
 
