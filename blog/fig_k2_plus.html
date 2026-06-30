@@ -1,0 +1,31 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;background:#ffffff;}
+  body{display:flex;justify-content:center;padding:26px 30px;
+       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .card{display:inline-block;}
+  h3{margin:0 0 14px 2px;font-size:18px;color:#15181d;}
+  table{border-collapse:collapse;font-size:15.5px;color:#15181d;}
+  th,td{padding:12px 24px;text-align:center;white-space:nowrap;vertical-align:middle;}
+  thead th{background:#111827;color:#fff;font-weight:600;}
+  tbody td:first-child,thead th:first-child{text-align:left;}
+  tbody tr{border-bottom:1px solid #e8eaed;}
+  tbody tr:last-child{border-bottom:2px solid #111827;}
+  .pct{font-weight:600;font-size:16px;display:block;}
+  .cnt{display:block;color:#6b7280;font-size:12px;font-weight:400;margin-top:1px;}
+  .gain{display:block;color:#0b7a3b;font-size:12.5px;font-weight:700;margin-top:3px;}
+  .best .pct{color:#0b7a3b;font-weight:800;}
+  caption{caption-side:bottom;text-align:left;color:#6b7280;font-size:13px;
+          padding-top:14px;max-width:560px;line-height:1.5;}
+</style></head><body><div class="card">
+<h3>K2-Think-V2 on MBPP+ (plus tests)</h3>
+<table>
+  <caption>ReProbe-guided offline best-of-N (N=4) vs single-shot CoT, medium thinking budget. MBPP+ plus tests (378 problems; base + extra auto-generated tests, a stricter check). pass@1, single seed. <span style="color:#0b7a3b;font-weight:700;">Green</span> = gain over the baseline.</caption>
+  <thead><tr><th>Method</th><th>N</th><th>pass@1 (plus)</th></tr></thead>
+  <tbody>
+    <tr><td>Single-shot CoT (baseline)</td><td>1</td>
+      <td><span class="pct">66.1%</span><span class="cnt">250 / 378</span></td></tr>
+    <tr class="best"><td>Offline best-of-N + ReProbe</td><td>4</td>
+      <td><span class="pct">66.9%</span><span class="cnt">253 / 378</span><span class="gain">+0.8 pp</span></td></tr>
+  </tbody>
+</table>
+</div></body></html>
