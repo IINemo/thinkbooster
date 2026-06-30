@@ -32,16 +32,18 @@ CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 "$CHROME" --headless --disable-gpu --hide-scrollbars --force-device-scale-factor=2 \
   --default-background-color=FFFFFFFF --screenshot=fig_ttc_frameworks.png \
   --window-size=1240,660 "file://$PWD/fig_ttc_frameworks.html"
+"$CHROME" --headless --disable-gpu --hide-scrollbars --force-device-scale-factor=2 \
+  --default-background-color=FFFFFFFF --screenshot=fig_strategies.png \
+  --window-size=1080,628 "file://$PWD/fig_strategies.html"
 ```
 
 | PNG | Article slot |
 |-----|--------------|
 | `fig_gpt_oss.png` | §4, after the "drop-in change / CUDA kernels" paragraph |
 | `fig_ttc_frameworks.png` | §6, framework comparison |
+| `fig_strategies.png` | §2, the nine strategies |
 
 ## Still to do
 
-- **§2 — nine strategies table** (`tab:tts_strategies`): still a placeholder. Build a
-  `fig_strategies.html` the same way as the tables above, or screenshot it from the paper.
 - **§7 — visual debugger**: use `images/demo-treeview.png` / `demo-result.png` directly
   (already raster; no conversion needed).

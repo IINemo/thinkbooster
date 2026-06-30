@@ -25,7 +25,7 @@ The one design idea worth knowing: strategy and scorer are separate. The strateg
 
 Any strategy pairs with any scorer through a registry, so you can ask for "beam search with a reward model" or "best-of-N with confidence" without writing glue code. That registry is also the extension point: add a strategy or scorer once as a subclass, and the gateway, the benchmark, and the debugger all pick it up. Generation runs on vLLM underneath, so the same code goes from one GPU to multi-node.
 
-> _[Figure: the nine strategies table (`tab:tts_strategies`)]_
+> _[Figure: the nine strategies (`blog/fig_strategies.png`)]_
 
 ## The hook, in one line of code
 
