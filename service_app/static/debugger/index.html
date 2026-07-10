@@ -91,6 +91,20 @@
             <span>Case</span>
             <select id="caseSelect"></select>
           </label>
+          <label class="control" style="text-align:center">
+            <span>Load File</span>
+            <button id="experimentFileButton" type="button" style="font-size:0.85em;cursor:pointer;padding:4px 12px">Choose JSON file…</button>
+            <input type="file" id="experimentFileInput" accept=".json" style="display:none" />
+          </label>
+        </div>
+        <div id="sampleNavigation" class="controls cached-controls hidden">
+          <button id="prevSampleBtn" type="button" disabled>&larr; Prev</button>
+          <span id="sampleCounter" style="font-size:0.85em;color:var(--muted)"></span>
+          <button id="nextSampleBtn" type="button" disabled>Next &rarr;</button>
+          <label style="display:flex;align-items:center;gap:0.3em;font-size:0.85em;color:var(--muted);margin-left:1em">
+            <input type="checkbox" id="filterIncorrectToggle" />
+            Incorrect only
+          </label>
         </div>
         <div id="cachedExplorerPrompt" class="prompt-strip embedded-prompt-strip hidden">
           <div>

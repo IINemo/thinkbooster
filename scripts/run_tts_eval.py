@@ -1705,6 +1705,19 @@ def _generate_trajectories_batch(
                 if key in result:
                     result_dict[key] = result[key]
 
+            # Save tree visualization data (if strategy provides it)
+            for key in (
+                "step_candidates",
+                "all_trajectories",
+                "all_trajectory_steps",
+                "all_scores",
+                "all_step_scores",
+                "all_traces",
+                "best_idx",
+            ):
+                if key in result:
+                    result_dict[key] = result[key]
+
             # Store answer_step for thinking mode strategies
             if "answer_step" in result:
                 result_dict["answer_step"] = result["answer_step"]
