@@ -1,0 +1,70 @@
+# @package _global_
+# Run: WANDB_MODE=online WANDB_ENTITY=nlpresearch.group python scripts/run_tts_eval.py --config-path=../config --config-name=experiments/offline_best_of_n/olympiadbench/offline_bon_vllm_gpt_oss_120b_olympiadbench_uhead
+# Offline Best-of-N with GPT-OSS-120B local vLLM + UHead scorer on OlympiadBench
+
+defaults:
+  - /config
+  - /model/vllm_qwen3
+  - /generation/default
+  - /system/default
+  - /strategy/offline_bon
+  - /scorer/uhead_vllm
+  - /evaluation/exact_match_only
+  - _self_
+
+run_name: "offline_bon_vllm_gpt_oss_120b_olympiadbench_uhead_${scorer.uq_head_path}_seed${system.seed}_${now:%H-%M-%S}"
+
+verbose: true
+report_to: wandb
+wandb_project: llm-tts-eval-olympiadbench
+wandb_group: "offline_bon_vllm_gpt_oss_120b_olympiadbench_uhead"
+
+model:
+  type: "vllm"
+  model_path: "openai/gpt-oss-120b"
+  model_short_name: "vllm_gpt_oss_120b"
+  gpu_memory_utilization: 0.7
+  tensor_parallel_size: 2
+  enable_prefix_caching: true
+  trust_remote_code: true
+  max_context_budget: 32768
+  disable_thinking_mode: false
+
+system:
+  device: cuda
+  seed: 42
+
+scorer:
+  type: uhead
+  uq_head_path: "ArtemVazhentsev21/uhead_gpt_oss_120b_claim"
+  max_model_len: 32000
+  gpu_memory_utilization: 0.2
+  tensor_parallel_size: 1
+  device: cuda:1
+  batch_size: 1
+
+generation:
+  max_new_tokens: 32000
+  temperature: 0.7
+  top_p: 0.8
+  top_k: 20
+  batch_size: 1
+  max_length: 65536
+
+strategy:
+  max_steps: 100
+  max_step_tokens: 2048
+
+dataset:
+  dataset_path: "karantonis/test_olympiadbench"
+  dataset_config: null
+  dataset_split: "test"
+  subset: 675
+  offset: 0
+  question_field: "question"
+  answer_field: "answer"
+  answer_format: "numeric"
+  data_name: "olympiadbench"
+  system_prompt: "Please reason step by step, and put your final answer within \\boxed{}."
+  prompt_template: "{question}"
+  prompt_file: null
