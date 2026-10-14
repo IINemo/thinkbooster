@@ -1,0 +1,43 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;background:#ffffff;}
+  body{display:flex;justify-content:center;padding:26px 30px;
+       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .card{display:inline-block;}
+  table{border-collapse:collapse;font-size:14.5px;color:#15181d;}
+  th,td{padding:8px 12px;text-align:center;white-space:nowrap;}
+  thead th{background:#111827;color:#fff;font-weight:600;}
+  thead th.tb{background:#3730a3;}
+  tbody td:first-child,thead th:first-child{text-align:left;font-weight:600;white-space:nowrap;}
+  tbody tr{border-bottom:1px solid #e8eaed;}
+  td.tb{background:#eef2ff;font-weight:700;}
+  .yes{color:#0b7a3b;font-weight:800;}
+  .part{color:#c2820a;font-weight:700;}
+  .no{color:#c2c7ce;}
+  .cnt{color:#6b7280;font-weight:400;font-size:12.5px;}
+  .small{font-size:12px;color:#374151;}
+  caption{caption-side:bottom;text-align:left;color:#6b7280;font-size:13px;
+          padding-top:14px;max-width:980px;line-height:1.5;}
+</style></head><body><div class="card">
+<table>
+  <caption><b>ThinkBooster vs. other test-time-scaling frameworks.</b>
+  <span class="yes">&#10003;</span> supported &nbsp; <span class="part">&#9680;</span> partial &nbsp; <span class="no">&#10007;</span> not supported.
+  "API" = any OpenAI-compatible HTTP endpoint. Counts include genuine search / scoring / decoding methods only (prompt-engineering scaffolds excluded). This is our own assessment, not an audited score.</caption>
+  <thead><tr>
+    <th>Feature</th><th class="tb">ThinkBooster</th><th>OptiLLM</th><th>LLM&nbsp;Reasoners</th>
+    <th>OpenR</th><th>S&amp;L</th><th>TreeQuest</th><th>ReasonGraph</th>
+  </tr></thead>
+  <tbody>
+    <tr><td>Strategy breadth</td><td class="tb"><span class="yes">&#10003;</span> <span class="cnt">(9)</span></td><td><span class="part">&#9680;</span> <span class="cnt">(7)</span></td><td><span class="part">&#9680;</span> <span class="cnt">(5)</span></td><td><span class="part">&#9680;</span> <span class="cnt">(5)</span></td><td><span class="no">&#10007;</span> <span class="cnt">(3)</span></td><td><span class="no">&#10007;</span> <span class="cnt">(1)</span></td><td><span class="no">&#10007;</span> <span class="cnt">(0)</span></td></tr>
+    <tr><td>Scorer-family breadth</td><td class="tb"><span class="yes">&#10003;</span> <span class="cnt">(4)</span></td><td><span class="part">&#9680;</span> <span class="cnt">(2)</span></td><td><span class="part">&#9680;</span> <span class="cnt">(2)</span></td><td><span class="no">&#10007;</span> <span class="cnt">(1)</span></td><td><span class="no">&#10007;</span> <span class="cnt">(1)</span></td><td><span class="part">&#9680;</span> <span class="cnt">(1)</span></td><td><span class="no">&#10007;</span> <span class="cnt">(0)</span></td></tr>
+    <tr><td>Supports methods up to</td><td class="tb">2026</td><td>2026</td><td>2024</td><td>2024</td><td>2024</td><td>2026</td><td>2023</td></tr>
+    <tr><td>Uncertainty-based scorers</td><td class="tb"><span class="yes">&#10003;</span></td><td><span class="no">&#10007;</span></td><td><span class="no">&#10007;</span></td><td><span class="no">&#10007;</span></td><td><span class="no">&#10007;</span></td><td><span class="no">&#10007;</span></td><td><span class="no">&#10007;</span></td></tr>
+    <tr><td>Joint perf&ndash;compute benchmark</td><td class="tb"><span class="yes">&#10003;</span></td><td><span class="part">&#9680;</span></td><td><span class="part">&#9680;</span></td><td><span class="part">&#9680;</span></td><td><span class="part">&#9680;</span></td><td><span class="no">&#10007;</span></td><td><span class="no">&#10007;</span></td></tr>
+    <tr><td>Bundled math benchmarks</td><td class="tb">5</td><td>0</td><td>0</td><td>2</td><td>1</td><td>0</td><td>0</td></tr>
+    <tr><td>Bundled coding benchmarks</td><td class="tb">3</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+    <tr><td>Backends</td><td class="tb small">vLLM+HF+API</td><td class="small">API+HF+MLX</td><td class="small">HF+SGLang+API</td><td class="small">vLLM+HF</td><td class="small">vLLM</td><td class="small">agnostic</td><td class="small">API</td></tr>
+    <tr><td>OpenAI-compatible gateway</td><td class="tb"><span class="yes">&#10003;</span></td><td><span class="yes">&#10003;</span></td><td><span class="no">&#10007;</span></td><td><span class="no">&#10007;</span></td><td><span class="no">&#10007;</span></td><td><span class="no">&#10007;</span></td><td><span class="no">&#10007;</span></td></tr>
+    <tr><td>Visual debugger</td><td class="tb"><span class="yes">&#10003;</span></td><td><span class="no">&#10007;</span></td><td><span class="part">&#9680;</span></td><td><span class="part">&#9680;</span></td><td><span class="no">&#10007;</span></td><td><span class="no">&#10007;</span></td><td><span class="yes">&#10003;</span></td></tr>
+    <tr><td>Modular architecture</td><td class="tb"><span class="yes">&#10003;</span></td><td><span class="part">&#9680;</span></td><td><span class="part">&#9680;</span></td><td><span class="part">&#9680;</span></td><td><span class="no">&#10007;</span></td><td><span class="part">&#9680;</span></td><td><span class="part">&#9680;</span></td></tr>
+  </tbody>
+</table>
+</div></body></html>

@@ -1,0 +1,41 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;background:#ffffff;}
+  body{display:flex;justify-content:center;padding:26px 30px;
+       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .card{display:inline-block;}
+  table{border-collapse:collapse;font-size:15px;color:#15181d;}
+  th,td{padding:10px 16px;text-align:center;vertical-align:middle;}
+  thead th{background:#111827;color:#fff;font-weight:600;white-space:nowrap;}
+  thead th:nth-child(1),thead th:nth-child(2){text-align:left;}
+  tbody td:nth-child(1){text-align:left;font-weight:700;white-space:nowrap;}
+  tbody td.desc{text-align:left;white-space:normal;max-width:400px;color:#374151;line-height:1.35;}
+  tbody tr{border-bottom:1px solid #e8eaed;}
+  tbody tr:last-child{border-bottom:2px solid #111827;}
+  .white{color:#c2820a;font-weight:600;}
+  .black{color:#6b7280;}
+  .yes{color:#0b7a3b;font-weight:800;}
+  .no{color:#c2c7ce;font-weight:700;}
+  .mode{font-weight:600;color:#3730a3;}
+  caption{caption-side:bottom;text-align:left;color:#6b7280;font-size:13.5px;
+          padding-top:14px;max-width:880px;line-height:1.5;}
+</style></head><body><div class="card">
+<table>
+  <caption><b>The nine test-time-scaling strategies in ThinkBooster.</b>
+  <span class="mode">Online</span> strategies score while the model reasons; <b>offline</b> ones score after a full answer.
+  <span class="white">White-box</span> strategies read logits or hidden states; <span class="black">black-box</span> ones need only the generated text. Any strategy pairs with any scorer.</caption>
+  <thead><tr>
+    <th>Strategy</th><th>What it does</th><th>Mode</th><th>Access</th><th>Prefill</th>
+  </tr></thead>
+  <tbody>
+    <tr><td>Best-of-N</td><td class="desc">Sample N full solutions, keep the best one by the scorer</td><td>Offline</td><td class="black">Black-box</td><td class="no">&#10007;</td></tr>
+    <tr><td>Majority voting</td><td class="desc">Sample N solutions, take the majority answer (self-consistency)</td><td>Offline</td><td class="black">Black-box</td><td class="no">&#10007;</td></tr>
+    <tr><td>Beam search (ToT)</td><td class="desc">Explore a tree of reasoning steps, prune low-scoring branches</td><td class="mode">Online</td><td class="black">Black-box</td><td class="yes">&#10003;</td></tr>
+    <tr><td>Extended thinking</td><td class="desc">Force a longer chain of thought within a budget</td><td class="mode">Online</td><td class="black">Black-box</td><td class="yes">&#10003;</td></tr>
+    <tr><td>MUR</td><td class="desc">Spend extra compute only on the steps the model is unsure about</td><td class="mode">Online</td><td class="white">White-box</td><td class="yes">&#10003;</td></tr>
+    <tr><td>DeepConf (online)</td><td class="desc">Steer generation toward high-confidence tokens</td><td class="mode">Online</td><td class="white">White-box</td><td class="yes">&#10003;</td></tr>
+    <tr><td>DeepConf (offline)</td><td class="desc">Rerank sampled solutions by the model's own confidence</td><td>Offline</td><td class="white">White-box</td><td class="no">&#10007;</td></tr>
+    <tr><td>Phi-decoding</td><td class="desc">Foresight sampling with adaptive pruning on an uncertainty signal</td><td class="mode">Online</td><td class="white">White-box</td><td class="yes">&#10003;</td></tr>
+    <tr><td>Uncertainty-CoT</td><td class="desc">Branch into extra trajectories when the model is uncertain</td><td class="mode">Online</td><td class="white">White-box</td><td class="yes">&#10003;</td></tr>
+  </tbody>
+</table>
+</div></body></html>
