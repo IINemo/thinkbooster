@@ -20,7 +20,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install black isort flake8
+          # Keep isort aligned with the dev dependency in pyproject.toml.
+          pip install black isort==7.0.0 flake8
 
       - name: Check formatting with black
         run: black --check thinkbooster scripts service_app
