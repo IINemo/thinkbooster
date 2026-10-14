@@ -38,6 +38,33 @@ except ImportError:
     VLLM_AVAILABLE = False
     SamplingParams = None
 
+
+# Thinking-mode close tags. K2-Think varies the close tag by reasoning budget
+# (set via reasoning_effort -> the chat template emits the matching open tag):
+#   high / None -> <think>...</think>
+#   medium      -> <think_fast>...</think_fast>
+#   low         -> <think_faster>...</think_faster>
+THINK_CLOSE_TAGS = ("</think>", "</think_fast>", "</think_faster>")
+
+
+def _think_close_tag_for_effort(reasoning_effort: Optional[str]) -> str:
+    """Return the thinking close tag the model emits for a reasoning budget."""
+    return {
+        "medium": "</think_fast>",
+        "low": "</think_faster>",
+    }.get((reasoning_effort or "").lower(), "</think>")
+
+
+def _find_think_close(text: str):
+    """Return (tag, index) of the earliest thinking close tag, else (None, -1)."""
+    best_tag, best_idx = None, -1
+    for tag in THINK_CLOSE_TAGS:
+        idx = text.find(tag)
+        if idx != -1 and (best_idx == -1 or idx < best_idx):
+            best_tag, best_idx = tag, idx
+    return best_tag, best_idx
+
+
 # Optional lm-polygraph imports for uncertainty computation
 try:
     from lm_polygraph.utils import VLLMWithUncertainty
@@ -126,6 +153,9 @@ class VLLMStepGenerator(StepCandidateGeneratorBase):
         self.context_budget = max_context_budget
         self.seed = seed
         self.reasoning_effort = reasoning_effort
+        # Thinking close tag the model will emit for this reasoning budget
+        # (K2-Think: medium -> </think_fast>, low -> </think_faster>, else </think>)
+        self.think_close_tag = _think_close_tag_for_effort(reasoning_effort)
 
         # Stop token IDs (e.g., [151645, 151643] for Qwen EOS)
         self.stop_token_ids = list(stop_token_ids) if stop_token_ids else None
@@ -176,9 +206,9 @@ class VLLMStepGenerator(StepCandidateGeneratorBase):
         # Derive stop tokens from detector's use_* flags
         self.stop_tokens = detector.get_vllm_stop_tokens()
 
-        # Add </think> for thinking mode
-        if self.thinking_mode and "</think>" not in self.stop_tokens:
-            self.stop_tokens.append("</think>")
+        # Add the (budget-dependent) thinking close tag for thinking mode
+        if self.thinking_mode and self.think_close_tag not in self.stop_tokens:
+            self.stop_tokens.append(self.think_close_tag)
 
         # Response stop tokens for answer phase (thinking mode only)
         self.response_stop_tokens = self.answer_patterns.copy()
@@ -397,8 +427,8 @@ class VLLMStepGenerator(StepCandidateGeneratorBase):
     # =========================================================================
 
     def _is_thinking_complete(self, text: str) -> bool:
-        """Check if thinking phase is complete (contains </think>)."""
-        return "</think>" in text
+        """Check if thinking phase is complete (contains a thinking close tag)."""
+        return _find_think_close(text)[0] is not None
 
     def _build_prompt(
         self,
@@ -788,27 +818,32 @@ class VLLMStepGenerator(StepCandidateGeneratorBase):
 
                     # Check if thinking phase is complete
                     # vLLM strips stop strings from output, so check stop_reason too
-                    thinking_complete = "</think>" in text or stop_reason == "</think>"
+                    close_tag, close_pos = _find_think_close(text)
+                    stopped_on_close = stop_reason in THINK_CLOSE_TAGS
+                    thinking_complete = close_tag is not None or stopped_on_close
                     # Don't mark trajectory complete — answer phase still needs to run.
-                    # Append </think> back to text so downstream can detect it
-                    if stop_reason == "</think>" and "</think>" not in text:
-                        text = text + "</think>"
+                    # vLLM strips the stop string, so append the close tag back.
+                    if stopped_on_close and close_tag is None:
+                        text = text + stop_reason
+                        close_tag, close_pos = stop_reason, text.find(stop_reason)
 
-                    # Truncate at </think> if it appeared mid-step.
+                    # Truncate at the close tag if it appeared mid-step.
                     # This happens when min_step_tokens prevents vLLM from stopping
-                    # at </think> — the model continues into answer phase, leaking
-                    # answer tokens into the step. Discard everything after </think>.
-                    if thinking_complete and stop_reason != "</think>":
-                        think_pos = text.find("</think>")
-                        if think_pos >= 0:
-                            leaked = len(text) - (think_pos + len("</think>"))
-                            if leaked > 0:
-                                text = text[: think_pos + len("</think>")]
-                                log.info(
-                                    f"Path {traj_idx} cand {cand_idx}: "
-                                    f"truncated {leaked} chars after </think> "
-                                    f"(min_step_tokens bypassed stop)"
-                                )
+                    # at the close tag — the model continues into the answer phase,
+                    # leaking answer tokens into the step. Discard everything after it.
+                    if (
+                        thinking_complete
+                        and not stopped_on_close
+                        and close_tag is not None
+                    ):
+                        leaked = len(text) - (close_pos + len(close_tag))
+                        if leaked > 0:
+                            text = text[: close_pos + len(close_tag)]
+                            log.info(
+                                f"Path {traj_idx} cand {cand_idx}: "
+                                f"truncated {leaked} chars after {close_tag} "
+                                f"(min_step_tokens bypassed stop)"
+                            )
 
                     if thinking_complete:
                         is_thinking_complete = True
@@ -1021,7 +1056,7 @@ class VLLMStepGenerator(StepCandidateGeneratorBase):
         max_tokens = max_tokens or self.generation_limit
 
         sampling_params = self._create_sampling_params(
-            stop_tokens=["</think>"],
+            stop_tokens=[self.think_close_tag],
             n=num_candidates,
             max_tokens=max_tokens,
             min_tokens=0,
@@ -1035,8 +1070,8 @@ class VLLMStepGenerator(StepCandidateGeneratorBase):
         for idx, output in enumerate(request_output.outputs):
             text = output.text
 
-            if "</think>" not in text:
-                text = text + "</think>"
+            if _find_think_close(text)[0] is None:
+                text = text + self.think_close_tag
 
             # Process output into candidate
             candidate = self._process_generation_output(
@@ -1335,13 +1370,13 @@ class VLLMStepGenerator(StepCandidateGeneratorBase):
             trajectory = trajectory or []
             if self.thinking_mode and model_supports_thinking:
                 full_trajectory = convert_trajectory_to_string(trajectory)
-                if "</think>" not in full_trajectory:
+                if _find_think_close(full_trajectory)[0] is None:
                     log.warning(
                         "generate_answer_candidates_batch: trajectory missing "
-                        "</think>. Adding closing step."
+                        "thinking close tag. Adding closing step."
                     )
                     close_thinking_step = StepCandidate(
-                        text="</think>",
+                        text=self.think_close_tag,
                         token_ids=[],
                         is_complete=True,
                         is_trajectory_complete=False,

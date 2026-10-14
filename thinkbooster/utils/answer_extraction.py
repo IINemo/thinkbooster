@@ -34,8 +34,20 @@ def extract_answer(text: str, answer_format: str = "auto") -> str:
         default_answer = _extract_default_answer(text)
         if default_answer:
             return default_answer
-        # Fall back to boxed format
-        answer = _extract_boxed_answer(text)
+        # Then XML <answer>...</answer> tags (e.g. K2-Think); preserves multi-line
+        # content so fenced code blocks survive for code benchmarks.
+        xml_answer = _extract_xml_answer(text)
+        if xml_answer:
+            # Clean any \boxed{} wrapper (math), harmless for code blocks
+            return _clean_boxed_from_answer(xml_answer)
+        # Then boxed format
+        boxed = _extract_boxed_answer(text)
+        if boxed:
+            return _clean_boxed_from_answer(boxed)
+        # Last resort: a bare fenced code block. Code models often emit a
+        # ```python ... ``` block with no <answer> wrapper (e.g. K2-Think low
+        # budget), which the evaluators can still grade.
+        return _extract_code_fence(text)
     elif answer_format == "default":
         answer = _extract_default_answer(text)
     else:
@@ -43,6 +55,41 @@ def extract_answer(text: str, answer_format: str = "auto") -> str:
 
     # Final cleanup: ensure no \boxed{} wrapper remains
     return _clean_boxed_from_answer(answer) if answer else ""
+
+
+def _extract_xml_answer(text: str) -> str:
+    """Extract answer from <answer>...</answer> tags (case-insensitive).
+
+    Returns the LAST non-empty match and preserves multi-line content, so a
+    fenced ```python ... ``` block survives intact for code benchmarks. Empty
+    tags (e.g. the model echoing the instruction "<answer></answer>" while
+    reasoning) are skipped.
+    """
+    matches = [
+        m.strip()
+        for m in re.findall(
+            r"<answer>\s*(.*?)\s*</answer>", text, re.DOTALL | re.IGNORECASE
+        )
+        if m.strip()
+    ]
+    return matches[-1] if matches else ""
+
+
+def _extract_code_fence(text: str) -> str:
+    """Extract the LAST fenced code block, re-wrapped as ```python ... ```.
+
+    Fallback for code models that emit a bare code block without an <answer>
+    wrapper. Returns the block with fences so downstream code extractors
+    (e.g. EvalPlus) re-detect it; empty string if there is no non-empty block.
+    """
+    blocks = [
+        b.strip()
+        for b in re.findall(r"```[a-zA-Z0-9_+\-]*\n(.*?)```", text, re.DOTALL)
+        if b.strip()
+    ]
+    if not blocks:
+        return ""
+    return "```python\n" + blocks[-1] + "\n```"
 
 
 def _extract_default_answer(text: str) -> str:
