@@ -5,7 +5,10 @@ Tool-call IDs identify a particular generation, not the proposed action.
 """
 
 import json
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+
+# Upstream stopped before the turn was finished; any tool arguments are partial.
+_CUT_OFF_FINISH_REASONS = {"length", "content_filter"}
 
 
 def assistant_message_text(message: Dict[str, Any]) -> str:
@@ -17,8 +20,30 @@ def assistant_message_text(message: Dict[str, Any]) -> str:
     return "\n".join(part for part in parts if part)
 
 
+def is_well_formed_turn(
+    message: Dict[str, Any], finish_reason: Optional[str] = None
+) -> bool:
+    """A turn a client can act on: not cut off, and every argument string parses."""
+    if finish_reason in _CUT_OFF_FINISH_REASONS:
+        return False
+    for call in message.get("tool_calls") or []:
+        arguments = call["function"]["arguments"]
+        # Some providers send "" for functions that take no parameters.
+        if not arguments or not arguments.strip():
+            continue
+        try:
+            json.loads(arguments)
+        except (ValueError, TypeError):
+            return False
+    return True
+
+
 def assistant_message_key(message: Dict[str, Any]) -> str:
-    """Compare tool plans by ordered functions/arguments, ignoring sampled IDs."""
+    """Compare tool plans by functions/arguments, ignoring sampled IDs.
+
+    Calls in one turn are issued together, before any result is known, so their
+    order carries no meaning and is normalised away.
+    """
     calls = message.get("tool_calls") or []
     if not calls:
         return json.dumps({"content": message.get("content")}, ensure_ascii=False)
@@ -31,4 +56,5 @@ def assistant_message_key(message: Dict[str, Any]) -> str:
         except (ValueError, TypeError):
             pass
         plan.append({"name": function["name"], "arguments": arguments})
+    plan.sort(key=lambda item: json.dumps(item, sort_keys=True, ensure_ascii=False))
     return json.dumps({"tool_calls": plan}, sort_keys=True, ensure_ascii=False)

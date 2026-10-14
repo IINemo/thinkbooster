@@ -15,7 +15,7 @@ from openai import OpenAI
 
 from service_app.core.config import settings
 from thinkbooster.generators.api import StepCandidateGeneratorThroughAPI
-from thinkbooster.models.tool_calls import assistant_message_key
+from thinkbooster.models.tool_calls import assistant_message_key, is_well_formed_turn
 
 TOOLS = [
     {
@@ -64,8 +64,11 @@ def upstream(monkeypatch):
             state["requests"].append(payload)
             assert state["messages"], "Unexpected extra generation/continuation"
             message = copy.deepcopy(state["messages"].pop(0))
-        reason = state["finish_reason"] or (
-            "tool_calls" if message.get("tool_calls") else "stop"
+        # A queued message may carry its own finish_reason (test-only key).
+        reason = (
+            message.pop("_finish_reason", None)
+            or state["finish_reason"]
+            or ("tool_calls" if message.get("tool_calls") else "stop")
         )
         logprobs = None
         probability = state["probabilities"].get(message.get("content"))
@@ -287,7 +290,7 @@ def test_local_vllm_tool_request_fails_before_stream_starts(test_client):
     assert "model_base_url" in response.text
 
 
-def test_tool_consensus_retains_order_and_handles_invalid_json():
+def test_tool_consensus_ignores_call_order_and_handles_invalid_json():
     first = tool_message(arguments="not json")
     assert assistant_message_key(first) == assistant_message_key(
         tool_message("new-id", "not json")
@@ -295,7 +298,8 @@ def test_tool_consensus_retains_order_and_handles_invalid_json():
     second = tool_message(arguments='{"path":"second.py"}')
     ordered = {"tool_calls": first["tool_calls"] + second["tool_calls"]}
     reversed_calls = {"tool_calls": list(reversed(ordered["tool_calls"]))}
-    assert assistant_message_key(ordered) != assistant_message_key(reversed_calls)
+    # Parallel calls are issued together, so their order is not part of the plan.
+    assert assistant_message_key(ordered) == assistant_message_key(reversed_calls)
     assert assistant_message_key(first) != assistant_message_key(
         {"content": "not json"}
     )
@@ -335,3 +339,85 @@ def test_tool_stream_ends_with_done(test_client, upstream):
     assert response.text.endswith("data: [DONE]\n\n")
     assert '"type": "progress"' not in response.text
     assert '"type": "complete"' not in response.text
+
+
+def test_well_formed_turn_detection():
+    assert is_well_formed_turn(tool_message())
+    assert is_well_formed_turn(tool_message(arguments=""))  # parameterless function
+    assert not is_well_formed_turn(tool_message(arguments='{"path":'))
+    assert not is_well_formed_turn(tool_message(), finish_reason="length")
+    assert not is_well_formed_turn(tool_message(), finish_reason="content_filter")
+    assert is_well_formed_turn({"role": "assistant", "content": "hi"}, "stop")
+
+
+@pytest.mark.parametrize(
+    "strategy", ["self_consistency", "offline_bon", "online_bon", "beam_search"]
+)
+def test_cut_off_and_malformed_candidates_are_not_selected(
+    test_client, upstream, strategy
+):
+    # Without logprobs every candidate scores a neutral 0.5, so the first one
+    # would win a tie. Both broken candidates come first on purpose.
+    cut_off = tool_message("cut", '{"path":')
+    cut_off["_finish_reason"] = "length"
+    malformed = tool_message("bad", "{'path': 'main.py'}")
+    good = tool_message("good", '{"path":"main.py"}')
+    upstream["messages"] = [cut_off, malformed, good]
+    response = test_client.post(
+        "/v1/chat/completions",
+        json=body(
+            tts_strategy=strategy,
+            num_paths=3,
+            tts_num_trajectories=3,
+            tts_candidates_per_step=3,
+            tts_beam_size=3,
+        ),
+    )
+    assert response.status_code == 200, response.text
+    choice = response.json()["choices"][0]
+    assert choice["message"]["tool_calls"] == good["tool_calls"]
+    assert choice["finish_reason"] == "tool_calls"
+    assert len(upstream["requests"]) == 3
+
+
+def test_text_only_tool_turn_votes_like_plain_chat(test_client, upstream):
+    request = body(num_paths=3, tool_choice="none")
+    request["messages"] += [
+        tool_message(),
+        {"role": "tool", "tool_call_id": "call_selected", "content": "31"},
+    ]
+    upstream["messages"] = [
+        {"role": "assistant", "content": "It is 30 degrees."},
+        {"role": "assistant", "content": "Dubai is at 31 degrees."},
+        {"role": "assistant", "content": "Right now it is 31 degrees in Dubai."},
+    ]
+    response = test_client.post("/v1/chat/completions", json=request)
+    assert response.status_code == 200, response.text
+    choice = response.json()["choices"][0]
+    # Both 31-degree replies tie; candidates finish concurrently, so either may win.
+    assert choice["message"]["content"] in [
+        "Dubai is at 31 degrees.",
+        "Right now it is 31 degrees in Dubai.",
+    ]
+    assert choice["tts_metadata"]["results"]["consensus_score"] == pytest.approx(2 / 3)
+
+
+@pytest.mark.parametrize("strategy", ["offline_bon", "online_bon", "beam_search"])
+def test_tool_request_without_provider_does_not_leave_local_vllm(
+    test_client, upstream, strategy
+):
+    request = body(tts_strategy=strategy)
+    del request["provider"]
+    response = test_client.post("/v1/chat/completions", json=request)
+    assert response.status_code == 400
+    assert "provider" in response.text
+    assert upstream["requests"] == []
+
+
+def test_tool_request_without_provider_uses_api_default(test_client, upstream):
+    upstream["messages"] = [tool_message()]
+    request = body()
+    del request["provider"]
+    response = test_client.post("/v1/chat/completions", json=request)
+    assert response.status_code == 200, response.text
+    assert len(upstream["requests"]) == 1

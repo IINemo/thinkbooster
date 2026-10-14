@@ -28,6 +28,7 @@ from thinkbooster.generators.base import (
     StepCandidateGeneratorBase,
     convert_trajectory_to_string,
 )
+from thinkbooster.models.tool_calls import is_well_formed_turn
 from thinkbooster.step_boundary_detectors.thinking import ThinkingMarkerDetector
 
 if TYPE_CHECKING:
@@ -1148,7 +1149,35 @@ class StepCandidateGeneratorThroughAPI(StepCandidateGeneratorBase):
                     sid, candidates_by_traj[traj_idx], context_tokens=ctx
                 )
 
+        if self.tool_mode:
+            # Filter after token accounting: discarded turns still cost compute.
+            result = [self._prefer_well_formed_turns(cands) for cands in result]
+
         return result
+
+    def _prefer_well_formed_turns(
+        self, candidates: List[StepCandidate]
+    ) -> List[StepCandidate]:
+        """Drop cut-off or unparseable tool turns while a usable alternative exists.
+
+        Confidence scores are usually neutral for tool calls (no logprobs), so a
+        broken candidate would otherwise win any tie it happens to sit first in.
+        """
+        usable = [
+            c
+            for c in candidates
+            if "assistant_message" not in c.other_data
+            or is_well_formed_turn(
+                c.other_data["assistant_message"], c.other_data.get("finish_reason")
+            )
+        ]
+        if not usable or len(usable) == len(candidates):
+            return candidates
+        log.warning(
+            f"Discarded {len(candidates) - len(usable)}/{len(candidates)} "
+            "cut-off or malformed tool-call candidates"
+        )
+        return usable
 
     # =========================================================================
     # Public API methods (mirror VLLMStepGenerator)

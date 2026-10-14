@@ -161,13 +161,14 @@ async def create_chat_completion(
 
         if (
             request.uses_tool_protocol
-            and request.provider == "vllm"
+            and _resolve_provider(request) == "vllm"
             and not request.model_base_url
         ):
             raise HTTPException(
                 status_code=400,
                 detail="Tool calls require an OpenAI-compatible API backend. "
-                "Set model_base_url to use a vLLM server with tool parsing enabled.",
+                "Set provider (openai or openrouter), or set model_base_url to use "
+                "a vLLM server with tool parsing enabled.",
             )
 
         # SSE streaming path
@@ -421,23 +422,26 @@ def _completion_chunks(response: Dict[str, Any]):
     }
 
 
-def _build_strategy_config(request: ChatCompletionRequest) -> Dict[str, Any]:
+def _resolve_provider(request: ChatCompletionRequest) -> str:
     strategy_type = request.tts_strategy or "self_consistency"
     is_vllm_strategy = strategy_type in ("offline_bon", "online_bon", "beam_search")
 
     # When an API key is provided the request goes through the API backend,
-    # not local vLLM, so default to openrouter (not vllm).
+    # not local vLLM, so default to openrouter (not vllm). Tool fields alone
+    # do not switch backends: that would silently send a request meant for the
+    # local model to OpenRouter under the same model name.
     if request.provider:
-        provider = request.provider
-    elif request.tts_api_key or request.model_base_url or request.uses_tool_protocol:
-        provider = "openrouter"
-    elif is_vllm_strategy:
-        provider = "vllm"
-    else:
-        provider = "openrouter"
+        return request.provider
+    if request.tts_api_key or request.model_base_url:
+        return "openrouter"
+    if is_vllm_strategy:
+        return "vllm"
+    return "openrouter"
 
+
+def _build_strategy_config(request: ChatCompletionRequest) -> Dict[str, Any]:
     return {
-        "provider": provider,
+        "provider": _resolve_provider(request),
         "tool_mode": request.uses_tool_protocol,
         "chat_completion_kwargs": request.model_dump(
             include={"tools", "tool_choice", "parallel_tool_calls"}, exclude_none=True

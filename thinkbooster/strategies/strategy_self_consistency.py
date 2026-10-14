@@ -325,8 +325,14 @@ class StrategySelfConsistency(StrategyBase):
 
         # Compare tool plans by function names and parsed arguments, never by
         # random call IDs or the numeric-answer extractor used for math tasks.
+        # When no candidate calls a tool (e.g. the turn after a tool result),
+        # exact-text keys almost never agree, so vote like a plain chat request
+        # and only carry the structured message through.
         structured = all("assistant_message" in p for p in reasoning_paths)
-        if structured:
+        calls_tools = structured and any(
+            p["assistant_message"].get("tool_calls") for p in reasoning_paths
+        )
+        if calls_tools:
             all_answers = [
                 assistant_message_key(p["assistant_message"]) for p in reasoning_paths
             ]

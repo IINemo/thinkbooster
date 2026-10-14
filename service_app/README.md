@@ -105,10 +105,13 @@ print(response.choices[0].message.content)
 
 Tool-enabled requests use complete assistant turns as candidates across all four
 strategies. Step boundaries and assistant prefill are disabled for these turns,
-so JSON arguments are never split at reasoning markers. Self-consistency votes
-on function names and parsed arguments, ignoring call IDs and JSON key order;
-text-only replies on these requests use exact-text voting. Best-of-N and beam
-search score the complete turn. Only the selected message is returned, with its
+so JSON arguments are never split at reasoning markers. Candidates that were cut
+off (`finish_reason` of `length` or `content_filter`) or whose arguments are not
+valid JSON are discarded whenever at least one well-formed candidate exists.
+Self-consistency votes on function names and parsed arguments, ignoring call IDs,
+JSON key order, and the order of parallel calls; when no candidate calls a tool,
+it votes the same way as a plain chat request. Best-of-N and beam search score
+the complete turn. Only the selected message is returned, with its
 original call IDs, arguments, and upstream `finish_reason`. ThinkBooster never
 executes the tools; the client executes the selected calls and sends results back.
 
@@ -120,7 +123,9 @@ fields or tool history retain the existing progress-event streaming format.
 Use `model_base_url` for another OpenAI-compatible backend, including a vLLM HTTP
 server configured for tool calling. The in-process `provider="vllm"` backend does
 not support this protocol and returns HTTP 400 for tool-enabled requests without
-`model_base_url`. The upstream model must support the requested tool options.
+`model_base_url`. This also applies when `provider` is omitted for a strategy that
+defaults to local vLLM (`offline_bon`, `online_bon`, `beam_search`): set
+`provider` explicitly. The upstream model must support the requested tool options.
 
 Confidence scorers still depend on upstream logprobs. Providers often omit
 logprobs for tool calls, so those calls receive neutral confidence scores; this
