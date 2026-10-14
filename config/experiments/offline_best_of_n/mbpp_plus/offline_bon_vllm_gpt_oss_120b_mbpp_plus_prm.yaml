@@ -28,7 +28,7 @@ model:
   model_path: "openai/gpt-oss-120b"
   model_short_name: "vllm_gpt_oss_120b"
   gpu_memory_utilization: 0.7
-  tensor_parallel_size: 1
+  tensor_parallel_size: 2
   enable_prefix_caching: true
   trust_remote_code: true
   max_context_budget: 32768
@@ -58,7 +58,7 @@ strategy:
 scorer:
   type: prm
   model_path: "Qwen/Qwen2.5-Math-PRM-7B"
-  device: cuda:0
+  device: cuda:2
   batch_size: 1
   use_vllm: true
   gpu_memory_utilization: 0.2
