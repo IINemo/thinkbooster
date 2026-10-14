@@ -486,6 +486,8 @@ def create_model(config):
             model=llm,
             sampling_params=sampling_params,
             device=config.model.get("device", "cuda"),
+            instruct=True,
+            enable_thinking=not config.model.get("disable_thinking_mode", False),
         )
 
         # Mark as vLLM model for strategy detection
