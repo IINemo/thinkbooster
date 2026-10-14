@@ -369,6 +369,11 @@ class StrategyBeamSearch(StrategyBase):
 
                         candidates_for_beam.append(
                             {
+                                **{
+                                    key: data[key]
+                                    for key in ("assistant_message", "finish_reason")
+                                    if key in data
+                                },
                                 "text": text,
                                 "token_ids": token_ids,
                                 "uncertainty": uncertainty,
@@ -405,6 +410,11 @@ class StrategyBeamSearch(StrategyBase):
 
                 for cand_data in candidates:
                     step_other_data = {
+                        **{
+                            key: cand_data[key]
+                            for key in ("assistant_message", "finish_reason")
+                            if key in cand_data
+                        },
                         "validity_score": cand_data["validity"],
                         "uncertainty_score": cand_data["uncertainty"],
                     }

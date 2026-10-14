@@ -56,6 +56,78 @@ print(response.choices[0].message.content)
 print(response.choices[0].tts_metadata)  # consensus_score, answer_distribution
 ```
 
+### Tool calling (OpenAI-compatible API backends)
+
+The chat endpoint accepts `tools`, `tool_choice` (`auto`, `none`, `required`, or
+an explicit function choice), and `parallel_tool_calls`. It preserves assistant
+`tool_calls`, nullable assistant `content`, and tool-result messages with their
+`tool_call_id`. Function definitions support `description`, `parameters`, and
+`strict`. Developer messages are also accepted.
+
+Configure `OPENAI_API_KEY` on the server for this example, or pass an upstream key
+as `tts_api_key` in `extra_body`:
+
+```python
+import json
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:8001/v1", api_key="unused")
+messages = [{"role": "user", "content": "What is the temperature in Dubai?"}]
+tools = [{
+    "type": "function",
+    "function": {
+        "name": "get_temperature",
+        "description": "Get the current temperature for a city",
+        "parameters": {
+            "type": "object",
+            "properties": {"city": {"type": "string"}},
+            "required": ["city"],
+        },
+    },
+}]
+options = {"provider": "openai", "tts_strategy": "self_consistency", "num_paths": 3}
+response = client.chat.completions.create(
+    model="gpt-4o-mini", messages=messages, tools=tools,
+    tool_choice="required", parallel_tool_calls=False, extra_body=options,
+)
+assistant = response.choices[0].message
+messages.append(assistant.model_dump(exclude_none=True))
+for call in assistant.tool_calls or []:
+    # Execute the selected function in your application. This sample result is illustrative.
+    result = {"city": json.loads(call.function.arguments)["city"], "celsius": 30}
+    messages.append({"role": "tool", "tool_call_id": call.id, "content": json.dumps(result)})
+response = client.chat.completions.create(
+    model="gpt-4o-mini", messages=messages, tools=tools,
+    tool_choice="none", extra_body=options,
+)
+print(response.choices[0].message.content)
+```
+
+Tool-enabled requests use complete assistant turns as candidates across all four
+strategies. Step boundaries and assistant prefill are disabled for these turns,
+so JSON arguments are never split at reasoning markers. Self-consistency votes
+on function names and parsed arguments, ignoring call IDs and JSON key order;
+text-only replies on these requests use exact-text voting. Best-of-N and beam
+search score the complete turn. Only the selected message is returned, with its
+original call IDs, arguments, and upstream `finish_reason`. ThinkBooster never
+executes the tools; the client executes the selected calls and sends results back.
+
+With `stream=True`, tool-enabled requests return OpenAI `chat.completion.chunk`
+events after selection, followed by `[DONE]`. Tool-call deltas have an `index` for
+each parallel call. Unselected candidates are not streamed. Requests without tool
+fields or tool history retain the existing progress-event streaming format.
+
+Use `model_base_url` for another OpenAI-compatible backend, including a vLLM HTTP
+server configured for tool calling. The in-process `provider="vllm"` backend does
+not support this protocol and returns HTTP 400 for tool-enabled requests without
+`model_base_url`. The upstream model must support the requested tool options.
+
+Confidence scorers still depend on upstream logprobs. Providers often omit
+logprobs for tool calls, so those calls receive neutral confidence scores; this
+change does not add a tool-correctness verifier. Self-consistency does not require
+logprobs. Each candidate consumes a separate upstream completion, and streaming
+begins only after candidate selection.
+
 ### vLLM Strategies (local model)
 
 Requires `VLLM_MODEL_PATH` to be set.

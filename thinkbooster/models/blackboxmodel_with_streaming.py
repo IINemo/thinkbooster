@@ -1,8 +1,9 @@
+import copy
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import openai
 from lm_polygraph import BlackboxModel
@@ -13,6 +14,7 @@ from thinkbooster.early_stopping import (
     ConfidenceEarlyStopping,
     EarlyStopping,
 )
+from thinkbooster.models.tool_calls import assistant_message_text
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +51,8 @@ class BlackboxModelWithStreaming(BlackboxModel):
         supports_logprobs: bool = False,
         base_url: Optional[str] = None,
         early_stopping: Optional[EarlyStopping] = None,
+        chat_completion_kwargs: Optional[Dict[str, Any]] = None,
+        tool_mode: bool = False,
     ):
         super().__init__(
             openai_api_key=openai_api_key,
@@ -61,6 +65,8 @@ class BlackboxModelWithStreaming(BlackboxModel):
         # Store client parameters for recreation
         self._api_key = openai_api_key
         self._base_url = base_url
+        self.chat_completion_kwargs = copy.deepcopy(chat_completion_kwargs or {})
+        self.tool_mode = tool_mode
 
         # Create persistent client with optional custom base_url (e.g., OpenRouter)
         # Configure timeouts for connection, read, write, and pool
@@ -213,7 +219,7 @@ class BlackboxModelWithStreaming(BlackboxModel):
 
         # If n>1, call API directly with logprobs + stop support
         # (parent's generate_texts returns plain strings without logprobs)
-        if n > 1:
+        if n > 1 or self.tool_mode:
             log.info(f"[IMPL] Batched generation with n={n} for {len(chats)} chat(s)")
             stop = args.get("stop", None)
             results = []
@@ -228,10 +234,16 @@ class BlackboxModelWithStreaming(BlackboxModel):
                     logprobs=needs_logprobs,
                     top_logprobs=20 if needs_logprobs else None,
                     stop=stop,
+                    **self.chat_completion_kwargs,
                 )
                 chat_results = []
                 for choice in response.choices:
                     text = choice.message.content or ""
+                    assistant_message = None
+                    if self.tool_mode:
+                        assistant_message = choice.message.model_dump(exclude_none=True)
+                        assistant_message["content"] = choice.message.content
+                        text = assistant_message_text(assistant_message)
                     logprobs_data = []
                     if needs_logprobs and choice.logprobs and choice.logprobs.content:
                         for token_info in choice.logprobs.content:
@@ -245,14 +257,15 @@ class BlackboxModelWithStreaming(BlackboxModel):
                                     ],
                                 }
                             )
-                    chat_results.append(
-                        {
-                            "text": text,
-                            "logprobs": logprobs_data,
-                            "finish_reason": choice.finish_reason,
-                        }
-                    )
-                results.append(chat_results)
+                    result = {
+                        "text": text,
+                        "logprobs": logprobs_data,
+                        "finish_reason": choice.finish_reason,
+                    }
+                    if assistant_message is not None:
+                        result["assistant_message"] = assistant_message
+                    chat_results.append(result)
+                results.append(chat_results if n > 1 else chat_results[0])
             return results
 
         # Otherwise use streaming implementation (n=1)
@@ -269,6 +282,7 @@ class BlackboxModelWithStreaming(BlackboxModel):
                 logprobs=needs_logprobs,
                 top_logprobs=20 if needs_logprobs else None,
                 stop=stop,
+                **self.chat_completion_kwargs,
             )
 
             accumulated_text = ""

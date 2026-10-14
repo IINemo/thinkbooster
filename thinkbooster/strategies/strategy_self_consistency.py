@@ -20,6 +20,7 @@ from thinkbooster.generators.base import (
     convert_trajectory_to_string,
     get_completion_info,
 )
+from thinkbooster.models.tool_calls import assistant_message_key
 from thinkbooster.scorers.majority_voting import ChainMajorityVotingScorer
 from thinkbooster.utils import extract_answer
 
@@ -178,8 +179,10 @@ class StrategySelfConsistency(StrategyBase):
                 )
                 continue
 
-            # Non-thinking or no </think>: split via detector
-            if hasattr(self.step_generator, "detector"):
+            # Tool-enabled turns must remain intact, including text-only replies.
+            if candidate.other_data.get("assistant_message") is not None:
+                steps = [text]
+            elif hasattr(self.step_generator, "detector"):
                 steps = self.step_generator.detector.detect_steps(
                     text, use_stop_tokens=True
                 )
@@ -199,6 +202,7 @@ class StrategySelfConsistency(StrategyBase):
                     "validity_scores": [],
                     "avg_validity": 0.0,
                     "answer_step": None,
+                    **get_completion_info([candidate]),
                 }
             )
 
@@ -319,8 +323,18 @@ class StrategySelfConsistency(StrategyBase):
         path_texts = [p["text"] for p in reasoning_paths]
         path_tokens = [p["num_tokens"] for p in reasoning_paths]
 
-        # Use the scorer to get consensus scores
-        scores = self.scorer.score_complete_chains(path_texts)
+        # Compare tool plans by function names and parsed arguments, never by
+        # random call IDs or the numeric-answer extractor used for math tasks.
+        structured = all("assistant_message" in p for p in reasoning_paths)
+        if structured:
+            all_answers = [
+                assistant_message_key(p["assistant_message"]) for p in reasoning_paths
+            ]
+            counts = Counter(all_answers)
+            scores = [counts[answer] / len(all_answers) for answer in all_answers]
+        else:
+            scores = self.scorer.score_complete_chains(path_texts)
+            all_answers = [self.scorer.extract_answer(path) for path in path_texts]
 
         # Find the path with highest consensus
         best_idx = int(np.argmax(scores))
@@ -329,10 +343,7 @@ class StrategySelfConsistency(StrategyBase):
         best_steps = reasoning_paths[best_idx].get("steps", [best_path])
 
         # Extract the best answer
-        best_answer = self.scorer.extract_answer(best_path)
-
-        # Get all answers for analysis
-        all_answers = [self.scorer.extract_answer(path) for path in path_texts]
+        best_answer = all_answers[best_idx]
 
         # Calculate answer distribution
         answer_counts = Counter(all_answers)
@@ -367,6 +378,18 @@ class StrategySelfConsistency(StrategyBase):
         log.info(f"Total tokens across all paths: {total_tokens}")
 
         return {
+            **(
+                {
+                    key: reasoning_paths[best_idx][key]
+                    for key in (
+                        "assistant_message",
+                        "finish_reason",
+                        "completion_reason",
+                    )
+                }
+                if structured
+                else {}
+            ),
             "best_path": best_path,
             "best_steps": best_steps,
             "best_answer": best_answer,
@@ -483,6 +506,9 @@ class StrategySelfConsistency(StrategyBase):
             }
             best_steps = result["best_steps"]
             res.update(get_completion_info(best_steps if best_steps else []))
+            if "assistant_message" in result:
+                for key in ("assistant_message", "finish_reason", "completion_reason"):
+                    res[key] = result[key]
             results.append(res)
 
         log.info(

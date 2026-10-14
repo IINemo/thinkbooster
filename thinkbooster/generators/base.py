@@ -15,6 +15,7 @@ log = logging.getLogger(__name__)
 class CompletionReason(str, Enum):
     """Reason why a trajectory was marked as complete."""
 
+    TOOL_CALLS = "tool_calls"  # Complete assistant turn containing tool calls
     THINKING_COMPLETE = "thinking_complete"  # </think> found in thinking mode
     EOS_PATTERN = "eos_pattern"  # <end of response> pattern matched
     ANSWER_PATTERN = "answer_pattern"  # <Answer>: or similar pattern matched
@@ -75,13 +76,18 @@ def get_completion_info(steps: List[StepCandidate]) -> Dict[str, Any]:
     if not isinstance(last, StepCandidate):
         return defaults
     cr = last.other_data.get("completion_reason") if last.other_data else None
-    return {
+    result = {
         "completion_reason": cr.value if hasattr(cr, "value") else cr,
         "context_limit_hit": cr == CompletionReason.CONTEXT_LIMIT,
         "max_steps_hit": (
             not last.is_trajectory_complete and not last.is_thinking_complete
         ),
     }
+
+    if last.other_data and "assistant_message" in last.other_data:
+        result["assistant_message"] = last.other_data["assistant_message"]
+        result["finish_reason"] = last.other_data.get("finish_reason", "stop")
+    return result
 
 
 def convert_trajectory_to_string(trajectory: List[StepCandidate]) -> str:

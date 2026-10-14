@@ -31,6 +31,7 @@ from thinkbooster.scorers.multi_scorer import (
     compute_logprob_scores,
     compute_logprob_scores_per_step,
 )
+from thinkbooster.scorers.step_scorer_confidence import StepScorerConfidence
 from thinkbooster.utils.answer_extraction import extract_answer
 
 from .strategy_base import StrategyBase
@@ -364,8 +365,10 @@ class StrategyOfflineBestOfN(StrategyBase):
                 "candidate": candidate,
             }
 
-        # Non-thinking mode: split full text via detector
-        if hasattr(self.step_generator, "detector"):
+        # Tool-enabled turns are scored as one complete assistant message.
+        if candidate.other_data and "assistant_message" in candidate.other_data:
+            steps = [raw_text]
+        elif hasattr(self.step_generator, "detector"):
             steps = self.step_generator.detector.detect_steps(
                 raw_text, use_stop_tokens=True
             )
@@ -583,6 +586,18 @@ class StrategyOfflineBestOfN(StrategyBase):
             request = data["request"]
             for traj_idx, traj_data in enumerate(data["trajectories"]):
                 candidate = traj_data["candidate"]
+
+                # Atomic tool turns already carry their full-turn confidence.
+                # Re-splitting logprobs against rendered JSON is not meaningful.
+                if getattr(self.step_generator, "tool_mode", False) and isinstance(
+                    self.scorer, StepScorerConfidence
+                ):
+                    score = candidate.other_data.get("validity_score")
+                    traj_data["step_scores"] = [0.5 if score is None else score]
+                    traj_data["aggregated_score"] = self._aggregate_scores(
+                        traj_data["step_scores"]
+                    )
+                    continue
 
                 # Compute per-step uncertainty if using uncertainty wrapper
                 # Score ONLY thinking steps using original candidate's token_ids/logprobs
@@ -924,6 +939,14 @@ class StrategyOfflineBestOfN(StrategyBase):
                 "token_stats": token_stats,
                 **get_completion_info(best_result.get("steps", [])),
             }
+
+            candidate = best_result.get("candidate")
+            if (
+                candidate
+                and candidate.other_data
+                and "assistant_message" in candidate.other_data
+            ):
+                result_dict.update(get_completion_info([candidate]))
 
             # Add candidates_data for multi-scoring analysis
             if self._multi_scoring_enabled:

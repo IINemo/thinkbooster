@@ -36,6 +36,7 @@ from service_app.core.visual_debugger_demo import (
     SUPPORTED_SCORERS,
     SUPPORTED_STRATEGIES,
 )
+from thinkbooster.models.tool_calls import assistant_message_text
 from thinkbooster.strategies.strategy_base import StrategyCancelled
 
 log = logging.getLogger(__name__)
@@ -158,6 +159,17 @@ async def create_chat_completion(
             f"TTS strategy: {request.tts_strategy} (from_url={url_strategy is not None})"
         )
 
+        if (
+            request.uses_tool_protocol
+            and request.provider == "vllm"
+            and not request.model_base_url
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Tool calls require an OpenAI-compatible API backend. "
+                "Set model_base_url to use a vLLM server with tool parsing enabled.",
+            )
+
         # SSE streaming path
         if request.stream:
             return _handle_streaming(request)
@@ -205,7 +217,7 @@ async def cancel_chat_completion(request_id: str):
 
 
 def _handle_sync(request: ChatCompletionRequest) -> ChatCompletionResponse:
-    messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
+    messages = [msg.to_api_message() for msg in request.messages]
 
     strategy_type = request.tts_strategy or "self_consistency"
     is_vllm_strategy = strategy_type in ("offline_bon", "online_bon", "beam_search")
@@ -256,7 +268,7 @@ def _handle_streaming(request: ChatCompletionRequest) -> StreamingResponse:
     def _progress_callback(message: str) -> None:
         progress_state["message"] = message
 
-    messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
+    messages = [msg.to_api_message() for msg in request.messages]
     strategy_type = request.tts_strategy or "self_consistency"
     is_vllm_strategy = strategy_type in ("offline_bon", "online_bon", "beam_search")
     strategy_config = _build_strategy_config(request)
@@ -321,25 +333,58 @@ def _handle_streaming(request: ChatCompletionRequest) -> StreamingResponse:
     thread.start()
 
     async def _event_stream():
-        # Emit request_id so the client can cancel this request
-        yield f"data: {json.dumps({'type': 'started', 'request_id': request_id})}\n\n"
+        try:
+            if request.uses_tool_protocol:
+                # Keep the connection alive without exposing unselected candidates.
+                yield ": selecting assistant turn\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'started', 'request_id': request_id})}\n\n"
 
-        last_sent: Optional[str] = None
-        deadline = asyncio.get_event_loop().time() + 600  # 10 min max
-        while asyncio.get_event_loop().time() < deadline:
-            try:
-                event = result_q.get_nowait()
-                yield f"data: {json.dumps(event)}\n\n"
-                return
-            except queue.Empty:
-                pass
-            current = progress_state["message"]
-            if current and current != last_sent:
-                last_sent = current
-                yield f"data: {json.dumps({'type': 'progress', 'message': current})}\n\n"
-            await asyncio.sleep(0.25)
-        cancel_event.set()  # signal background thread to stop and clean up
-        yield f"data: {json.dumps({'type': 'error', 'message': 'Strategy execution timed out (10 min)'})}\n\n"
+            last_sent: Optional[str] = None
+            deadline = asyncio.get_event_loop().time() + 600
+            while asyncio.get_event_loop().time() < deadline:
+                try:
+                    event = result_q.get_nowait()
+                    if request.uses_tool_protocol:
+                        if event["type"] == "complete":
+                            for chunk in _completion_chunks(event["data"]):
+                                yield f"data: {json.dumps(chunk)}\n\n"
+                            yield "data: [DONE]\n\n"
+                        else:
+                            error = {
+                                "error": {
+                                    "message": event.get(
+                                        "message", "Request cancelled"
+                                    ),
+                                    "type": "server_error",
+                                }
+                            }
+                            yield f"data: {json.dumps(error)}\n\n"
+                    else:
+                        yield f"data: {json.dumps(event)}\n\n"
+                    return
+                except queue.Empty:
+                    pass
+                current = progress_state["message"]
+                if current and current != last_sent:
+                    last_sent = current
+                    if request.uses_tool_protocol:
+                        yield ": selecting assistant turn\n\n"
+                    else:
+                        yield f"data: {json.dumps({'type': 'progress', 'message': current})}\n\n"
+                await asyncio.sleep(0.25)
+            error = {
+                "message": "Strategy execution timed out (10 min)",
+                "type": "server_error",
+            }
+            event = (
+                {"error": error}
+                if request.uses_tool_protocol
+                else {"type": "error", "message": error["message"]}
+            )
+            yield f"data: {json.dumps(event)}\n\n"
+        finally:
+            cancel_event.set()
 
     return StreamingResponse(
         _event_stream(),
@@ -356,6 +401,26 @@ def _handle_streaming(request: ChatCompletionRequest) -> StreamingResponse:
 # ------------------------------------------------------------------
 
 
+def _completion_chunks(response: Dict[str, Any]):
+    """Replay only the selected assistant turn as OpenAI Chat Completion chunks."""
+    base = {key: response[key] for key in ("id", "created", "model")}
+    base["object"] = "chat.completion.chunk"
+    choice = response["choices"][0]
+    message = choice["message"]
+    delta = {"role": "assistant", "content": message.get("content")}
+    if message.get("tool_calls"):
+        delta["tool_calls"] = [
+            {"index": index, **call} for index, call in enumerate(message["tool_calls"])
+        ]
+    yield {**base, "choices": [{"index": 0, "delta": delta, "finish_reason": None}]}
+    yield {
+        **base,
+        "choices": [
+            {"index": 0, "delta": {}, "finish_reason": choice["finish_reason"]}
+        ],
+    }
+
+
 def _build_strategy_config(request: ChatCompletionRequest) -> Dict[str, Any]:
     strategy_type = request.tts_strategy or "self_consistency"
     is_vllm_strategy = strategy_type in ("offline_bon", "online_bon", "beam_search")
@@ -364,7 +429,7 @@ def _build_strategy_config(request: ChatCompletionRequest) -> Dict[str, Any]:
     # not local vLLM, so default to openrouter (not vllm).
     if request.provider:
         provider = request.provider
-    elif request.tts_api_key or request.model_base_url:
+    elif request.tts_api_key or request.model_base_url or request.uses_tool_protocol:
         provider = "openrouter"
     elif is_vllm_strategy:
         provider = "vllm"
@@ -373,6 +438,10 @@ def _build_strategy_config(request: ChatCompletionRequest) -> Dict[str, Any]:
 
     return {
         "provider": provider,
+        "tool_mode": request.uses_tool_protocol,
+        "chat_completion_kwargs": request.model_dump(
+            include={"tools", "tool_choice", "parallel_tool_calls"}, exclude_none=True
+        ),
         "model_base_url": request.model_base_url,
         "tts_api_key": request.tts_api_key,
         "temperature": request.temperature,
@@ -403,7 +472,10 @@ def _build_response(
     is_vllm_strategy: bool,
 ) -> ChatCompletionResponse:
     trajectory = result.get("trajectory", "")
-    if not trajectory:
+    assistant_message = result.get("assistant_message")
+    if not trajectory and not (
+        assistant_message and assistant_message.get("tool_calls")
+    ):
         raise ValueError("Strategy returned empty trajectory")
 
     metadata = result.get("metadata", {})
@@ -458,10 +530,8 @@ def _build_response(
             _find_scorer_meta(request.tts_scorer) if request.tts_scorer else None
         )
 
-        messages = [
-            {"role": msg.role, "content": msg.content} for msg in request.messages
-        ]
-        prompt_text = " ".join(msg["content"] for msg in messages)
+        messages = [msg.to_api_message() for msg in request.messages]
+        prompt_text = " ".join(assistant_message_text(msg) for msg in messages)
 
         run = convert_strategy_result_to_debugger_run(
             strategy=strategy_meta,
@@ -485,8 +555,8 @@ def _build_response(
         metadata["debugger_run"] = run
 
     # Estimate token usage
-    messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
-    prompt_text = " ".join(msg["content"] for msg in messages)
+    messages = [msg.to_api_message() for msg in request.messages]
+    prompt_text = " ".join(assistant_message_text(msg) for msg in messages)
     prompt_tokens = estimate_tokens(prompt_text)
     completion_tokens = metadata.get("total_tokens", estimate_tokens(trajectory))
 
@@ -498,8 +568,12 @@ def _build_response(
         choices=[
             ChatCompletionChoice(
                 index=0,
-                message=ChatMessage(role="assistant", content=trajectory),
-                finish_reason="stop",
+                message=(
+                    ChatMessage.model_validate(assistant_message)
+                    if assistant_message is not None
+                    else ChatMessage(role="assistant", content=trajectory)
+                ),
+                finish_reason=result.get("finish_reason", "stop"),
                 tts_metadata=metadata,
             )
         ],

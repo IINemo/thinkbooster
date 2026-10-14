@@ -336,7 +336,9 @@ class StrategyManager:
 
         # Check if API backend is requested
         use_api_backend = bool(
-            strategy_config.get("tts_api_key") or strategy_config.get("model_base_url")
+            strategy_config.get("tts_api_key")
+            or strategy_config.get("model_base_url")
+            or strategy_config.get("tool_mode")
         )
 
         if strategy_type in (
@@ -482,6 +484,12 @@ class StrategyManager:
         from thinkbooster.step_boundary_detectors import ThinkingMarkerDetector
 
         provider = config.get("provider", "openrouter")
+        tool_mode = config.get("tool_mode", False)
+        if tool_mode and provider == "vllm" and not config.get("model_base_url"):
+            raise ValueError(
+                "Tool calls require an OpenAI-compatible API backend; "
+                "use model_base_url for a vLLM server."
+            )
         model_base_url = config.get("model_base_url")
         api_key = config.get("tts_api_key") or ""
         temperature = config.get("temperature", 0.7)
@@ -527,6 +535,8 @@ class StrategyManager:
             base_url=base_url,
             early_stopping=BoundaryEarlyStopping(detector=detector),
             generation_parameters=generation_parameters,
+            chat_completion_kwargs=config.get("chat_completion_kwargs"),
+            tool_mode=tool_mode,
         )
 
         # Wrap with APIWithUncertainty when logprobs are available so that
@@ -553,7 +563,8 @@ class StrategyManager:
             top_p=0.8,
             top_k=20,
             max_context_budget=8192,
-            prefill_mode=needs_prefill,
+            prefill_mode=needs_prefill and not tool_mode,
+            tool_mode=tool_mode,
             supports_logprobs=logprobs_supported,
             max_concurrent_requests=128,
         )

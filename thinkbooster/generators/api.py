@@ -94,10 +94,15 @@ class StepCandidateGeneratorThroughAPI(StepCandidateGeneratorBase):
         disable_thinking_mode: Optional[bool] = None,
         supports_logprobs: bool = True,
         max_concurrent_requests: int = 256,
+        tool_mode: bool = False,
     ):
         super().__init__(generation_batch_size=1024, flop_calculator=flop_calculator)
 
         self.model = model
+        self._generation_model = (
+            model.model if isinstance(model, APIWithUncertainty) else model
+        )
+        self.tool_mode = tool_mode
         self.thinking_mode = thinking_mode
         self.disable_thinking_mode = disable_thinking_mode
         self.prefill_mode = prefill_mode
@@ -417,7 +422,7 @@ class StepCandidateGeneratorThroughAPI(StepCandidateGeneratorBase):
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                results = self.model.generate_texts(
+                results = self._generation_model.generate_texts(
                     [request_messages],
                     max_new_tokens=max_tokens,
                     temperature=self.temperature,
@@ -495,7 +500,7 @@ class StepCandidateGeneratorThroughAPI(StepCandidateGeneratorBase):
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                results = self.model.generate_texts(
+                results = self._generation_model.generate_texts(
                     [request_messages],
                     max_new_tokens=max_tokens,
                     temperature=self.temperature,
@@ -730,6 +735,11 @@ class StepCandidateGeneratorThroughAPI(StepCandidateGeneratorBase):
             else self.stop_tokens
         )
         max_tokens = max_tokens if max_tokens is not None else self.step_token_limit
+        if self.tool_mode:
+            # A tool plan is an atomic assistant turn. Step markers can occur
+            # inside JSON arguments and must never truncate them.
+            effective_stop_tokens = []
+            max_tokens = self.generation_limit
 
         already_complete = {}
         active_indices = []
@@ -797,7 +807,7 @@ class StepCandidateGeneratorThroughAPI(StepCandidateGeneratorBase):
         #   Used when stop_tokens_override is set — baseline (["<end of response>"]),
         #   offline BoN ([]), self-consistency (["<end of response>"]). These have
         #   0-1 stop tokens which fit within the API's 4-stop limit.
-        use_streaming = stop_tokens_override is None
+        use_streaming = stop_tokens_override is None and not self.tool_mode
 
         # API stop parameter for the batch path (max 4 sequences)
         api_stop = None
@@ -931,7 +941,17 @@ class StepCandidateGeneratorThroughAPI(StepCandidateGeneratorBase):
                 # For streaming path, use pre-processed results from BoundaryEarlyStopping.
                 # step_text = text with stop token removed (like vLLM output.text)
                 # raw_collected = full accumulated text including stop token
-                if use_streaming:
+                if self.tool_mode:
+                    text = raw_text
+                    step_text = ""
+                    traj_complete = True
+                    is_thinking_complete = False
+                    completion_reason = (
+                        CompletionReason.TOOL_CALLS
+                        if raw.get("assistant_message", {}).get("tool_calls")
+                        else CompletionReason.EOS_PATTERN
+                    )
+                elif use_streaming:
                     step_text = raw.get("step_text", "")
                     raw_collected = raw.get("raw_collected", raw_text)
                     traj_complete = raw.get("trajectory_complete", False)
@@ -995,6 +1015,10 @@ class StepCandidateGeneratorThroughAPI(StepCandidateGeneratorBase):
 
                 # Score candidate using truncated logprobs
                 scoring_data = self._score_candidate(text, scoring_logprobs)
+                if self.tool_mode and scoring_data["validity_score"] is None:
+                    # Tool-call tokens often have no logprobs. All confidence
+                    # strategies must treat missing evidence as a neutral tie.
+                    scoring_data["validity_score"] = 0.5
 
                 # Determine stop reason string
                 stop_reason = None
@@ -1039,6 +1063,11 @@ class StepCandidateGeneratorThroughAPI(StepCandidateGeneratorBase):
                     raw_text=text,
                 )
 
+                if "assistant_message" in raw:
+                    candidate.other_data["assistant_message"] = raw["assistant_message"]
+                    candidate.other_data["finish_reason"] = raw.get(
+                        "finish_reason", "stop"
+                    )
                 if completion_reason:
                     candidate.other_data["completion_reason"] = completion_reason
 

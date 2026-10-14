@@ -5,17 +5,69 @@ Implements the same interface as OpenAI's Chat Completions API.
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+
+class FunctionDefinition(BaseModel):
+    name: str
+    description: Optional[str] = None
+    parameters: Optional[Dict[str, Any]] = None
+    strict: Optional[bool] = None
+
+
+class FunctionTool(BaseModel):
+    type: Literal["function"] = "function"
+    function: FunctionDefinition
+
+
+class FunctionCall(BaseModel):
+    name: str
+    arguments: str
+
+
+class ToolCall(BaseModel):
+    id: str
+    type: Literal["function"] = "function"
+    function: FunctionCall
+
+
+class NamedFunction(BaseModel):
+    name: str
+
+
+class NamedToolChoice(BaseModel):
+    type: Literal["function"] = "function"
+    function: NamedFunction
 
 
 class ChatMessage(BaseModel):
     """Chat message in OpenAI format."""
 
-    role: Literal["system", "user", "assistant"] = Field(
+    role: Literal["system", "developer", "user", "assistant", "tool"] = Field(
         ..., description="Message role"
     )
-    content: str = Field(..., description="Message content")
+    content: Optional[str] = Field(default=None, description="Message content")
     name: Optional[str] = Field(None, description="Optional message name")
+    tool_calls: Optional[List[ToolCall]] = None
+    tool_call_id: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_tool_message(self):
+        if self.role == "tool" and not self.tool_call_id:
+            raise ValueError("Tool messages require tool_call_id")
+        if self.tool_call_id is not None and self.role != "tool":
+            raise ValueError("tool_call_id is only valid on tool messages")
+        if self.tool_calls is not None and self.role != "assistant":
+            raise ValueError("tool_calls is only valid on assistant messages")
+        if self.content is None and not (self.role == "assistant" and self.tool_calls):
+            raise ValueError("content is required unless the assistant calls tools")
+        return self
+
+    def to_api_message(self) -> Dict[str, Any]:
+        """Keep explicit null content, but omit unset optional fields upstream."""
+        message = self.model_dump(exclude_none=True)
+        message["content"] = self.content
+        return message
 
 
 class ChatCompletionRequest(BaseModel):
@@ -35,8 +87,21 @@ class ChatCompletionRequest(BaseModel):
     top_p: float = Field(default=1.0, ge=0.0, le=1.0)
     max_tokens: Optional[int] = Field(default=4096, ge=1)
     stream: bool = Field(
-        default=False, description="Stream responses (not yet supported)"
+        default=False,
+        description="Stream progress events, or OpenAI chunks for tool-enabled requests",
     )
+    tools: Optional[List[FunctionTool]] = None
+    tool_choice: Optional[Literal["none", "auto", "required"] | NamedToolChoice] = None
+    parallel_tool_calls: Optional[bool] = None
+
+    @property
+    def uses_tool_protocol(self) -> bool:
+        return (
+            self.tools is not None
+            or self.tool_choice is not None
+            or self.parallel_tool_calls is not None
+            or any(m.role == "tool" or m.tool_calls for m in self.messages)
+        )
 
     # Strategy selection
     tts_strategy: Optional[str] = Field(
