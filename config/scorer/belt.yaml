@@ -1,0 +1,8 @@
+type: belt
+checkpoint_repo: JingweiNi/BELT-Qwen3-1.7B-ReProbeInit
+seed: 0
+device: cuda:0
+dtype: bfloat16
+cache_dir: null
+hs_chunk_size: 8192
+target: q
