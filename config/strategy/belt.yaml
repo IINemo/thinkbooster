@@ -1,0 +1,8 @@
+type: belt
+policy_path: null
+max_steps: 128
+min_steps: 1
+query_stride: 1
+min_step_tokens: 50
+max_step_tokens: 300
+stop_token_ids: [151645, 151643]

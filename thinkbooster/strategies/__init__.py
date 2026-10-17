@@ -4,6 +4,7 @@ from .phi import PhiDecoding
 from .strategy_base import StrategyBase, StrategyCancelled
 from .strategy_baseline import StrategyBaseline
 from .strategy_beam_search import StrategyBeamSearch
+from .strategy_belt import StrategyBELT
 from .strategy_chain_of_thought import StrategyChainOfThought
 from .strategy_extended_thinking import StrategyExtendedThinking
 from .strategy_online_best_of_n import StrategyOnlineBestOfN
@@ -21,6 +22,7 @@ except ImportError:
 
 __all__ = [
     "StrategyBaseline",
+    "StrategyBELT",
     "StrategyOnlineBestOfN",
     "StrategyOfflineBestOfN",
     "StrategyBeamSearch",

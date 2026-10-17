@@ -45,6 +45,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+belt = [
+    "huggingface-hub>=0.34.4",
+    "omegaconf>=2.3.0",
+]
+
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",

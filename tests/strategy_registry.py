@@ -34,6 +34,19 @@ class StrategyInfo:
 
 REGISTERED_STRATEGIES = [
     StrategyInfo(
+        name="belt",
+        class_name="StrategyBELT",
+        module_path="thinkbooster/strategies/strategy_belt.py",
+        test_dir="tests/belt",
+        required_tests=[
+            "test_policy.py",
+            "test_runtime.py",
+            "test_scorer.py",
+            "test_strategy.py",
+        ],
+        description="Early stopping with frozen BELT beliefs or hidden representations",
+    ),
+    StrategyInfo(
         name="deepconf",
         class_name="StrategyDeepConf",
         module_path="thinkbooster/strategies/deepconf/strategy.py",

@@ -386,7 +386,23 @@ def create_scorer(config):
         return None
     if config.scorer is None:
         return None
-    if config.scorer.type == "prm":
+    if config.scorer.type == "belt":
+        from thinkbooster.scorers.step_scorer_belt import StepScorerBELT
+
+        if config.strategy.type == "belt" and not config.strategy.get("policy_path"):
+            raise ValueError(
+                "strategy.policy_path must identify a fitted BELT stopping policy"
+            )
+        scorer = StepScorerBELT(
+            checkpoint_repo=config.scorer.checkpoint_repo,
+            seed=config.scorer.get("seed", 0),
+            device=config.scorer.get("device", "cuda:0"),
+            dtype=config.scorer.get("dtype", "bfloat16"),
+            cache_dir=config.scorer.get("cache_dir"),
+            hs_chunk_size=config.scorer.get("hs_chunk_size", 8192),
+            target=config.scorer.get("target", "q"),
+        )
+    elif config.scorer.type == "prm":
         scorer = StepScorerPRM(
             prm_model_path=config.scorer.model_path,
             device=config.scorer.device,
@@ -452,6 +468,11 @@ def create_model(config):
             "kv_cache_dtype": config.model.get("kv_cache_dtype", "auto"),
             "seed": config.system.seed,
         }
+        if config.model.get("revision"):
+            llm_kwargs["revision"] = config.model.revision
+            llm_kwargs["tokenizer_revision"] = config.model.get(
+                "tokenizer_revision", config.model.revision
+            )
 
         use_native_hs_capture = getattr(config.model, "use_native_hs_capture", None)
         if use_native_hs_capture is None:
@@ -510,11 +531,11 @@ def create_model(config):
 
             # Self-consistency, baseline, extended_thinking, and llm_critic don't need uncertainty wrapper
             scorer_type = config.scorer.type if config.scorer else "entropy"
-            if (
-                config.strategy.type
-                in ("self_consistency", "baseline", "extended_thinking")
-                or scorer_type == "llm_critic"
-            ):
+            if config.strategy.type in (
+                "self_consistency",
+                "baseline",
+                "extended_thinking",
+            ) or scorer_type in ("llm_critic", "belt"):
                 vllm_model = llm
                 log.info(
                     f"Strategy={config.strategy.type}, scorer={scorer_type}: "
@@ -1256,6 +1277,21 @@ def create_tts_strategy(
             max_empty_steps=config.strategy.max_empty_steps,
             uncertainty_threshold=config.strategy.uncertainty_threshold,
             uncertainty_sampling=config.strategy.uncertainty_sampling,
+        )
+    elif config.strategy.type == "belt":
+        from thinkbooster.strategies.strategy_belt import StrategyBELT
+
+        if config.scorer.type != "belt" or not config.strategy.get("policy_path"):
+            raise ValueError(
+                "BELT stopping requires scorer=belt and strategy.policy_path"
+            )
+        strategy = StrategyBELT(
+            step_generator=step_generator,
+            scorer=scorer,
+            policy=config.strategy.policy_path,
+            max_steps=config.strategy.get("max_steps", 128),
+            min_steps=config.strategy.get("min_steps", 1),
+            query_stride=config.strategy.get("query_stride", 1),
         )
     elif config.strategy.type == "extended_thinking":
         eos_patterns = getattr(config.strategy, "detector_eos_patterns", None)
