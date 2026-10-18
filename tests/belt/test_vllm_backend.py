@@ -76,6 +76,7 @@ def test_generation_is_transparent_and_does_not_expose_llm_bypass(monkeypatch):
     torch.testing.assert_close(features[0, :, 0], torch.tensor([0.0, 1.0, 2.0]))
     assert attention.tolist() == [[1, 1, 1]] and keep == [0] and skipped == []
     assert model.stats["cache_hits"] == 1 and model.stats["repair_calls"] == 0
+    assert model.metadata["feature_cache_ownership"] == "first_cached_causal_prefix"
     assert engine.rpc_names == [
         "belt_setup_capture",
         "belt_reset_capture",
@@ -118,6 +119,173 @@ def test_apc_donor_prefix_merging_retains_only_causal_common_prefix(monkeypatch)
     model.generate(["b"])
     result = model.get_features([[1, 2, 9, 8, 7]], "cpu")[0]
     assert result[0, :, 0].tolist() == [10, 20, 90, 80]
+    assert model.stats["repair_calls"] == 0
+
+
+@pytest.mark.parametrize("same_call", [False, True])
+def test_same_tokens_retain_first_cached_rows_and_count_all_captures(
+    monkeypatch, same_call
+):
+    first = output("first", [10, 11], [12, 13])
+    later = output("later", [10, 11], [12, 13])
+    captures = {
+        "first": capture([0, 1, 2], [10, 20, 30]),
+        "later": capture([0, 1, 2], [100, 200, 300]),
+    }
+    calls = (
+        [([first, later], captures)]
+        if same_call
+        else [
+            ([item], {item.request_id: captures[item.request_id]})
+            for item in [first, later]
+        ]
+    )
+    model, _ = backend(calls, monkeypatch)
+    for _ in calls:
+        model.generate(["prompt"])
+    result = model.get_features([[10, 11, 12, 13]], "cpu")[0]
+    assert result[0, :, 0].tolist() == [10, 20, 30]
+    assert model.stats["generation_captured_tokens"] == 6
+    assert model.stats["repair_calls"] == 0
+
+
+@pytest.mark.parametrize("max_cache_entries", [1, 16])
+def test_longer_prefix_inherits_owned_rows_before_bounded_cache_eviction(
+    monkeypatch, max_cache_entries
+):
+    model, _ = backend(
+        [
+            (
+                [output("short", [10, 11], [12, 13])],
+                {"short": capture([0, 1, 2], [10, 20, 30])},
+            ),
+            (
+                [output("long", [10, 11, 12, 13], [14, 15])],
+                {"long": capture([0, 1, 2, 3, 4], [100, 200, 300, 40, 50])},
+            ),
+        ],
+        monkeypatch,
+        max_cache_entries=max_cache_entries,
+    )
+    model.generate(["short"])
+    cold = model.get_features([[10, 11, 12, 13]], "cpu")[0]
+    model.generate(["long"])
+    warm = model.get_features([[10, 11, 12, 13]], "cpu")[0]
+    torch.testing.assert_close(warm, cold, rtol=0, atol=0)
+    result = model.get_features([[10, 11, 12, 13, 14, 15]], "cpu")[0]
+    assert result[0, :, 0].tolist() == [10, 20, 30, 40, 50]
+    if max_cache_entries == 1:
+        assert (10, 11, 12, 13) not in model._cache
+    assert model.stats["generation_captured_tokens"] == 8
+    assert model.stats["repair_calls"] == 0
+
+
+def test_overlapping_capture_fills_sparse_holes_without_replacing_owned_rows(
+    monkeypatch,
+):
+    model, _ = backend(
+        [
+            (
+                [output("sparse", [1, 2], [3, 4, 5])],
+                {"sparse": capture([0, 2], [10, 30])},
+            ),
+            (
+                [output("fill", [1, 2, 3, 4], [5, 6])],
+                {"fill": capture([0, 1, 2, 3, 4], [100, 20, 300, 40, 50])},
+            ),
+        ],
+        monkeypatch,
+    )
+    model.generate(["sparse"])
+    assert model._cache[(1, 2, 3, 4, 5)].mask.tolist() == [
+        True,
+        False,
+        True,
+        False,
+        False,
+    ]
+    model.generate(["fill"])
+    shorter = model.get_features([[1, 2, 3, 4, 5]], "cpu")[0]
+    longer = model.get_features([[1, 2, 3, 4, 5, 6]], "cpu")[0]
+    assert shorter[0, :, 0].tolist() == [10, 20, 30, 40]
+    assert longer[0, :, 0].tolist() == [10, 20, 30, 40, 50]
+    assert model.stats["generation_captured_tokens"] == 7
+    assert model.stats["repair_calls"] == 0
+
+
+def test_changed_token_tail_gets_new_rows_while_common_prefix_keeps_ownership(
+    monkeypatch,
+):
+    model, _ = backend(
+        [
+            (
+                [output("original", [1, 2], [3, 4])],
+                {"original": capture([0, 1, 2], [10, 20, 30])},
+            ),
+            (
+                [output("changed", [1, 2], [99, 8])],
+                {"changed": capture([0, 1, 2], [100, 200, 990])},
+            ),
+        ],
+        monkeypatch,
+    )
+    model.generate(["original"])
+    model.generate(["changed"])
+    original = model.get_features([[1, 2, 3, 4]], "cpu")[0]
+    changed = model.get_features([[1, 2, 99, 8]], "cpu")[0]
+    assert original[0, :, 0].tolist() == [10, 20, 30]
+    assert changed[0, :, 0].tolist() == [10, 20, 990]
+    assert model.stats["generation_captured_tokens"] == 6
+    assert model.stats["repair_calls"] == 0
+
+
+def test_eviction_of_all_causal_owners_allows_new_measurement(monkeypatch):
+    model, _ = backend(
+        [
+            (
+                [output("first", [10, 11], [12, 13])],
+                {"first": capture([0, 1, 2], [10, 20, 30])},
+            ),
+            (
+                [output("unrelated", [90, 91], [92])],
+                {"unrelated": capture([0, 1], [900, 910])},
+            ),
+            (
+                [output("recaptured", [10, 11], [12, 13])],
+                {"recaptured": capture([0, 1, 2], [100, 200, 300])},
+            ),
+        ],
+        monkeypatch,
+        max_cache_entries=1,
+    )
+    model.generate(["first"])
+    first = model.get_features([[10, 11, 12, 13]], "cpu")[0]
+    model.generate(["unrelated"])
+    assert list(model._cache) == [(90, 91, 92)]
+    model.generate(["recaptured"])
+    recaptured = model.get_features([[10, 11, 12, 13]], "cpu")[0]
+    assert first[0, :, 0].tolist() == [10, 20, 30]
+    assert recaptured[0, :, 0].tolist() == [100, 200, 300]
+    assert model.stats["generation_captured_tokens"] == 8
+    assert model.stats["repair_calls"] == 0
+
+
+def test_repeated_absolute_position_keeps_first_row_but_counts_all_captures(
+    monkeypatch,
+):
+    model, _ = backend(
+        [
+            (
+                [output("r", [1, 2], [3, 4])],
+                {"r": capture([2, 0, 1, 1], [30, 10, 20, 200])},
+            )
+        ],
+        monkeypatch,
+    )
+    model.generate(["prompt"])
+    result = model.get_features([[1, 2, 3, 4]], "cpu")[0]
+    assert result[0, :, 0].tolist() == [10, 20, 30]
+    assert model.stats["generation_captured_tokens"] == 4
     assert model.stats["repair_calls"] == 0
 
 

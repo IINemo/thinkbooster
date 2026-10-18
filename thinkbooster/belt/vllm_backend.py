@@ -83,6 +83,7 @@ class BeltVLLMBackend:
             "feature_width": 2048,
             "feature_dtype": "float32",
             "feature_wire_schema": FEATURE_WIRE_SCHEMA,
+            "feature_cache_ownership": "first_cached_causal_prefix",
             "cache_entries": len(self._cache),
             "stats": self.stats,
             "scoring_cost_in_token_stats": False,
@@ -151,7 +152,9 @@ class BeltVLLMBackend:
                 if left != right:
                     break
                 common += 1
-            known = np.flatnonzero(entry.mask[:common])
+            # Keep the first cached row for each exact causal prefix. Later
+            # captures may fill holes but must not change a retained owner.
+            known = np.flatnonzero(entry.mask[:common] & ~mask[:common])
             features[known] = entry.features[known]
             mask[known] = True
         return features, mask
@@ -192,8 +195,14 @@ class BeltVLLMBackend:
                     raise RuntimeError(
                         "BELT capture has invalid absolute positions/features"
                     )
-                features[positions] = rows
-                mask[positions] = True
+                # Recomputations can repeat a position in one capture. Retain
+                # its first row, and inherit existing owners before eviction.
+                unique_positions, first_rows = np.unique(positions, return_index=True)
+                unknown = ~mask[unique_positions]
+                added = unique_positions[unknown]
+                features[added] = rows[first_rows[unknown]]
+                mask[added] = True
+                # Count all measured rows, including repeated/owned positions.
                 count += len(positions)
             self._cache[tokens] = _FeatureEntry(tokens, features, mask)
             self._cache.move_to_end(tokens)

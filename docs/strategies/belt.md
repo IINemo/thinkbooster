@@ -238,6 +238,12 @@ The feature cache matches actual prompt/completion token IDs. Causal prefixes
 can share features only while their token IDs match exactly. Retokenizing
 joined step text can change a tail token even when the text looks identical;
 changed tokens and later positions cannot reuse the previous capture. The
+cache retains the first cached row for each exact causal token prefix while
+an owner remains cached; overlapping captures fill only missing positions.
+Longer entries inherit those rows before bounded-cache eviction. Evicting all
+owners or resetting the cache permits a new measurement. Metadata records
+`feature_cache_ownership=first_cached_causal_prefix`; capture counters include
+all measured rows even when an existing owner is retained. The
 last generated token normally has no captured feature yet. The reader retains
 its canonical next-token alignment and consumes states for `full_ids[:-1]`.
 
