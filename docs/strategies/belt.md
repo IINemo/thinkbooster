@@ -246,6 +246,10 @@ owners or resetting the cache permits a new measurement. Metadata records
 all measured rows even when an existing owner is retained. The
 last generated token normally has no captured feature yet. The reader retains
 its canonical next-token alignment and consumes states for `full_ids[:-1]`.
+If frontend stop-string handling allows extra decode work before abort, a
+captured last returned token's row is retained for later exact extensions.
+Rows beyond the returned sequence belong to unreturned tokens and are discarded
+from the feature cache.
 
 When normal generation capture does not cover that exact token sequence,
 the provider requests a deterministic `max_tokens=1` prefill using explicit
@@ -268,7 +272,10 @@ Result metadata includes `scoring_backend`, `backend_stats`, and
 feature queries, cache hits, repair calls, actual computed/captured repair rows,
 requested repair-prefill lengths, prefix-cache resets and timings. Actual
 repair rows include the last prompt position even though the reader does not
-consume it. These are shared batch totals, not per-sample work estimates.
+consume it. `generation_captured_tokens`, `repair_tokens` and
+`repair_captured_tokens` include all measured rows before filtering;
+`discarded_overrun_rows` counts the discarded subset, rather than extra work to
+add to those totals. These are shared batch totals, not per-sample work estimates.
 `backend.metadata` also describes the captured layer and feature format.
 
 CPU tests cover residual reconstruction and mutation isolation, request/position

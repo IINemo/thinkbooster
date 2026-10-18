@@ -338,6 +338,7 @@ def test_decode_overrun_past_returned_tokens_is_discarded_and_counted(monkeypatc
     states = {"r": capture([0, 1, 2, 3, 4, 5], [0, 1, 2, 30, 40, 50])}
     model, _ = backend([([item], states)], monkeypatch)
     assert model.generate(["text"], SimpleNamespace(n=1)) == [item]
+    assert model.stats["generation_captured_tokens"] == 6
     assert model.stats["discarded_overrun_rows"] == 2
     features, *_ = model.get_features([[10, 11, 12, 13]], "cpu")
     torch.testing.assert_close(features[0, :, 0], torch.tensor([0.0, 1.0, 2.0]))
@@ -346,6 +347,30 @@ def test_decode_overrun_past_returned_tokens_is_discarded_and_counted(monkeypatc
     features, *_ = model.get_features([[10, 11, 12, 13, 99]], "cpu")
     torch.testing.assert_close(features[0, :, 0], torch.tensor([0.0, 1.0, 2.0, 30.0]))
     assert model.stats["cache_hits"] == 2 and model.stats["repair_calls"] == 0
+
+
+def test_repair_counts_overrun_compute_and_batch_reset_clears_counters(monkeypatch):
+    item = output("repair", [10, 11, 12], [13])
+    states = {"repair": capture([0, 1, 2, 3, 4, 5], [0, 1, 2, 30, 40, 50])}
+    model, engine = backend([([item], states)], monkeypatch)
+    features, *_ = model.get_features([[10, 11, 12]], "cpu")
+    torch.testing.assert_close(features[0, :, 0], torch.tensor([0.0, 1.0]))
+    assert model.stats["repair_calls"] == 1
+    assert model.stats["repair_tokens"] == model.stats["repair_captured_tokens"] == 6
+    assert model.stats["repair_requested_tokens"] == 3
+    assert model.stats["discarded_overrun_rows"] == 2
+    assert model.stats["generation_captured_tokens"] == 0
+    # The final returned row remains reusable, but unreturned rows have no
+    # cache identity and contribute only to measured-work counters.
+    assert model._cache[(10, 11, 12, 13)].mask.tolist() == [True] * 4
+    features, *_ = model.get_features([[10, 11, 12, 13, 99]], "cpu")
+    torch.testing.assert_close(features[0, :, 0], torch.tensor([0.0, 1.0, 2.0, 30.0]))
+    assert model.stats["cache_hits"] == 1 and model.stats["repair_calls"] == 1
+    model.reset_hs_step_cache()
+    assert not model._cache and engine.resets == 1
+    assert model.stats["discarded_overrun_rows"] == 0
+    assert model.stats["repair_tokens"] == model.stats["repair_captured_tokens"] == 0
+    assert model.stats["repair_calls"] == model.stats["queries"] == 0
 
 
 def test_n_greater_than_one_fails_before_generation(monkeypatch):

@@ -195,6 +195,9 @@ class BeltVLLMBackend:
                     raise RuntimeError(
                         "BELT capture has invalid absolute positions/features"
                     )
+                # Count all measured rows before filtering or deduplication,
+                # including overruns and repeated/already-owned positions.
+                count += len(positions)
                 # vLLM V1 matches stop strings in the frontend, so the engine
                 # core can run more decode steps before the abort lands. Rows
                 # past the returned sequence feed tokens that were never
@@ -210,8 +213,6 @@ class BeltVLLMBackend:
                 added = unique_positions[unknown]
                 features[added] = rows[first_rows[unknown]]
                 mask[added] = True
-                # Count all measured rows, including repeated/owned positions.
-                count += len(positions)
             self._cache[tokens] = _FeatureEntry(tokens, features, mask)
             self._cache.move_to_end(tokens)
             while len(self._cache) > self.max_cache_entries:
