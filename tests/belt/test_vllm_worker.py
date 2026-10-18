@@ -5,6 +5,7 @@ import pytest
 import torch
 
 from thinkbooster.belt.runtime import BACKBONE, BACKBONE_REVISION
+from thinkbooster.belt.vllm_wire import decode_features
 from thinkbooster.belt.vllm_worker import BeltHiddenStatesExtension
 
 
@@ -53,8 +54,9 @@ def test_residual_capture_is_copied_before_mutation_and_attributed_by_position()
     result = obj.belt_get_capture()
     assert result["a"]["positions"] == [5, 6]
     assert result["b"]["positions"] == [11]
-    np.testing.assert_array_equal(result["a"]["features"], np.full((2, 2048), 3.0))
-    assert result["a"]["features"].dtype == np.float32
+    features = decode_features(result["a"]["features"])
+    np.testing.assert_array_equal(features, np.full((2, 2048), 3.0))
+    assert features.dtype == np.float32
     assert obj.belt_get_capture() == {}
 
 

@@ -12,6 +12,7 @@ import hashlib
 import json
 import platform
 import subprocess
+import sys
 import time
 from contextlib import ExitStack, contextmanager
 from dataclasses import asdict
@@ -38,6 +39,7 @@ PUBLIC_SOURCES = (
     "thinkbooster/belt/runtime.py",
     "thinkbooster/belt/policy.py",
     "thinkbooster/belt/vllm_worker.py",
+    "thinkbooster/belt/vllm_wire.py",
     "thinkbooster/belt/vllm_backend.py",
     "thinkbooster/scorers/step_scorer_belt.py",
     "thinkbooster/generators/base.py",
@@ -552,10 +554,33 @@ def strategy_smoke(backend, config, args):
     return smoke
 
 
+@contextmanager
+def owned_vllm_engine(kwargs):
+    """This standalone helper owns its engine; shared providers never close it."""
+    from vllm import LLM
+
+    llm = LLM(**kwargs)
+    try:
+        yield llm
+    finally:
+        original = sys.exc_info()[1]
+        try:
+            # vLLM 0.12 EngineCoreClient API (both MP and in-process clients).
+            llm.llm_engine.engine_core.shutdown()
+        except BaseException as error:
+            if original is None:
+                raise
+            message = f"Owned vLLM engine shutdown also failed: {error!r}"
+            if hasattr(original, "add_note"):
+                original.add_note(message)
+            else:
+                print(message, file=sys.stderr, flush=True)
+
+
 def vllm_phase(args):
     require(package_version("vllm") == "0.12.0", "This fixture requires vllm==0.12.0")
     from transformers import AutoConfig
-    from vllm import LLM, SamplingParams
+    from vllm import SamplingParams
 
     from thinkbooster.belt.vllm_backend import BeltVLLMBackend
 
@@ -589,124 +614,138 @@ def vllm_phase(args):
         "seed": 0,
         "worker_extension_cls": "thinkbooster.belt.vllm_worker.BeltHiddenStatesExtension",
     }
-    llm = LLM(**llm_kwargs)
-    backend = BeltVLLMBackend(llm)
-    tokenizer = backend.get_tokenizer()
-    config = AutoConfig.from_pretrained(args.model, local_files_only=True)
-    require(
-        make_cases(tokenizer) == cases,
-        "Pinned tokenizer does not reproduce the fixed cases",
-    )
-    require(
-        len(reference) == len(cases),
-        "HF reference feature count differs from the fixed cases",
-    )
-    features = []
-    for case in cases:
-        ids = case["prompt"] + case["completion"]
-        output, attention, kept, skipped = backend.get_features([ids], "cpu")
+    with owned_vllm_engine(llm_kwargs) as llm:
+        backend = BeltVLLMBackend(llm)
+        tokenizer = backend.get_tokenizer()
+        config = AutoConfig.from_pretrained(args.model, local_files_only=True)
         require(
-            kept == [0] and not skipped and bool(attention.all()),
-            "Invalid feature coverage",
-        )
-        features.append(output[0])
-    cold_stats = backend.stats
-    for case, expected in zip(cases, features):
-        value, *_ = backend.get_features([case["prompt"] + case["completion"]], "cpu")
-        torch.testing.assert_close(value[0], expected, rtol=0, atol=0)
-    require(
-        backend.stats["repair_calls"] == cold_stats["repair_calls"],
-        "Warm cache unexpectedly repaired",
-    )
-    signals = score_cases(backend, tokenizer, config, cases, args)
-    parity_query_metadata = backend.metadata
-    feature_errors = [error_metrics(r, v) for r, v in zip(reference, features)]
-    signal_errors = signal_error_metrics(hf["signals"], signals)
-    backend.reset_hs_step_cache()
-    params = SamplingParams(n=1, max_tokens=64, temperature=0, seed=0, ignore_eos=True)
-    prompts = [
-        {"prompt_token_ids": case["prompt"] + case["completion"]} for case in cases[:4]
-    ]
-    generated = backend.generate(prompts, params, use_tqdm=False)
-    after_generate = backend.stats
-    require(len(generated) == len(prompts), "Wrong generation batch size")
-    generated_cases, generated_features = [], []
-    for fixed, item in zip(cases[:4], generated):
-        generation_prompt = list(item.prompt_token_ids)
-        new_tokens = list(item.outputs[0].token_ids)
-        require(
-            generation_prompt == fixed["prompt"] + fixed["completion"],
-            "Generated request prompt IDs differ from the fixed input",
-        )
-        require(len(new_tokens) == 64, "Expected exactly 64 actual generated token IDs")
-        completion = fixed["completion"] + new_tokens
-        generated_cases.append(
-            {
-                "name": "generated_" + fixed["name"],
-                "request_id": item.request_id,
-                "prompt": fixed["prompt"],
-                "completion": completion,
-                "ends": fixed["ends"] + [len(completion)],
-                "generation_prompt_token_ids": generation_prompt,
-                "generation_prompt_length": len(generation_prompt),
-                "generated_token_ids": new_tokens,
-            }
-        )
-        ids = generation_prompt + new_tokens
-        value, attention, kept, skipped = backend.get_features([ids], "cpu")
-        require(
-            kept == [0] and not skipped and bool(attention.all()),
-            "Invalid generated feature coverage",
+            make_cases(tokenizer) == cases,
+            "Pinned tokenizer does not reproduce the fixed cases",
         )
         require(
-            value.shape == (1, len(ids) - 1, 2048),
-            "Generated feature alignment mismatch",
+            len(reference) == len(cases),
+            "HF reference feature count differs from the fixed cases",
         )
-        generated_features.append(value[0].contiguous())
-    generated_signals = score_cases(backend, tokenizer, config, generated_cases, args)
-    generation_repairs = backend.stats["repair_calls"] - after_generate["repair_calls"]
-    generation_metadata = backend.metadata
-    write_json(args.output / "generated_cases.json", generated_cases)
-    torch.save(generated_features, args.output / "vllm_generated_features.pt")
-    smoke = strategy_smoke(backend, config, args)
-    checks = {
-        **parity_checks(feature_errors, signal_errors),
-        "generation_capture_reused_without_repair": generation_repairs == 0,
-        "strategy_smoke": all(smoke["checks"].values()),
-    }
-    report = {
-        **report_identity(args),
-        "phase": "vllm",
-        "status": "passed" if all(checks.values()) else "failed",
-        "overall_status": "pending_hf_generated" if all(checks.values()) else "failed",
-        "input_artifacts": artifact_hashes(
-            args, ("hf.json", "cases.json", "hf_features.pt")
-        ),
-        "generated_artifacts": artifact_hashes(
-            args, ("generated_cases.json", "vllm_generated_features.pt")
-        ),
-        "generated_signals": generated_signals,
-        "generation_sampling_params": {
-            "n": 1,
-            "max_tokens": 64,
-            "temperature": 0,
-            "seed": 0,
-            "ignore_eos": True,
-        },
-        "engine_kwargs": llm_kwargs,
-        "feature_errors": feature_errors,
-        "signal_errors": signal_errors,
-        "signals": signals,
-        "checks": checks,
-        "generation_queries": len(generated),
-        "generation_query_repairs": generation_repairs,
-        "cold_query_stats": cold_stats,
-        "parity_query_metadata": parity_query_metadata,
-        "generation_metadata": generation_metadata,
-        "strategy_smoke": smoke,
-        "head_only_load_guard_passed": True,
-        "phase_seconds": time.perf_counter() - start,
-    }
+        features = []
+        for case in cases:
+            ids = case["prompt"] + case["completion"]
+            output, attention, kept, skipped = backend.get_features([ids], "cpu")
+            require(
+                kept == [0] and not skipped and bool(attention.all()),
+                "Invalid feature coverage",
+            )
+            features.append(output[0])
+        cold_stats = backend.stats
+        for case, expected in zip(cases, features):
+            value, *_ = backend.get_features(
+                [case["prompt"] + case["completion"]], "cpu"
+            )
+            torch.testing.assert_close(value[0], expected, rtol=0, atol=0)
+        require(
+            backend.stats["repair_calls"] == cold_stats["repair_calls"],
+            "Warm cache unexpectedly repaired",
+        )
+        signals = score_cases(backend, tokenizer, config, cases, args)
+        parity_query_metadata = backend.metadata
+        feature_errors = [error_metrics(r, v) for r, v in zip(reference, features)]
+        signal_errors = signal_error_metrics(hf["signals"], signals)
+        backend.reset_hs_step_cache()
+        params = SamplingParams(
+            n=1, max_tokens=64, temperature=0, seed=0, ignore_eos=True
+        )
+        prompts = [
+            {"prompt_token_ids": case["prompt"] + case["completion"]}
+            for case in cases[:4]
+        ]
+        generated = backend.generate(prompts, params, use_tqdm=False)
+        after_generate = backend.stats
+        require(len(generated) == len(prompts), "Wrong generation batch size")
+        generated_cases, generated_features = [], []
+        for fixed, item in zip(cases[:4], generated):
+            generation_prompt = list(item.prompt_token_ids)
+            new_tokens = list(item.outputs[0].token_ids)
+            require(
+                generation_prompt == fixed["prompt"] + fixed["completion"],
+                "Generated request prompt IDs differ from the fixed input",
+            )
+            require(
+                len(new_tokens) == 64, "Expected exactly 64 actual generated token IDs"
+            )
+            completion = fixed["completion"] + new_tokens
+            generated_cases.append(
+                {
+                    "name": "generated_" + fixed["name"],
+                    "request_id": item.request_id,
+                    "prompt": fixed["prompt"],
+                    "completion": completion,
+                    "ends": fixed["ends"] + [len(completion)],
+                    "generation_prompt_token_ids": generation_prompt,
+                    "generation_prompt_length": len(generation_prompt),
+                    "generated_token_ids": new_tokens,
+                }
+            )
+            ids = generation_prompt + new_tokens
+            value, attention, kept, skipped = backend.get_features([ids], "cpu")
+            require(
+                kept == [0] and not skipped and bool(attention.all()),
+                "Invalid generated feature coverage",
+            )
+            require(
+                value.shape == (1, len(ids) - 1, 2048),
+                "Generated feature alignment mismatch",
+            )
+            generated_features.append(value[0].contiguous())
+        generated_signals = score_cases(
+            backend, tokenizer, config, generated_cases, args
+        )
+        generation_repairs = (
+            backend.stats["repair_calls"] - after_generate["repair_calls"]
+        )
+        generation_metadata = backend.metadata
+        write_json(args.output / "generated_cases.json", generated_cases)
+        torch.save(generated_features, args.output / "vllm_generated_features.pt")
+        smoke = strategy_smoke(backend, config, args)
+        checks = {
+            **parity_checks(feature_errors, signal_errors),
+            "generation_capture_reused_without_repair": generation_repairs == 0,
+            "strategy_smoke": all(smoke["checks"].values()),
+        }
+        report = {
+            **report_identity(args),
+            "phase": "vllm",
+            "status": "passed" if all(checks.values()) else "failed",
+            "overall_status": (
+                "pending_hf_generated" if all(checks.values()) else "failed"
+            ),
+            "input_artifacts": artifact_hashes(
+                args, ("hf.json", "cases.json", "hf_features.pt")
+            ),
+            "generated_artifacts": artifact_hashes(
+                args, ("generated_cases.json", "vllm_generated_features.pt")
+            ),
+            "generated_signals": generated_signals,
+            "generation_sampling_params": {
+                "n": 1,
+                "max_tokens": 64,
+                "temperature": 0,
+                "seed": 0,
+                "ignore_eos": True,
+            },
+            "engine_kwargs": llm_kwargs,
+            "feature_errors": feature_errors,
+            "signal_errors": signal_errors,
+            "signals": signals,
+            "checks": checks,
+            "generation_queries": len(generated),
+            "generation_query_repairs": generation_repairs,
+            "cold_query_stats": cold_stats,
+            "parity_query_metadata": parity_query_metadata,
+            "generation_metadata": generation_metadata,
+            "strategy_smoke": smoke,
+            "head_only_load_guard_passed": True,
+            "phase_seconds": time.perf_counter() - start,
+        }
+    report["owned_engine_shutdown"] = True
     write_json(args.output / "vllm.json", report)
     require(
         all(checks.values()),

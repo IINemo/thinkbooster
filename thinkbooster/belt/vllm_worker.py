@@ -8,12 +8,13 @@ from pathlib import Path
 import torch
 
 from .runtime import BACKBONE, BACKBONE_REVISION
+from .vllm_wire import MAX_CAPTURE_TOKENS, encode_features
 
 
 class BeltHiddenStatesExtension:
     """Methods injected into a vLLM V1 worker by worker_extension_cls."""
 
-    _belt_max_capture_tokens = 131072
+    _belt_max_capture_tokens = MAX_CAPTURE_TOKENS
 
     def belt_setup_capture(self):
         runner = self.model_runner
@@ -130,9 +131,11 @@ class BeltHiddenStatesExtension:
                 )
             result[key] = {
                 "positions": positions.tolist(),
-                "features": torch.cat([features for _, features in chunks])
-                .to(device="cpu", dtype=torch.float32)
-                .numpy(),
+                "features": encode_features(
+                    torch.cat([features for _, features in chunks])
+                    .to(device="cpu", dtype=torch.float32)
+                    .numpy()
+                ),
             }
         self.belt_reset_capture()
         return result

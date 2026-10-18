@@ -229,7 +229,10 @@ fused normalization mutates either branch. It is not the bare MLP output.
 Captures retain request IDs and absolute token positions; uncertain attribution
 raises an error. Independent GPU copies remain bounded to 131072 captured
 tokens per generation call and transfer to float32 CPU arrays on the flush
-RPC. Leave GPU memory room for these copies and the small native reader.
+RPC. The transport uses a versioned little-endian float32 byte payload with
+explicit dimensions; the frontend checks byte length, capture bounds and finite
+values before making owned CPU arrays. It requires no insecure serialization
+setting. Leave GPU memory room for these copies and the small native reader.
 
 The feature cache matches actual prompt/completion token IDs. Causal prefixes
 can share features only while their token IDs match exactly. Retokenizing
@@ -394,3 +397,6 @@ generation cases and feature files. Rerunning an upstream phase invalidates
 downstream reports, preventing stale successes. Failures exit nonzero and write
 a phase failure JSON when preflight has completed. Timings are diagnostic
 measurements of these software checks and do not establish a speedup.
+The standalone helper always shuts down its owned vLLM engine, including after
+validation errors, and writes its successful vLLM report after shutdown. A
+secondary cleanup failure preserves the original validation exception.

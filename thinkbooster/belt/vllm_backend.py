@@ -8,6 +8,8 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
+from .vllm_wire import FEATURE_WIRE_SCHEMA, MAX_CAPTURE_TOKENS, decode_features
+
 
 def _repair_sampling_params():
     from vllm import SamplingParams
@@ -80,6 +82,7 @@ class BeltVLLMBackend:
             "feature_kind": "full_residual_input",
             "feature_width": 2048,
             "feature_dtype": "float32",
+            "feature_wire_schema": FEATURE_WIRE_SCHEMA,
             "cache_entries": len(self._cache),
             "stats": self.stats,
             "scoring_cost_in_token_stats": False,
@@ -94,7 +97,30 @@ class BeltVLLMBackend:
         replies = self._engine.llm_engine.engine_core.collective_rpc(method)
         if not isinstance(replies, (list, tuple)) or len(replies) != 1:
             raise RuntimeError("BELT vLLM requires exactly one worker RPC reply (TP=1)")
-        return replies[0]
+        reply = replies[0]
+        if method != "belt_get_capture":
+            return reply
+        if not isinstance(reply, dict):
+            raise RuntimeError("BELT worker returned an invalid capture mapping")
+        decoded, count = {}, 0
+        for key, record in reply.items():
+            if (
+                not isinstance(key, str)
+                or not key
+                or not isinstance(record, dict)
+                or set(record) != {"positions", "features"}
+                or not isinstance(record["positions"], list)
+                or any(type(pos) is not int or pos < 0 for pos in record["positions"])
+            ):
+                raise RuntimeError("BELT worker returned invalid request positions")
+            rows = decode_features(
+                record["features"], max_rows=MAX_CAPTURE_TOKENS - count
+            )
+            if len(record["positions"]) != len(rows):
+                raise RuntimeError("BELT feature wire position/row count mismatch")
+            count += len(rows)
+            decoded[key] = {"positions": record["positions"], "features": rows}
+        return decoded
 
     def reset_hs_step_cache(self, reset_prefix_cache=True):
         """Start a strategy batch with fresh feature/capture ownership and counters."""

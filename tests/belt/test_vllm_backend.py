@@ -5,6 +5,7 @@ import pytest
 import torch
 
 from thinkbooster.belt.vllm_backend import BeltVLLMBackend
+from thinkbooster.belt.vllm_wire import encode_features
 
 
 def output(key, prompt, completion):
@@ -20,8 +21,8 @@ def capture(positions, values=None):
         values = positions
     return {
         "positions": positions,
-        "features": np.repeat(
-            np.asarray(values, dtype=np.float32)[:, None], 2048, axis=1
+        "features": encode_features(
+            np.repeat(np.asarray(values, dtype=np.float32)[:, None], 2048, axis=1)
         ),
     }
 
@@ -248,3 +249,38 @@ def test_prompt_embeddings_fail_before_generation_or_capture_reset(
         model.generate(*args, **kwargs)
     assert engine.generated == []
     assert engine.rpc_names == initial_rpc_names
+
+
+@pytest.mark.parametrize("positions", [[True], [-1], [0.0], "0"])
+def test_rpc_rejects_noncanonical_positions_before_cache_use(monkeypatch, positions):
+    data = capture([0])
+    data["positions"] = positions
+    model, _ = backend([([output("r", [10], [11])], {"r": data})], monkeypatch)
+    with pytest.raises(RuntimeError, match="positions"):
+        model.generate(["a"])
+    assert not model._cache
+
+
+def test_rpc_rejects_row_count_mismatch_and_legacy_numpy_payload(monkeypatch):
+    data = capture([0])
+    data["positions"] = [0, 1]
+    model, _ = backend([([output("r", [10], [11, 12])], {"r": data})], monkeypatch)
+    with pytest.raises(RuntimeError, match="position/row count"):
+        model.generate(["a"])
+    data = {"positions": [0], "features": np.ones((1, 2048), dtype=np.float32)}
+    model, _ = backend([([output("r", [10], [11])], {"r": data})], monkeypatch)
+    with pytest.raises(RuntimeError, match="versioned byte envelope"):
+        model.generate(["a"])
+
+
+def test_rpc_applies_capture_bound_across_all_requests(monkeypatch):
+    import thinkbooster.belt.vllm_backend as module
+
+    monkeypatch.setattr(module, "MAX_CAPTURE_TOKENS", 2)
+    records = [output("a", [1, 2], [3]), output("b", [4], [5])]
+    model, _ = backend(
+        [(records, {"a": capture([0, 1]), "b": capture([0])})], monkeypatch
+    )
+    with pytest.raises(RuntimeError, match="BELT feature wire"):
+        model.generate(["a", "b"])
+    assert not model._cache
