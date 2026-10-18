@@ -203,6 +203,10 @@ generation memory budget that leaves room for the separate scoring model.
 
 ## Opt-in shared vLLM backend
 
+**Numerical status:** the shared backend currently fails the fixed-input HF
+parity checks described below. Use `scorer.backend=hf` when you need the
+HF-defined backbone features.
+
 The default remains `scorer.backend=hf`. To use one generation backbone and
 the native BELT reader on GPU 0:
 
@@ -223,6 +227,31 @@ synthetic token IDs from prompt embeddings are outside the supported scope.
 The factory rejects unsupported backbones, revisions and backend settings
 before allocating the engine. It uses its own worker extension; the generic
 upstream hidden-state extension is unchanged.
+
+On 2026-10-18, the five fixed-prefix cases were checked on one RTX 4090 with
+Python 3.11.16, PyTorch 2.9.0+cu128, Transformers 4.56.2 and vLLM 0.12.0.
+The reader used the default seed-0 ReProbe-initialized checkpoint. The
+1238-token case exceeded all four predeclared numerical limits:
+
+| Quantity | Measured error | Limit |
+| --- | ---: | ---: |
+| Layer-16 features, relative L2 | 0.024634 | 0.020000 |
+| Reader H, relative L2 | 0.022056 | 0.020000 |
+| Beliefs, maximum absolute error | 0.011676 | 0.010000 |
+| Fixed fixture policy logit, absolute error | 0.062576 | 0.050000 |
+
+The remaining four fixed-prefix cases passed those limits. Warm-cache equality,
+generation-feature reuse without query repair, and the generator/scorer/strategy
+smoke checks passed. The subsequent HF replay of generated tokens was not run
+because the preceding numerical gate failed. The cases, HF SDPA reference and
+limits remain unchanged. This is software validation with an unfitted policy
+fixture; it does not measure stopping quality. A separate cold replay retained
+the long-input discrepancy. Layer-0 input and normalized input matched exactly;
+the first observed difference appeared in the QKV projections. An isolated
+CUDA replay with identical inputs and weights reproduced HF's separate Q/K/V
+projections and vLLM's packed projection exactly. Disabling BF16 reduced-precision
+reduction did not change the packed result. This identifies the first difference,
+but does not establish a complete cause or a numerical fix.
 
 The worker captures the full residual **at the input to zero-based decoder
 layer 16**, equivalent to HF `hidden_states[16]`, with width 2048. In vLLM's
