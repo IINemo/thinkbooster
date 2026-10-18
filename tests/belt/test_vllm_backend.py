@@ -323,13 +323,29 @@ def test_cold_retry_can_fill_gaps_and_cache_is_bounded_and_reset(monkeypatch):
     [
         ([output("a", [1], [2])], {"other": capture([0])}),
         ([output("a", [1], [2]), output("a", [3], [4])], {"a": capture([0])}),
-        ([output("a", [1], [2])], {"a": capture([2])}),
     ],
 )
 def test_ambiguous_or_invalid_attribution_fails(records, states, monkeypatch):
     model, _ = backend([(records, states)], monkeypatch)
     with pytest.raises(RuntimeError):
         model.generate(["a"])
+
+
+def test_decode_overrun_past_returned_tokens_is_discarded_and_counted(monkeypatch):
+    # vLLM V1 detects stop strings in the frontend; the engine core may already
+    # have decoded further, feeding the last returned token and unreturned ones.
+    item = output("r", [10, 11], [12, 13])
+    states = {"r": capture([0, 1, 2, 3, 4, 5], [0, 1, 2, 30, 40, 50])}
+    model, _ = backend([([item], states)], monkeypatch)
+    assert model.generate(["text"], SimpleNamespace(n=1)) == [item]
+    assert model.stats["discarded_overrun_rows"] == 2
+    features, *_ = model.get_features([[10, 11, 12, 13]], "cpu")
+    torch.testing.assert_close(features[0, :, 0], torch.tensor([0.0, 1.0, 2.0]))
+    # The last returned token's row is kept, so extending the sequence needs
+    # no repair prefill.
+    features, *_ = model.get_features([[10, 11, 12, 13, 99]], "cpu")
+    torch.testing.assert_close(features[0, :, 0], torch.tensor([0.0, 1.0, 2.0, 30.0]))
+    assert model.stats["cache_hits"] == 2 and model.stats["repair_calls"] == 0
 
 
 def test_n_greater_than_one_fails_before_generation(monkeypatch):

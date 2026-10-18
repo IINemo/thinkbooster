@@ -67,6 +67,7 @@ class BeltVLLMBackend:
             repair_seconds=0.0,
             query_seconds=0.0,
             prefix_cache_resets=0,
+            discarded_overrun_rows=0,
         )
 
     @property
@@ -190,11 +191,18 @@ class BeltVLLMBackend:
                     or rows.dtype != np.float32
                     or not np.isfinite(rows).all()
                     or np.any(positions < 0)
-                    or np.any(positions >= len(tokens) - 1)
                 ):
                     raise RuntimeError(
                         "BELT capture has invalid absolute positions/features"
                     )
+                # vLLM V1 matches stop strings in the frontend, so the engine
+                # core can run more decode steps before the abort lands. Rows
+                # past the returned sequence feed tokens that were never
+                # returned; discard them. The last returned token's row is a
+                # valid causal feature and is kept for later extensions.
+                overrun = positions >= len(tokens)
+                self._stats["discarded_overrun_rows"] += int(overrun.sum())
+                positions, rows = positions[~overrun], rows[~overrun]
                 # Recomputations can repeat a position in one capture. Retain
                 # its first row, and inherit existing owners before eviction.
                 unique_positions, first_rows = np.unique(positions, return_index=True)
