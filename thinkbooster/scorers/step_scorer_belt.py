@@ -2,7 +2,11 @@
 
 import threading
 
-from thinkbooster.belt.runtime import DEFAULT_CHECKPOINT, BeltRuntime
+from thinkbooster.belt.runtime import (
+    DEFAULT_CHECKPOINT,
+    BeltRuntime,
+    checkpoint_manifest,
+)
 
 from .step_scorer_base import CandidateScore, StepScorerBase
 
@@ -35,6 +39,17 @@ class StepScorerBELT(StepScorerBase):
             cache_dir=cache_dir,
             hs_chunk_size=hs_chunk_size,
         )
+
+    @property
+    def checkpoint_sha256(self):
+        if self._runtime is not None:
+            return self._runtime.checkpoint_sha256
+        _, record = checkpoint_manifest(
+            self._runtime_options["checkpoint_repo"],
+            self._runtime_options["seed"],
+            self._runtime_options["cache_dir"],
+        )
+        return record["sha256"]
 
     @property
     def runtime(self):

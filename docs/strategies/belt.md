@@ -33,10 +33,20 @@ git -C ../BELT checkout fc9b0670e430ed3519eb0df25aef0f5788a8b29c
 pip install --no-deps -e ../BELT
 ```
 
-The adapter loads that checkout's native `luh` reader in a fresh process.
-An already imported, different `luh` implementation raises an error instead of
-substituting a reader. The separate BELT runtime and model assets retain their
+The adapter temporarily loads that checkout's native `luh` and `train_luh`
+packages during initialization, then restores the previous modules and
+`sys.path`, including when loading fails. A subsequent `import luh` therefore
+uses the application's original reader. BELT initializers are serialized;
+do not import `luh` or `train_luh` in another thread during initialization.
+Native scoring retains its own module references and needs no further imports
+of those packages. The separate BELT runtime and model assets retain their
 original notices and terms; see [BELT's source notice](https://github.com/EdisonNi-hku/BELT/blob/main/NOTICE.md).
+
+The pinned source and probe packages currently live in personal GitHub and
+Hugging Face namespaces. Revision pins and hashes verify their contents;
+availability still depends on those repositories. Organization mirrors have
+not been provisioned. A source mirror can be installed at the same pinned
+commit without changing the adapter.
 
 ## Score a reasoning prefix
 
@@ -67,10 +77,12 @@ returns the chosen belief (`target="q"` by default). The detailed scoring
 interface includes all four beliefs and checkpoint identity in its metadata.
 Ranking by a belief is distinct from evaluating a fitted stopping policy.
 
-`score_prefix` uses the supplied chat template and accumulated text steps. It
-marks every preceding step end. If a boundary changes tokenization, it raises;
-use `scorer.runtime.score_token_ids(prompt_ids, completion_ids, block_ends)`
-for an existing tokenized bank. `block_ends` contains strictly increasing,
+`score_prefix` applies the chat template and tokenizes the joined step text
+once. Character offsets map the step cuts to token ends. A token spanning a
+cut belongs to the earlier step; a step entirely swallowed by that token adds
+no new block. For exact replay of an existing tokenized bank, use
+`scorer.runtime.score_token_ids(prompt_ids, completion_ids, block_ends)`.
+`block_ends` contains strictly increasing,
 exclusive offsets into completion tokens, including the current prefix end.
 The original runtime applies its next-token feature alignment.
 
@@ -99,7 +111,10 @@ H consumes all 768 hidden coordinates in their saved order. B consumes
 followed by `prefix_tokens / length_scale`. Each coordinate is standardized
 with its fitted mean and standard deviation before applying the weights.
 Nonfinite parameters, nonpositive standard deviations, dimension errors and
-checkpoint mismatches raise an error.
+checkpoint mismatches raise an error. Constructing `StrategyBELT` checks the
+scorer's `checkpoint_sha256` against the policy before any generation. The
+Hydra model factory performs this check before allocating vLLM; it fetches only
+the pinned checkpoint manifest, without loading probe weights or a backbone.
 
 Historical H policy fits read float16 representation dumps. Set
 `hidden_dtype="float16"` when using their coefficients and normalization;
@@ -160,7 +175,13 @@ cadence. A stop closes thinking and requests a final answer. Natural answers
 are preserved. A step cap, context limit or failed/incomplete answer is
 reported separately from a completed answer. Every decision records its
 beliefs, prefix length, policy logit, threshold and checkpoint hash. Injected
-`</think>` control text is recorded separately from generated output tokens.
+`\n</think>\n\n` control text follows Qwen3's closing format and is recorded
+separately from generated output tokens. `validity_scores` has one entry per
+returned step: queried reasoning steps contain `q`; unqueried steps, injected
+control text and final answers contain `None`.
+
+A compatible custom scorer must expose `score_prefix(chat, trajectory)` and
+`checkpoint_sha256`, so checkpoint identity can be checked before decoding.
 
 The Hydra example uses a vLLM generation model on GPU 0 and the native HF
 scoring model on GPU 1:
@@ -175,6 +196,31 @@ The model and tokenizer revision are passed to vLLM. `scorer.seed` selects
 the trained probe; `system.seed` controls generation. Choose a policy fitted
 for that probe. A single-GPU setup can use `scorer.device=cuda:0` with a
 generation memory budget that leaves room for the separate scoring model.
+
+## Scoring cost
+
+Each BELT query runs the separate HF Qwen3-1.7B model over the **entire prompt
+and reasoning prefix**. This adapter does not reuse vLLM hidden states or a
+KV cache across scoring calls. Chunking shares a KV cache within a single
+forward only. Requests are scored one at a time, even when generation is
+batched.
+
+For `k` queries separated by `d` completion tokens and a prompt of `P` tokens,
+the cumulative scoring input is approximately `k*P + d*k*(k+1)/2` tokens.
+Thus processed prefix tokens grow quadratically with trace length at a fixed
+query interval. The default `query_stride=1` queries after each eligible
+reasoning step; with 50–300 token steps, long traces can require dozens of
+full-prefix forwards. A larger stride reduces the number of scoring calls,
+but changes the stopping opportunities: fit or validate the policy on the
+chosen cadence.
+
+`token_stats` and the evaluation runner's token-derived FLOP estimates cover
+generation, **excluding BELT scoring**. The result records
+`metadata.scoring_cost_in_token_stats=false`. Fewer generated tokens alone
+do not establish lower latency or lower total compute for this adapter.
+Measure scoring and generation together when assessing end-to-end cost.
+Reusing vLLM's hidden-state capture requires a separate backend implementation
+and validation of its layer, token and step-end alignment.
 
 ## Validation and reproduction scope
 
@@ -191,9 +237,10 @@ pytest tests/belt -m "not integration"
 python tests/strategy_registry.py --validate
 ```
 
-An opt-in CPU test loads a real published checkpoint and compares the adapter
+Opt-in CPU tests load a real published checkpoint and compare the adapter
 with the original reader/readout on deterministic frozen features, including
-all end markers and feature alignment:
+all end markers and feature alignment. They also exercise the real pinned
+Qwen tokenizer at step cuts produced by stripped generation stop strings:
 
 ```bash
 BELT_TEST_CACHE=/path/to/hf-cache pytest tests/belt/test_native_reader.py \

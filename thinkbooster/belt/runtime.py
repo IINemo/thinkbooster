@@ -5,6 +5,7 @@ import hashlib
 import json
 import sys
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,6 +18,38 @@ CHECKPOINT_REVISIONS = {
     DEFAULT_CHECKPOINT: "1ccc94337a9672dee94f79bc3c3a98a2f994220b",
     "JingweiNi/BELT-Qwen3-1.7B": "15d1c4d82b13b47f3aaaa403687cf88d91d8052f",
 }
+_NATIVE_IMPORT_LOCK = threading.RLock()
+
+
+@contextmanager
+def _native_reader_imports(native_root):
+    """Restore public reader imports after the pinned factory finishes loading.
+
+    Native inference retains its module references and performs no further
+    luh/train_luh imports. BELT initializers are serialized; applications must
+    avoid importing those packages concurrently with initialization.
+    """
+
+    def reader_modules():
+        return {
+            name: module
+            for name, module in sys.modules.copy().items()
+            if name.split(".")[0] in ("luh", "train_luh")
+        }
+
+    with _NATIVE_IMPORT_LOCK:
+        previous = reader_modules()
+        previous_path = sys.path[:]
+        for name in previous:
+            sys.modules.pop(name)
+        sys.path.insert(0, str(native_root))
+        try:
+            yield
+        finally:
+            for name in reader_modules():
+                sys.modules.pop(name)
+            sys.modules.update(previous)
+            sys.path[:] = previous_path
 
 
 def _file_sha256(path):
@@ -27,13 +60,32 @@ def _file_sha256(path):
     return value.hexdigest()
 
 
-def download_checkpoint(repo_id=DEFAULT_CHECKPOINT, seed=0, cache_dir=None):
-    """Download and verify one seed and its native reader template."""
+def checkpoint_manifest(repo_id=DEFAULT_CHECKPOINT, seed=0, cache_dir=None):
+    """Read pinned checkpoint identity without loading weights or a backbone."""
     if repo_id not in CHECKPOINT_REVISIONS:
         raise ValueError(f"Supported Qwen BELT packages: {tuple(CHECKPOINT_REVISIONS)}")
     if type(seed) is not int or seed not in (0, 1, 2):
         raise ValueError("BELT seed must be 0, 1 or 2")
     from huggingface_hub import hf_hub_download
+
+    path = hf_hub_download(
+        repo_id,
+        "CHECKPOINTS.json",
+        revision=CHECKPOINT_REVISIONS[repo_id],
+        cache_dir=cache_dir,
+    )
+    manifest = json.loads(Path(path).read_text())
+    if manifest["backbone"] != BACKBONE or manifest["revision"] != BACKBONE_REVISION:
+        raise ValueError("Checkpoint manifest uses a different backbone revision")
+    record = next(c for c in manifest["checkpoints"] if c["seed"] == seed)
+    return manifest, record
+
+
+def download_checkpoint(repo_id=DEFAULT_CHECKPOINT, seed=0, cache_dir=None):
+    """Download and verify one seed and its native reader template."""
+    from huggingface_hub import hf_hub_download
+
+    manifest, record = checkpoint_manifest(repo_id, seed, cache_dir)
 
     def fetch(filename):
         return Path(
@@ -45,10 +97,6 @@ def download_checkpoint(repo_id=DEFAULT_CHECKPOINT, seed=0, cache_dir=None):
             )
         )
 
-    manifest = json.loads(fetch("CHECKPOINTS.json").read_text())
-    if manifest["backbone"] != BACKBONE or manifest["revision"] != BACKBONE_REVISION:
-        raise ValueError("Checkpoint manifest uses a different backbone revision")
-    record = next(c for c in manifest["checkpoints"] if c["seed"] == seed)
     weight = fetch(record["checkpoint"])
     if _file_sha256(weight) != record["sha256"]:
         raise ValueError("BELT checkpoint SHA256 mismatch")
@@ -107,14 +155,6 @@ class BeltRuntime:
                 "pip install --no-deps -e /path/to/BELT; see docs/strategies/belt.md"
             ) from error
         native_root = resolve_native_root().resolve()
-        loaded = sys.modules.get("luh")
-        if loaded is not None and not Path(loaded.__file__).resolve().is_relative_to(
-            native_root
-        ):
-            raise RuntimeError(
-                "A different luh implementation is already loaded. Run BELT in a fresh "
-                "process with its pinned native reader; see docs/strategies/belt.md"
-            )
         import torch
 
         weight, template, record = download_checkpoint(checkpoint_repo, seed, cache_dir)
@@ -133,9 +173,10 @@ class BeltRuntime:
             dtype=dtype,
             hs_chunk_size=hs_chunk_size,
         )
-        tokenizer, provider, head, frozen, _ = _load_head_runtime(
-            args, torch.device(device)
-        )
+        with _native_reader_imports(native_root):
+            tokenizer, provider, head, frozen, _ = _load_head_runtime(
+                args, torch.device(device)
+            )
         head.load_state_dict(payload["head"], strict=True)
         head.eval()
         state_fn = HeadStateFn(

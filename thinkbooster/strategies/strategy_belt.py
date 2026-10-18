@@ -55,6 +55,7 @@ class StrategyBELT(StrategyBase):
             raise ValueError("query_stride must be a positive integer")
         if not isinstance(policy, BeltStoppingPolicy):
             policy = BeltStoppingPolicy.from_file(policy)
+        policy.validate_checkpoint(getattr(scorer, "checkpoint_sha256", None))
         self.step_generator = step_generator
         self.scorer = scorer
         self.policy = policy
@@ -177,7 +178,7 @@ class StrategyBELT(StrategyBase):
                     ):
                         trajectories[i].append(
                             StepCandidate(
-                                text="</think>",
+                                text="\n</think>\n\n",
                                 token_ids=[],
                                 is_complete=True,
                                 is_trajectory_complete=False,
@@ -185,7 +186,7 @@ class StrategyBELT(StrategyBase):
                                 other_data={"belt_control_text": True},
                             )
                         )
-                        injected_control_text[i].append("</think>")
+                        injected_control_text[i].append("\n</think>\n\n")
                 answers = self.step_generator.generate_answer_candidates_batch(
                     requests=[requests[i] for i in answering],
                     trajectories=[trajectories[i] for i in answering],
@@ -215,6 +216,9 @@ class StrategyBELT(StrategyBase):
         results = []
         for i, trajectory in enumerate(trajectories):
             text = convert_trajectory_to_string(trajectory)
+            validity_scores = [None] * len(trajectory)
+            for decision in decisions[i]:
+                validity_scores[decision["step"] - 1] = decision["beliefs"]["q"]
             results.append(
                 {
                     "trajectory": text,
@@ -222,7 +226,7 @@ class StrategyBELT(StrategyBase):
                     "steps": trajectory,
                     "answer_step": answer_text[i],
                     "reasoning_steps": reasoning_steps[i],
-                    "validity_scores": [d["beliefs"]["q"] for d in decisions[i]],
+                    "validity_scores": validity_scores,
                     "completed": completed[i],
                     "completion_reason": reasons[i],
                     "context_limit_hit": any(
@@ -239,6 +243,7 @@ class StrategyBELT(StrategyBase):
                         "checkpoint_sha256": self.policy.checkpoint_sha256,
                         "decisions": decisions[i],
                         "injected_control_text": injected_control_text[i],
+                        "scoring_cost_in_token_stats": False,
                     },
                 }
             )

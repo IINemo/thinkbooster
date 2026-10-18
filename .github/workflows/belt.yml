@@ -48,7 +48,7 @@ jobs:
           git clone https://github.com/EdisonNi-hku/BELT.git "$RUNNER_TEMP/belt-runtime"
           git -C "$RUNNER_TEMP/belt-runtime" checkout fc9b0670e430ed3519eb0df25aef0f5788a8b29c
           python -m pip install --no-deps -e "$RUNNER_TEMP/belt-runtime"
-      - name: Compare published checkpoint with original reader on CPU
+      - name: Check original reader parity and real Qwen tokenizer boundaries on CPU
         env:
           BELT_TEST_CACHE: ${{ runner.temp }}/belt-hf
         run: python -m pytest tests/belt/test_native_reader.py -m integration -o addopts= -v

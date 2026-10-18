@@ -387,6 +387,7 @@ def create_scorer(config):
     if config.scorer is None:
         return None
     if config.scorer.type == "belt":
+        from thinkbooster.belt import BeltStoppingPolicy
         from thinkbooster.scorers.step_scorer_belt import StepScorerBELT
 
         if config.strategy.type == "belt" and not config.strategy.get("policy_path"):
@@ -402,6 +403,9 @@ def create_scorer(config):
             hs_chunk_size=config.scorer.get("hs_chunk_size", 8192),
             target=config.scorer.get("target", "q"),
         )
+        if config.strategy.type == "belt":
+            policy = BeltStoppingPolicy.from_file(config.strategy.policy_path)
+            policy.validate_checkpoint(scorer.checkpoint_sha256)
     elif config.scorer.type == "prm":
         scorer = StepScorerPRM(
             prm_model_path=config.scorer.model_path,
@@ -447,6 +451,10 @@ def create_scorer(config):
 
 
 def create_model(config):
+    if config.strategy.type == "belt":
+        if config.scorer is None or config.scorer.type != "belt":
+            raise ValueError("BELT stopping requires scorer.type=belt")
+        create_scorer(config)  # Validate the policy before allocating the vLLM model.
     if config.model.type == "vllm":
         # vLLM backend - fast inference with PagedAttention
         # Uncertainty scoring is done locally using lm-polygraph estimators

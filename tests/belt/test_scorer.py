@@ -7,6 +7,8 @@ from thinkbooster.scorers.step_scorer_belt import StepScorerBELT
 
 
 class Runtime:
+    checkpoint_sha256 = "a" * 64
+
     def __init__(self):
         self.calls = []
 
@@ -55,3 +57,58 @@ def test_empty_inputs_do_not_load_a_model():
 def test_trajectory_batch_mismatch_fails():
     with pytest.raises(ValueError):
         StepScorerBELT(runtime=SimpleNamespace()).score_trajectories_batch([[]], [])
+
+
+def test_checkpoint_identity_uses_manifest_without_loading_weights(
+    tmp_path, monkeypatch
+):
+    import json
+
+    from thinkbooster.belt.runtime import (
+        BACKBONE,
+        BACKBONE_REVISION,
+        CHECKPOINT_REVISIONS,
+        DEFAULT_CHECKPOINT,
+    )
+
+    path = tmp_path / "CHECKPOINTS.json"
+    path.write_text(
+        json.dumps(
+            {
+                "backbone": BACKBONE,
+                "revision": BACKBONE_REVISION,
+                "checkpoints": [
+                    {"seed": 0, "sha256": "a" * 64},
+                    {"seed": 1, "sha256": "b" * 64},
+                ],
+            }
+        )
+    )
+    calls = []
+
+    def fetch(repo_id, filename, **kwargs):
+        calls.append((repo_id, filename, kwargs))
+        return str(path)
+
+    monkeypatch.setattr("huggingface_hub.hf_hub_download", fetch)
+    scorer = StepScorerBELT(seed=1, cache_dir=str(tmp_path))
+    assert scorer.checkpoint_sha256 == "b" * 64
+    assert scorer._runtime is None
+    assert calls == [
+        (
+            DEFAULT_CHECKPOINT,
+            "CHECKPOINTS.json",
+            {
+                "revision": CHECKPOINT_REVISIONS[DEFAULT_CHECKPOINT],
+                "cache_dir": str(tmp_path),
+            },
+        )
+    ]
+
+
+def test_injected_runtime_identity_needs_no_network(monkeypatch):
+    def no_download(*args, **kwargs):
+        raise AssertionError("The injected runtime already identifies its weights")
+
+    monkeypatch.setattr("huggingface_hub.hf_hub_download", no_download)
+    assert StepScorerBELT(runtime=Runtime()).checkpoint_sha256 == "a" * 64

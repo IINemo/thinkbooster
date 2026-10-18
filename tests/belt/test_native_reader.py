@@ -9,7 +9,11 @@ from unittest.mock import patch
 import pytest
 import torch
 
-from thinkbooster.belt.runtime import BeltRuntime, download_checkpoint
+from thinkbooster.belt.runtime import (
+    BeltRuntime,
+    _native_reader_imports,
+    download_checkpoint,
+)
 
 
 @pytest.mark.integration
@@ -22,15 +26,21 @@ def test_published_reader_matches_original_forward_with_all_end_markers():
     from rl_controller.scripts import rl_train
     from transformers import Qwen3Config
 
-    sys.path.insert(0, str(resolve_native_root()))
-    from luh import AutoUncertaintyHead
-
     weight, template, record = download_checkpoint(
         cache_dir=os.environ["BELT_TEST_CACHE"]
     )
     payload = torch.load(weight, map_location="cpu", weights_only=True)
     base = SimpleNamespace(config=Qwen3Config(hidden_size=2048, num_hidden_layers=28))
-    head = AutoUncertaintyHead.from_pretrained(str(template), base).eval()
+    before_path = sys.path[:]
+    before_modules = {
+        name: module
+        for name, module in sys.modules.copy().items()
+        if name.split(".")[0] in ("luh", "train_luh")
+    }
+    with _native_reader_imports(resolve_native_root()):
+        from luh import AutoUncertaintyHead
+
+        head = AutoUncertaintyHead.from_pretrained(str(template), base).eval()
     head.load_state_dict(payload["head"], strict=True)
     frozen = copy.deepcopy(head).eval()
     prompt_ids, completion_ids, ends = [11, 12, 13], [21, 22, 23, 24, 25, 26], [2, 4, 6]
@@ -85,6 +95,12 @@ def test_published_reader_matches_original_forward_with_all_end_markers():
         rtol=0,
         atol=1e-6,
     )
+    assert sys.path == before_path
+    assert {
+        name: module
+        for name, module in sys.modules.copy().items()
+        if name.split(".")[0] in ("luh", "train_luh")
+    } == before_modules
 
 
 @pytest.mark.integration

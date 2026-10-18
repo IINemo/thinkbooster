@@ -86,11 +86,14 @@ class BeltStoppingPolicy:
             data[key] = tuple(data[key])
         return cls(**data)
 
-    def decision_logit(self, signal: BeltSignal) -> float:
-        if signal.checkpoint_sha256 != self.checkpoint_sha256:
+    def validate_checkpoint(self, checkpoint_sha256):
+        if checkpoint_sha256 != self.checkpoint_sha256:
             raise ValueError(
-                "Policy checkpoint SHA256 differs from the loaded BELT probe"
+                "Policy checkpoint SHA256 differs from the selected BELT probe"
             )
+
+    def decision_logit(self, signal: BeltSignal) -> float:
+        self.validate_checkpoint(signal.checkpoint_sha256)
         if self.feature_space == "H":
             features = signal.hidden
             if self.hidden_dtype == "float16":

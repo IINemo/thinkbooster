@@ -27,6 +27,8 @@ def policy(threshold=2):
 
 
 class Scorer:
+    checkpoint_sha256 = SHA
+
     def __init__(self):
         self.histories = []
 
@@ -122,6 +124,7 @@ def test_query_cadence_keeps_unqueried_step_history():
         generator, scorer, policy(), min_steps=2, query_stride=2
     ).generate_trajectory(requests(1)[0])
     assert scorer.histories == [["a", "b"]]
+    assert result["validity_scores"] == [None, 0.7, None]
     assert result["completed"]
 
 
@@ -188,7 +191,10 @@ def test_policy_stop_closes_thinking_and_records_control_text():
     result = StrategyBELT(generator, Scorer(), policy(0)).generate_trajectory(
         requests(1)[0]
     )
-    assert result["trajectory"] == "reason</think>\\boxed{4}"
+    assert result["trajectory"] == "reason\n</think>\n\n\\boxed{4}"
+    assert result["metadata"]["injected_control_text"] == ["\n</think>\n\n"]
+    assert generator.answer_calls[0][1][0][-1].text == "\n</think>\n\n"
+    assert result["validity_scores"] == [0.7, None, None]
     assert result["reasoning_steps"] == 1
     assert result["token_stats"]["output_tokens"] == len("reason\\boxed{4}".encode())
 
@@ -221,3 +227,13 @@ def test_unimplemented_batch_api_is_rejected():
 
     with pytest.raises(ValueError, match="batched step and answer"):
         StrategyBELT(StepCandidateGeneratorBase(1), Scorer(), policy())
+
+
+def test_wrong_probe_fails_before_any_generation():
+    generator = Generator({0: [candidate("reason")]})
+    scorer = Scorer()
+    scorer.checkpoint_sha256 = "b" * 64
+    with pytest.raises(ValueError, match="checkpoint SHA256"):
+        StrategyBELT(generator, scorer, policy())
+    assert generator.step_calls == []
+    assert scorer.histories == []
