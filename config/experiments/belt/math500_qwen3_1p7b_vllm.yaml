@@ -1,0 +1,11 @@
+# @package _global_
+defaults:
+  - math500_qwen3_1p7b
+  - _self_
+
+run_name: belt_vllm_qwen3_1p7b_seed${system.seed}_${now:%H-%M-%S}
+
+# Opt-in shared generation/feature engine; the native reader uses this GPU too.
+scorer:
+  backend: vllm
+  device: cuda:0

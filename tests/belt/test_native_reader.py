@@ -144,3 +144,56 @@ def test_qwen_tokenizer_scores_steps_cut_at_stripped_stop_strings():
         for i in range(len(stable))
     ]
     assert calls[-1][1] == expected
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not os.getenv("BELT_TEST_CACHE"), reason="Set BELT_TEST_CACHE")
+def test_injected_provider_loads_only_reader_and_matches_original_head(monkeypatch):
+    from rl_controller.scripts import rl_train
+    from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, Qwen3Config
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("HF backbone/runtime must not load for injected features")
+
+    monkeypatch.setattr(rl_train, "_load_head_runtime", forbidden)
+    monkeypatch.setattr(AutoModel, "from_pretrained", forbidden)
+    monkeypatch.setattr(AutoModelForCausalLM, "from_pretrained", forbidden)
+    monkeypatch.setattr(AutoConfig, "from_pretrained", forbidden)
+    features = torch.sin(torch.arange(8 * 2048).reshape(1, 8, 2048) / 1000)
+    provider = SimpleNamespace(
+        get_features=lambda sequences, device: (
+            features[:, : len(sequences[0]) - 1].to(device),
+            torch.ones(1, len(sequences[0]) - 1, dtype=torch.long, device=device),
+            [0],
+            [],
+        ),
+        chunk_size=0,
+        backend="vllm",
+        stats={"repair_calls": 0},
+    )
+    tokenizer = object()
+    runtime = BeltRuntime.from_pretrained(
+        device="cpu",
+        dtype="float32",
+        cache_dir=os.environ["BELT_TEST_CACHE"],
+        feature_provider=provider,
+        tokenizer=tokenizer,
+        base_config=Qwen3Config(hidden_size=2048, num_hidden_layers=28),
+    )
+    assert runtime.tokenizer is tokenizer and runtime.state_fn.provider is provider
+    signal = runtime.score_token_ids([11, 12, 13], [21, 22, 23, 24, 25, 26], [2, 4, 6])
+    actual_hidden = torch.tensor(signal.hidden)
+    captured = []
+    hook = runtime.state_fn.head.classifier.register_forward_pre_hook(
+        lambda module, args: captured.append(args[0].clone())
+    )
+    masks = torch.zeros(3, 8, dtype=torch.long)
+    for row, end in enumerate([2, 4, 6]):
+        column = 3 + end - 2
+        masks[row, column - 1 : column + 1] = 1
+    with torch.inference_mode():
+        runtime.state_fn.head.forward_from_features(features, torch.ones(1, 8), [masks])
+    hook.remove()
+    torch.testing.assert_close(actual_hidden, captured[-1][-1], rtol=0, atol=1e-6)
+    assert runtime.metadata["scoring_backend"] == "vllm"
+    assert runtime.metadata["backend_stats"] == {"repair_calls": 0}

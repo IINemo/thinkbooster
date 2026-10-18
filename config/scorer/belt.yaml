@@ -1,4 +1,5 @@
 type: belt
+backend: hf
 checkpoint_repo: JingweiNi/BELT-Qwen3-1.7B-ReProbeInit
 seed: 0
 device: cuda:0

@@ -125,3 +125,8 @@ def test_unknown_checkpoint_selection_fails_before_network(kwargs):
         kwargs["repo_id"] = kwargs.pop("checkpoint_repo")
     with pytest.raises(ValueError):
         download_checkpoint(**kwargs)
+
+
+def test_injected_features_require_tokenizer_before_native_or_checkpoint_loading():
+    with pytest.raises(ValueError, match="tokenizer"):
+        BeltRuntime.from_pretrained(feature_provider=object())

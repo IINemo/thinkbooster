@@ -24,6 +24,9 @@ class StepScorerBELT(StepScorerBase):
         cache_dir=None,
         hs_chunk_size=8192,
         target="q",
+        feature_provider=None,
+        tokenizer=None,
+        base_config=None,
     ):
         super().__init__(name="belt")
         if target not in ("q", "v", "r", "stability"):
@@ -38,7 +41,37 @@ class StepScorerBELT(StepScorerBase):
             dtype=dtype,
             cache_dir=cache_dir,
             hs_chunk_size=hs_chunk_size,
+            feature_provider=feature_provider,
+            tokenizer=tokenizer,
+            base_config=base_config,
         )
+
+    def bind_feature_provider(self, feature_provider, tokenizer, base_config=None):
+        """Bind the shared generation engine before the lazy reader is loaded."""
+        if feature_provider is None or tokenizer is None:
+            raise ValueError("BELT provider binding requires provider and tokenizer")
+        with self._load_lock:
+            if self._runtime is not None:
+                raise RuntimeError(
+                    "Cannot replace features after BELT runtime is loaded"
+                )
+            self._runtime_options.update(
+                feature_provider=feature_provider,
+                tokenizer=tokenizer,
+                base_config=base_config,
+            )
+
+    @property
+    def metadata(self):
+        if self._runtime is not None:
+            return getattr(self._runtime, "metadata", {"scoring_backend": "hf"})
+        provider = self._runtime_options.get("feature_provider")
+        result = {"scoring_backend": getattr(provider, "backend", "hf")}
+        if provider is not None and hasattr(provider, "stats"):
+            result["backend_stats"] = dict(provider.stats)
+        if provider is not None and hasattr(provider, "metadata"):
+            result["backend_metadata"] = provider.metadata
+        return result
 
     @property
     def checkpoint_sha256(self):
@@ -77,6 +110,7 @@ class StepScorerBELT(StepScorerBase):
                         "prefix_tokens": signal.prefix_tokens,
                         "checkpoint_sha256": signal.checkpoint_sha256,
                         "ranking_target": self.target,
+                        **self.metadata,
                     },
                 )
             )

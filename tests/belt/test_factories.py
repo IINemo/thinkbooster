@@ -189,3 +189,96 @@ def test_evaluation_files_preserve_belt_decisions_and_cost_scope(
     assert resumed[0]["metadata"] == metadata
     metrics = json.loads((tmp_path / "metrics.jsonl").read_text())
     assert metrics["scoring_cost_in_token_stats"] is False
+
+
+def test_opt_in_vllm_example_uses_one_gpu_and_preserves_hf_default():
+    root = Path(__file__).resolve().parents[2]
+    with initialize_config_dir(version_base=None, config_dir=str(root / "config")):
+        cfg = compose(config_name="experiments/belt/math500_qwen3_1p7b_vllm")
+    assert cfg.scorer.backend == "vllm" and cfg.scorer.device == "cuda:0"
+    assert config().scorer.backend == "hf"
+
+
+@pytest.mark.parametrize(
+    "field,value,message",
+    [
+        ("scorer.backend", "other", "backend"),
+        ("model.type", "local", "model.type=vllm"),
+        ("model.model_path", "Qwen/Qwen3-8B", "Qwen3-1.7B"),
+        ("model.revision", "main", "revision"),
+        ("model.tokenizer_revision", "main", "tokenizer revision"),
+        ("model.tensor_parallel_size", 2, "TP=1"),
+        ("model.quantization", "fp8", "quantization"),
+        ("model.dtype", "float16", "bfloat16"),
+        ("system.torch_dtype", "float32", "bfloat16"),
+    ],
+)
+def test_vllm_backend_rejects_unsupported_config_before_allocation(
+    factories, fitted_config, monkeypatch, field, value, message
+):
+    from omegaconf import OmegaConf
+
+    cfg = fitted_config
+    OmegaConf.update(cfg, "scorer.backend", "vllm", force_add=True)
+    OmegaConf.update(cfg, field, value, force_add=True)
+    calls = []
+    monkeypatch.setattr(factories, "VLLM_AVAILABLE", False)
+    monkeypatch.setattr(factories, "LLM", lambda **kw: calls.append(kw), raising=False)
+    with pytest.raises(ValueError, match=message):
+        factories.create_model(cfg)
+    assert calls == []
+
+
+def test_vllm_backend_hydra_routes_generation_and_binds_lazy_scorer(
+    factories, fitted_config, monkeypatch
+):
+    from thinkbooster.belt.vllm_backend import BeltVLLMBackend
+
+    cfg = fitted_config
+    cfg.scorer.backend = "vllm"
+    seen = {}
+    engine = SimpleNamespace(
+        llm_engine=SimpleNamespace(
+            engine_core=SimpleNamespace(collective_rpc=lambda method: [None])
+        ),
+        get_tokenizer=lambda: "tokenizer",
+        model_config=SimpleNamespace(hf_config=object()),
+    )
+    monkeypatch.setattr(factories, "VLLM_AVAILABLE", True)
+    monkeypatch.setattr(factories, "VLLM_GENERATOR_AVAILABLE", True)
+    monkeypatch.setattr(
+        factories, "LLM", lambda **kw: seen.update(kw) or engine, raising=False
+    )
+    monkeypatch.setattr(
+        factories, "SamplingParams", lambda **kw: SimpleNamespace(**kw), raising=False
+    )
+    monkeypatch.setattr(
+        factories, "WhiteboxModelvLLM", lambda **kw: SimpleNamespace(), raising=False
+    )
+
+    def generator(**kwargs):
+        return SimpleNamespace(
+            **kwargs,
+            generate_step_candidates_batch=lambda **kw: [],
+            generate_answer_candidates_batch=lambda **kw: [],
+        )
+
+    monkeypatch.setattr(factories, "VLLMStepGenerator", generator, raising=False)
+    scorer = factories.create_scorer(cfg)
+    model, step_generator = factories.create_model(cfg)
+    assert isinstance(step_generator.model, BeltVLLMBackend)
+    assert (
+        getattr(step_generator.model, "llm", step_generator.model)
+        is step_generator.model
+    )
+    assert seen["enforce_eager"] is True
+    assert seen["dtype"] == "bfloat16"
+    assert (
+        seen["worker_extension_cls"]
+        == "thinkbooster.belt.vllm_worker.BeltHiddenStatesExtension"
+    )
+    strategy = factories.create_tts_strategy(cfg, model, step_generator, scorer)
+    assert strategy.scorer._runtime is None
+    assert scorer._runtime_options["feature_provider"] is step_generator.model
+    assert scorer._runtime_options["tokenizer"] == "tokenizer"
+    assert scorer._runtime_options["base_config"] is engine.model_config.hf_config

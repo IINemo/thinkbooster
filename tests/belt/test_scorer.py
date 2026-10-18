@@ -112,3 +112,23 @@ def test_injected_runtime_identity_needs_no_network(monkeypatch):
 
     monkeypatch.setattr("huggingface_hub.hf_hub_download", no_download)
     assert StepScorerBELT(runtime=Runtime()).checkpoint_sha256 == "a" * 64
+
+
+def test_provider_binding_is_lazy_and_cannot_replace_loaded_runtime(monkeypatch):
+    from types import SimpleNamespace
+
+    provider, tokenizer, config = object(), object(), object()
+    scorer = StepScorerBELT()
+    scorer.bind_feature_provider(provider, tokenizer, config)
+    assert scorer._runtime is None
+    calls = []
+    runtime = SimpleNamespace(metadata={"scoring_backend": "vllm"})
+    monkeypatch.setattr(
+        "thinkbooster.scorers.step_scorer_belt.BeltRuntime.from_pretrained",
+        lambda **kwargs: calls.append(kwargs) or runtime,
+    )
+    assert scorer.runtime is runtime
+    assert calls[0]["feature_provider"] is provider
+    assert calls[0]["tokenizer"] is tokenizer and calls[0]["base_config"] is config
+    with pytest.raises(RuntimeError, match="loaded"):
+        scorer.bind_feature_provider(object(), tokenizer)

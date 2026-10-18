@@ -133,8 +133,20 @@ class BeltRuntime:
         self.state_fn = state_fn
         self.readout = readout
         self.checkpoint_sha256 = checkpoint_sha256
-        self.metadata = metadata or {}
+        self._metadata = metadata or {}
+        self.feature_provider = getattr(state_fn, "provider", None)
         self._lock = threading.RLock()
+
+    @property
+    def metadata(self):
+        metadata = dict(self._metadata)
+        metadata.setdefault("scoring_backend", "hf")
+        provider = self.feature_provider
+        if provider is not None and hasattr(provider, "stats"):
+            metadata["backend_stats"] = dict(provider.stats)
+        if provider is not None and hasattr(provider, "metadata"):
+            metadata["backend_metadata"] = provider.metadata
+        return metadata
 
     @classmethod
     def from_pretrained(
@@ -145,10 +157,15 @@ class BeltRuntime:
         dtype="bfloat16",
         cache_dir=None,
         hs_chunk_size=8192,
+        feature_provider=None,
+        tokenizer=None,
+        base_config=None,
     ):
+        if feature_provider is not None and tokenizer is None:
+            raise ValueError("An injected BELT feature provider requires a tokenizer")
         try:
             from rl_controller.rollout_contract import resolve_native_root
-            from rl_controller.scripts.rl_train import HeadStateFn, _load_head_runtime
+            from rl_controller.scripts.rl_train import HeadStateFn
         except ImportError as error:
             raise ImportError(
                 "BELT inference needs the pinned BELT source checkout installed with "
@@ -174,9 +191,40 @@ class BeltRuntime:
             hs_chunk_size=hs_chunk_size,
         )
         with _native_reader_imports(native_root):
-            tokenizer, provider, head, frozen, _ = _load_head_runtime(
-                args, torch.device(device)
-            )
+            if feature_provider is None:
+                from rl_controller.scripts.rl_train import _load_head_runtime
+
+                tokenizer, provider, head, frozen, _ = _load_head_runtime(
+                    args, torch.device(device)
+                )
+                scoring_backend = "hf"
+            else:
+                from luh import AutoUncertaintyHead
+
+                if base_config is None:
+                    from transformers import AutoConfig
+
+                    base_config = AutoConfig.from_pretrained(
+                        BACKBONE, revision=BACKBONE_REVISION, cache_dir=cache_dir
+                    )
+                if (
+                    base_config.model_type != "qwen3"
+                    or base_config.hidden_size != 2048
+                    or base_config.num_hidden_layers != 28
+                ):
+                    raise ValueError("BELT reader requires the Qwen3-1.7B base config")
+                base = SimpleNamespace(config=base_config)
+                head = AutoUncertaintyHead.from_pretrained(str(template), base).to(
+                    device
+                )
+                frozen = AutoUncertaintyHead.from_pretrained(str(template), base).to(
+                    device
+                )
+                frozen.eval()
+                for parameter in frozen.parameters():
+                    parameter.requires_grad_(False)
+                provider = feature_provider
+                scoring_backend = getattr(provider, "backend", "injected")
         head.load_state_dict(payload["head"], strict=True)
         head.eval()
         state_fn = HeadStateFn(
@@ -205,6 +253,7 @@ class BeltRuntime:
                 "backbone_revision": BACKBONE_REVISION,
                 "device": str(device),
                 "dtype": dtype,
+                "scoring_backend": scoring_backend,
             },
         )
 

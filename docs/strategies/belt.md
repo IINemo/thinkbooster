@@ -200,9 +200,78 @@ the trained probe; `system.seed` controls generation. Choose a policy fitted
 for that probe. A single-GPU setup can use `scorer.device=cuda:0` with a
 generation memory budget that leaves room for the separate scoring model.
 
+## Opt-in shared vLLM backend
+
+The default remains `scorer.backend=hf`. To use one generation backbone and
+the native BELT reader on GPU 0:
+
+```bash
+python scripts/run_tts_eval.py \
+  --config-name experiments/belt/math500_qwen3_1p7b_vllm \
+  strategy.policy_path=/absolute/path/to/belt-policy.json
+```
+
+This initial backend targets **vLLM 0.12, the pinned Qwen3-1.7B revision,
+TP=1, PP=1, eager execution, bfloat16 weights and KV cache, no quantization,
+and one completion per request**. It requires `kv_cache_dtype=auto` and a
+frozen base model: LoRA configuration/requests, speculative decoding and
+prompt embeddings are rejected, including through the direct Python API.
+Cache identities contain actual token IDs, so adapter-specific states and
+synthetic token IDs from prompt embeddings are outside the supported scope.
+The factory rejects unsupported backbones, revisions and backend settings
+before allocating the engine. It uses its own worker extension; the generic
+upstream hidden-state extension is unchanged.
+
+The worker captures the full residual **at the input to zero-based decoder
+layer 16**, equivalent to HF `hidden_states[16]`, with width 2048. In vLLM's
+Qwen3 implementation this is `hidden_states + residual`, copied before the
+fused normalization mutates either branch. It is not the bare MLP output.
+Captures retain request IDs and absolute token positions; uncertain attribution
+raises an error. Independent GPU copies remain bounded to 131072 captured
+tokens per generation call and transfer to float32 CPU arrays on the flush
+RPC. Leave GPU memory room for these copies and the small native reader.
+
+The feature cache matches actual prompt/completion token IDs. Causal prefixes
+can share features only while their token IDs match exactly. Retokenizing
+joined step text can change a tail token even when the text looks identical;
+changed tokens and later positions cannot reuse the previous capture. The
+last generated token normally has no captured feature yet. The reader retains
+its canonical next-token alignment and consumes states for `full_ids[:-1]`.
+
+When normal generation capture does not cover that exact token sequence,
+the provider requests a deterministic `max_tokens=1` prefill using explicit
+`prompt_token_ids`, without stop strings. Known exact prefixes can reuse APC.
+Unknown APC gaps trigger one prefix-cache reset and one cold retry; remaining
+gaps raise an error. Starting a strategy batch clears both feature ownership
+and APC. Scorer cleanup never destroys the shared generation engine.
+An explicit `reset_hs_step_cache(reset_prefix_cache=False)` retains APC after
+dropping feature ownership and can therefore require repairs; the strategy
+uses the default `True`.
+
+`BeltRuntime.from_pretrained(feature_provider=backend, tokenizer=tokenizer,
+base_config=config)` and `StepScorerBELT` accept explicit injection too. This
+path loads the original head and trained readout without an HF backbone.
+Omitting `base_config` loads only the pinned `AutoConfig`. The Hydra factories
+bind the generator's provider and tokenizer before lazy scorer loading.
+
+Result metadata includes `scoring_backend`, `backend_stats`, and
+`backend_stats_scope=strategy_batch`. Counters cover generation capture,
+feature queries, cache hits, repair calls, actual computed/captured repair rows,
+requested repair-prefill lengths, prefix-cache resets and timings. Actual
+repair rows include the last prompt position even though the reader does not
+consume it. These are shared batch totals, not per-sample work estimates.
+`backend.metadata` also describes the captured layer and feature format.
+
+CPU tests cover residual reconstruction and mutation isolation, request/position
+attribution, exact-token cache merging, retokenized tails, bounded gap repair,
+generator routing, reader-only loading and native reader parity. GPU validation
+is a separate check; these CPU tests do not establish backbone numerical parity
+or any latency or utilization benefit. There is no universal speedup claim:
+capture copies, the reader and repair prefills all cost time and memory.
+
 ## Scoring cost
 
-Each BELT query runs the separate HF Qwen3-1.7B model over the **entire prompt
+With the default HF backend, each BELT query runs the separate Qwen3-1.7B model over the **entire prompt
 and reasoning prefix**. This adapter does not reuse vLLM hidden states or a
 KV cache across scoring calls. Chunking shares a KV cache within a single
 forward only. Requests are scored one at a time, even when generation is
@@ -223,8 +292,9 @@ generation, **excluding BELT scoring**. The result records
 records `scoring_cost_in_token_stats=false`. Fewer generated tokens alone do
 not establish lower latency or lower total compute for this adapter.
 Measure scoring and generation together when assessing end-to-end cost.
-Reusing vLLM's hidden-state capture requires a separate backend implementation
-and validation of its layer, token and step-end alignment.
+The opt-in vLLM backend above reuses captured features where token identity
+and coverage permit. Its reader and repair work are likewise excluded from
+generation token statistics; report backend counters alongside end-to-end cost.
 
 ## Validation and reproduction scope
 
@@ -252,3 +322,75 @@ BELT_TEST_CACHE=/path/to/hf-cache pytest tests/belt/test_native_reader.py \
 ```
 
 This checks reader inference parity. It does not run generation or a benchmark.
+
+The opt-in [GPU validation helper](../../tests/belt/validate_vllm_gpu.py) checks
+the backbone residuals as well. It is not collected by pytest. With the adapter
+and native reader installed, run these commands on a CUDA GPU in **three
+separate Python processes**. Each backbone is released before the next phase:
+
+```bash
+belt_snapshot=/path/to/snapshots/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+python tests/belt/validate_vllm_gpu.py hf \
+  --model "$belt_snapshot" --probe-cache /path/to/probe-cache \
+  --output ./belt-gpu-validation
+python tests/belt/validate_vllm_gpu.py vllm \
+  --model "$belt_snapshot" --probe-cache /path/to/probe-cache \
+  --output ./belt-gpu-validation
+python tests/belt/validate_vllm_gpu.py hf-generated \
+  --model "$belt_snapshot" --probe-cache /path/to/probe-cache \
+  --output ./belt-gpu-validation
+```
+
+The helper requires an existing local snapshot with that exact revision and
+`vllm==0.12.0`. All phases record software/GPU identity and the real pinned
+seed-0 probe checksum; runtime loading verifies the probe/template hashes.
+Content SHA256 values identify the actual imported public runtime/helper
+sources and native reader runtime, including copies without `.git`; optional
+Git revision and dirty status are also recorded. Reference phases reject
+mismatched source content, software, GPU model, settings or tokenization.
+Five fixed prefixes cover successive joined steps, stripped-stop token merges,
+Unicode and a longer trace. Predeclared limits are relative L2 ≤ 0.02 for
+backbone features and reader representations, maximum belief error ≤ 0.01,
+and fixture-policy logit error ≤ 0.05. Keep those cases, coefficients and limits
+fixed when interpreting a run.
+
+The vLLM phase saves four actual 64-token continuations, their captured
+`[T-1,2048]` features, and trained reader representations, beliefs and fixture
+logits. Saved cases retain the original chat prompt and all prior step ends;
+the generation input length is recorded separately. Capture queries and reader
+scoring must reuse those features with **zero repairs**. This phase reports
+`overall_status=pending_hf_generated` rather than final parity success.
+
+The final `hf-generated` process forwards the **same saved token IDs** through
+HF, frees that backbone, then runs the injected native reader. It compares
+both full-sequence features and the 63 actual decode rows after the generation
+input, excluding the canonically uncaptured final token. Decode rows use the
+same 0.02 relative-L2 limit independently, so prefill rows cannot dilute decode
+error. Reader representations, beliefs and fixture logits use the same limits
+above. No sampled-text equality is required.
+
+The helper also tests warm feature reuse, batched generation capture, and a
+short real `VLLMStepGenerator` → `StepScorerBELT` → `StrategyBELT` trajectory.
+It forbids HF backbone/runtime loading during injected scoring. Its policies
+are explicitly labeled **unfitted software fixtures** bound to the real probe
+checksum: one exercises logit parity; a zero-weight policy forces a stop at the
+first eligible query. The smoke must actually query the reader and exercise
+answer generation. Completion/truncation flags and generation, cache and repair
+counters are reported; no answer-accuracy or fitted-policy claim is made.
+
+Optional vLLM-phase flags `--max-num-batched-tokens` (default 8192),
+`--max-num-seqs` (default 8), and `--disable-prefix-caching` exercise chunk
+boundaries and request attribution. Chunked prefill is always enabled, and
+`vllm.json` records the effective engine arguments. For example, use
+`--max-num-batched-tokens 128 --disable-prefix-caching` for a smaller prefill
+chunk without APC. Use a separate output directory per configuration and copy
+the three HF reference artifacts (`cases.json`, `hf_features.pt`, `hf.json`)
+there before running its vLLM phase, or rerun HF in that directory.
+
+The reports are `hf.json`, `vllm.json`, and `generated_parity.json`. Only the
+last report can establish final `overall_status=passed`; it also requires all
+preceding vLLM checks to pass. Artifact hashes bind it to the exact reference,
+generation cases and feature files. Rerunning an upstream phase invalidates
+downstream reports, preventing stale successes. Failures exit nonzero and write
+a phase failure JSON when preflight has completed. Timings are diagnostic
+measurements of these software checks and do not establish a speedup.

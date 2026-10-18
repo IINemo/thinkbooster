@@ -214,6 +214,11 @@ class StrategyBELT(StrategyBase):
         for i in active:
             reasons[i] = "max_steps"
         results = []
+        scoring_metadata = dict(
+            getattr(self.scorer, "metadata", {"scoring_backend": "hf"})
+        )
+        if "backend_stats" in scoring_metadata:
+            scoring_metadata["backend_stats_scope"] = "strategy_batch"
         for i, trajectory in enumerate(trajectories):
             text = convert_trajectory_to_string(trajectory)
             validity_scores = [None] * len(trajectory)
@@ -237,6 +242,7 @@ class StrategyBELT(StrategyBase):
                         sample_indices[i]
                     ),
                     "metadata": {
+                        **scoring_metadata,
                         "strategy": "belt",
                         "feature_space": self.policy.feature_space,
                         "hidden_dtype": self.policy.hidden_dtype,

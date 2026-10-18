@@ -237,3 +237,24 @@ def test_wrong_probe_fails_before_any_generation():
         StrategyBELT(generator, scorer, policy())
     assert generator.step_calls == []
     assert scorer.histories == []
+
+
+def test_backend_metadata_and_counters_preserve_decisions_and_cost_scope():
+    generator = Generator({0: [candidate("reason")]}, {0: candidate("answer", True)})
+    resets = []
+    generator.model = SimpleNamespace(reset_hs_step_cache=lambda: resets.append(True))
+    scorer = Scorer()
+    scorer.metadata = {
+        "scoring_backend": "vllm",
+        "backend_stats": {"repair_calls": 2, "queries": 1},
+    }
+    result = StrategyBELT(generator, scorer, policy(0)).generate_trajectory(
+        requests(1)[0]
+    )
+    assert resets == [True]
+    assert result["metadata"]["scoring_backend"] == "vllm"
+    assert result["metadata"]["backend_stats"]["repair_calls"] == 2
+    assert result["metadata"]["backend_stats_scope"] == "strategy_batch"
+    assert result["metadata"]["decisions"][0]["stop"] is True
+    assert result["metadata"]["scoring_cost_in_token_stats"] is False
+    assert result["completed"] and result["completion_reason"] == "belt_stop"

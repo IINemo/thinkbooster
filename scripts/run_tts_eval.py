@@ -380,7 +380,50 @@ def set_random_seeds(seed):
         torch.cuda.manual_seed_all(seed)
 
 
+def _belt_backend(config):
+    """Validate the opt-in backend before any generation model allocation."""
+    if config.scorer is None or config.scorer.type != "belt":
+        return None
+    backend = config.scorer.get("backend", "hf")
+    if backend not in ("hf", "vllm"):
+        raise ValueError("BELT scorer.backend must be hf or vllm")
+    if backend == "vllm":
+        from thinkbooster.belt.runtime import BACKBONE, BACKBONE_REVISION
+
+        if config.model.type != "vllm":
+            raise ValueError("BELT backend=vllm requires model.type=vllm")
+        if config.model.model_path != BACKBONE:
+            raise ValueError("BELT vLLM requires the pinned Qwen/Qwen3-1.7B backbone")
+        if config.model.get("revision") != BACKBONE_REVISION:
+            raise ValueError("BELT vLLM requires the pinned backbone revision")
+        if (
+            config.model.get("tokenizer_revision", BACKBONE_REVISION)
+            != BACKBONE_REVISION
+        ):
+            raise ValueError("BELT vLLM requires the pinned tokenizer revision")
+        if (
+            config.model.get("tensor_parallel_size", 1) != 1
+            or config.model.get("pipeline_parallel_size", 1) != 1
+        ):
+            raise ValueError("BELT vLLM requires TP=1 and PP=1")
+        if config.model.get("quantization") is not None:
+            raise ValueError("BELT vLLM does not support quantization")
+        if config.model.get("kv_cache_dtype", "auto") != "auto":
+            raise ValueError("BELT vLLM requires kv_cache_dtype=auto")
+        if config.model.get("enforce_eager", True) is not True:
+            raise ValueError("BELT vLLM requires enforce_eager=True")
+        for dtype in (
+            config.model.get("dtype", "bfloat16"),
+            config.model.get("torch_dtype", "bfloat16"),
+            config.system.get("torch_dtype", "bfloat16"),
+        ):
+            if dtype != "bfloat16":
+                raise ValueError("BELT vLLM initially supports only dtype=bfloat16")
+    return backend
+
+
 def create_scorer(config):
+    _belt_backend(config)
     # DeepConf and self_consistency don't use a scorer
     if config.strategy.type in ("deepconf", "self_consistency"):
         return None
@@ -451,6 +494,7 @@ def create_scorer(config):
 
 
 def create_model(config):
+    belt_backend = _belt_backend(config)
     if config.strategy.type == "belt":
         if config.scorer is None or config.scorer.type != "belt":
             raise ValueError("BELT stopping requires scorer.type=belt")
@@ -485,7 +529,13 @@ def create_model(config):
         use_native_hs_capture = getattr(config.model, "use_native_hs_capture", None)
         if use_native_hs_capture is None:
             use_native_hs_capture = config.scorer.type == "uhead"
-        if use_native_hs_capture:
+        if belt_backend == "vllm":
+            llm_kwargs["dtype"] = "bfloat16"
+            llm_kwargs["enforce_eager"] = True
+            llm_kwargs["worker_extension_cls"] = (
+                "thinkbooster.belt.vllm_worker.BeltHiddenStatesExtension"
+            )
+        elif use_native_hs_capture:
             log.info("Using native hidden state capture via vLLM worker extension")
             llm_kwargs["enforce_eager"] = True
             llm_kwargs["worker_extension_cls"] = config.model.get(
@@ -500,6 +550,11 @@ def create_model(config):
             llm_kwargs["enable_sleep_mode"] = True
 
         llm = LLM(**llm_kwargs)
+        belt_provider = None
+        if belt_backend == "vllm":
+            from thinkbooster.belt.vllm_backend import BeltVLLMBackend
+
+            belt_provider = BeltVLLMBackend(llm)
 
         # Create sampling params (will be updated by strategy)
         sampling_params = SamplingParams(
@@ -544,7 +599,7 @@ def create_model(config):
                 "baseline",
                 "extended_thinking",
             ) or scorer_type in ("llm_critic", "belt"):
-                vllm_model = llm
+                vllm_model = belt_provider if belt_provider is not None else llm
                 log.info(
                     f"Strategy={config.strategy.type}, scorer={scorer_type}: "
                     f"using raw vLLM (no uncertainty wrapper)"
@@ -957,6 +1012,18 @@ def _create_api_model_for_scorer(model_cfg):
 def create_tts_strategy(
     config, model, step_generator, scorer, output_dir=None, flop_calculator=None
 ):
+    if _belt_backend(config) == "vllm":
+        from thinkbooster.belt.vllm_backend import BeltVLLMBackend
+
+        provider = getattr(step_generator, "model", None)
+        if not isinstance(provider, BeltVLLMBackend):
+            raise ValueError(
+                "BELT vLLM scorer requires the generator's BeltVLLMBackend"
+            )
+        base_config = getattr(
+            getattr(provider, "model_config", None), "hf_config", None
+        )
+        scorer.bind_feature_provider(provider, provider.get_tokenizer(), base_config)
     # Set model on scorer if it supports it (e.g., StepScorerLLMCritic)
     if scorer is not None and hasattr(scorer, "set_model"):
         scorer_model_cfg = getattr(config.scorer, "model", None)
