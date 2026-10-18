@@ -85,3 +85,46 @@ def test_published_reader_matches_original_forward_with_all_end_markers():
         rtol=0,
         atol=1e-6,
     )
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    not os.getenv("BELT_TEST_CACHE"),
+    reason="Set BELT_TEST_CACHE to enable checkpoint downloads",
+)
+def test_qwen_tokenizer_scores_steps_cut_at_stripped_stop_strings():
+    from transformers import AutoTokenizer
+
+    from thinkbooster.belt.runtime import BACKBONE, BACKBONE_REVISION
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        BACKBONE, revision=BACKBONE_REVISION, cache_dir=os.environ["BELT_TEST_CACHE"]
+    )
+    calls = []
+
+    class State:
+        def __call__(self, prompt_ids, completion_ids, blocks, block_ends):
+            calls.append((completion_ids, block_ends))
+            return {"repr": torch.zeros(4)}
+
+        def clear_store(self):
+            pass
+
+    probe = BeltRuntime(tokenizer, State(), torch.nn.Linear(4, 4), "a" * 64)
+    chat = [{"role": "user", "content": "What is x?"}]
+    # Real cut points: vLLM strips sentence-start stop strings such as "\nSo ".
+    steps = ["Okay, so x = 5.\n", "\nSo the area is 25.\n", "\nLet me verify this."]
+    probe.score_prefix(chat, steps)
+    completion_ids, ends = calls[-1]
+    assert completion_ids == tokenizer.encode("".join(steps), add_special_tokens=False)
+    assert len(ends) == 3 and ends == sorted(set(ends))
+    assert ends[-1] == len(completion_ids)
+
+    # Where retokenizing each prefix is stable, both methods place the same ends.
+    stable = ["Okay, so x = 5.\n\n", "Wait, let me check.", " Yes."]
+    probe.score_prefix(chat, stable)
+    expected = [
+        len(tokenizer.encode("".join(stable[: i + 1]), add_special_tokens=False))
+        for i in range(len(stable))
+    ]
+    assert calls[-1][1] == expected

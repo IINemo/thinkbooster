@@ -13,6 +13,25 @@ class CharacterTokenizer:
     def encode(self, text, **kwargs):
         return [ord(c) for c in text]
 
+    def __call__(self, text, **kwargs):
+        return {
+            "input_ids": self.encode(text),
+            "offset_mapping": [(i, i + 1) for i in range(len(text))],
+        }
+
+
+class MergingTokenizer(CharacterTokenizer):
+    """Character tokenizer that merges ".\n\n" into one token, like Qwen3."""
+
+    def __call__(self, text, **kwargs):
+        ids, offsets, i = [], [], 0
+        while i < len(text):
+            width = 3 if text.startswith(".\n\n", i) else 1
+            ids.append(1000 if width == 3 else ord(text[i]))
+            offsets.append((i, i + width))
+            i += width
+        return {"input_ids": ids, "offset_mapping": offsets}
+
 
 class State:
     def __init__(self):
@@ -72,11 +91,22 @@ def test_reader_failure_clears_cached_state():
     assert probe.state_fn.cleared == 1
 
 
-def test_text_steps_must_preserve_tokenization():
+def test_token_merged_across_step_cut_belongs_to_earlier_step():
+    # vLLM strips the "\nSo " stop string, so one step ends ".\n" and the next
+    # starts "\nSo"; the joined text tokenizes ".\n\n" as a single token.
     probe = runtime()
-    probe.tokenizer.encode = lambda text, **kw: [1] if len(text) == 1 else [2, 3]
-    with pytest.raises(ValueError, match="changes tokenization"):
-        probe.score_prefix([{"role": "user", "content": "q"}], ["a", "b"])
+    probe.tokenizer = MergingTokenizer()
+    probe.score_prefix([{"role": "user", "content": "q"}], ["x.\n", "\nSo", "y"])
+    _, completion_ids, blocks, ends = probe.state_fn.calls[0]
+    assert completion_ids == [ord("x"), 1000, ord("S"), ord("o"), ord("y")]
+    assert (blocks, ends) == (3, [2, 4, 5])
+
+
+def test_step_swallowed_by_previous_token_adds_no_block():
+    probe = runtime()
+    probe.tokenizer = MergingTokenizer()
+    probe.score_prefix([{"role": "user", "content": "q"}], ["x.", "\n", "\ny"])
+    assert probe.state_fn.calls[0][2:] == (2, [2, 3])
 
 
 def test_step_objects_are_supported():

@@ -1,5 +1,6 @@
 """Optional bridge to the released BELT native inference implementation."""
 
+import bisect
 import hashlib
 import json
 import sys
@@ -195,8 +196,13 @@ class BeltRuntime:
                 self.state_fn.clear_store()
 
     def score_prefix(self, chat, steps):
-        """Retokenize explicit text steps and preserve every aligned step end.
+        """Tokenize explicit text steps as one prefix and place each step end.
 
+        Generators rebuild the next prompt from the joined step text, so the
+        prefix is tokenized once, as the model reads it. Step cuts often fall
+        inside a merged token (vLLM strips stop strings such as "\\nSo ", leaving
+        ".\\n" | "\\nSo" -> ".\\n\\n"); such a token belongs to the earlier step,
+        i.e. each block ends after the last token that starts inside it.
         Call score_token_ids for exact replay of an existing tokenized bank.
         """
         if not chat or chat[-1].get("role") == "assistant":
@@ -204,26 +210,27 @@ class BeltRuntime:
         prompt_ids = self.tokenizer.apply_chat_template(
             chat, tokenize=True, add_generation_prompt=True, enable_thinking=True
         )
-        text = ""
-        ends = []
-        prefixes = []
+        pieces = []
         for step in steps:
             piece = step if isinstance(step, str) else (step.raw_text or step.text)
             if not isinstance(piece, str) or not piece:
                 raise ValueError("BELT steps must contain nonempty text")
-            text += piece
-            encoded = self.tokenizer.encode(text, add_special_tokens=False)
-            ends.append(len(encoded))
-            prefixes.append(encoded)
-        if not prefixes:
+            pieces.append(piece)
+        if not pieces:
             raise ValueError("BELT needs at least one reasoning step")
-        for prefix in prefixes[:-1]:
-            if prefixes[-1][: len(prefix)] != prefix:
-                raise ValueError(
-                    "Step boundary changes tokenization; use score_token_ids with "
-                    "the generator's original token IDs and block ends"
-                )
-        return self.score_token_ids(list(prompt_ids), prefixes[-1], ends)
+        encoded = self.tokenizer(
+            "".join(pieces), add_special_tokens=False, return_offsets_mapping=True
+        )
+        completion_ids = list(encoded["input_ids"])
+        starts = [start for start, _ in encoded["offset_mapping"]]
+        ends, cut = [], 0
+        for piece in pieces:
+            cut += len(piece)
+            end = bisect.bisect_left(starts, cut)
+            # A step swallowed whole by the previous token adds no new block.
+            if end > (ends[-1] if ends else 0):
+                ends.append(end)
+        return self.score_token_ids(list(prompt_ids), completion_ids, ends)
 
     def cleanup(self):
         with self._lock:
