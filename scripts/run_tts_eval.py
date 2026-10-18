@@ -1451,6 +1451,8 @@ def _generate_trajectories_batch(
                         "all_step_scores": strat_res.get("all_step_scores", []),
                         "best_idx": strat_res.get("best_idx"),
                         "completed": strat_res.get("completed", False),
+                        "completion_reason": strat_res.get("completion_reason"),
+                        "metadata": strat_res.get("metadata", {}),
                         "is_correct": None,
                         "eval": {},
                         "scoring_phase": phase,
@@ -1512,6 +1514,8 @@ def _generate_trajectories_batch(
                     "all_step_scores": result.get("all_step_scores", []),
                     "all_scores": result.get("all_scores", []),
                     "best_idx": result.get("best_idx"),
+                    "completion_reason": result.get("completion_reason"),
+                    "metadata": result.get("metadata", {}),
                 }
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
         log.info(f"Saved {len(chunk_results)} batch results to {batch_results_path}")
@@ -1594,6 +1598,11 @@ def _generate_trajectories_batch(
                 "prm_tokens_this_sample": _token_stats.get("prm_input_tokens", 0),
                 "prm_tflops_this_sample": _safe_tflops(_token_stats, "prm_tflops"),
             }
+            cost_scope = (result.get("metadata") or {}).get(
+                "scoring_cost_in_token_stats"
+            )
+            if cost_scope is not None:
+                _compute_metrics["scoring_cost_in_token_stats"] = cost_scope
             for key in (
                 "trajectory_tokens",
                 "answer_tokens",
@@ -1729,6 +1738,8 @@ def _generate_trajectories_batch(
                 "reasoning_steps": result.get("reasoning_steps", len(result["steps"])),
                 "validity_scores": result.get("validity_scores", []),
                 "completed": result["completed"],
+                "completion_reason": result.get("completion_reason"),
+                "metadata": result.get("metadata", {}),
                 "is_correct": bool(is_correct),  # Primary (exact_match)
                 "eval": eval_results,  # Per-evaluator results
                 "instance_data": dict(

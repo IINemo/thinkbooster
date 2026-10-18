@@ -127,3 +127,65 @@ def test_wrong_policy_fails_before_vllm_allocation(
     with pytest.raises(ValueError, match="checkpoint SHA256"):
         factories.create_model(fitted_config)
     assert calls == []
+
+
+def test_evaluation_files_preserve_belt_decisions_and_cost_scope(
+    factories, tmp_path, monkeypatch
+):
+    import wandb
+
+    monkeypatch.setattr(wandb, "run", None)
+    metadata = {
+        "strategy": "belt",
+        "checkpoint_sha256": "a" * 64,
+        "decisions": [{"step": 1, "stop": True, "beliefs": {"q": 0.7}}],
+        "injected_control_text": ["\n</think>\n\n"],
+        "scoring_cost_in_token_stats": False,
+    }
+    output = {
+        "trajectory": "reason\\boxed{4}",
+        "extracted_answer": "4",
+        "steps": ["reason", "\\boxed{4}"],
+        "validity_scores": [0.7, None],
+        "completed": True,
+        "completion_reason": "belt_stop",
+        "metadata": metadata,
+        "token_stats": {"tflops": 0.0, "prm_tflops": 0.0},
+    }
+
+    def generate(requests, sample_indices, save_callback):
+        save_callback([output], phase="belt")
+        return [output]
+
+    original_save = factories.save_results_json
+    snapshots = []
+
+    def save(rows, path):
+        original_save(rows, path)
+        snapshots.append(json.loads(path.read_text()))
+
+    monkeypatch.setattr(factories, "save_results_json", save)
+    path = tmp_path / "results.json"
+    results = factories._generate_trajectories_batch(
+        results=[],
+        save_path=tmp_path,
+        strategy=SimpleNamespace(generate_trajectories_batch=generate),
+        dataset=[{"question": "test question", "answer": "4"}],
+        processed_indices=set(),
+        prompt_template="",
+        system_prompt="",
+        question_field="question",
+        answer_field="answer",
+        phase1_evaluators={},
+        save_path_file=path,
+        sample_metrics_path=tmp_path / "metrics.jsonl",
+    )
+    batch = json.loads((tmp_path / "batch_results.jsonl").read_text())
+    for record in [results[0], batch, *(rows[0] for rows in snapshots)]:
+        assert record["metadata"] == metadata
+        assert record["completion_reason"] == "belt_stop"
+    resumed, indices = factories.load_results_json(path)
+    assert indices == {0}
+    assert resumed[0]["metadata"] == metadata
+    metrics = json.loads((tmp_path / "metrics.jsonl").read_text())
+    assert metrics["scoring_cost_in_token_stats"] is False

@@ -179,6 +179,9 @@ beliefs, prefix length, policy logit, threshold and checkpoint hash. Injected
 separately from generated output tokens. `validity_scores` has one entry per
 returned step: queried reasoning steps contain `q`; unqueried steps, injected
 control text and final answers contain `None`.
+The evaluation runner preserves stopping reasons and decision metadata in
+progressive checkpoints, batch JSONL files and final results, including when
+results are reloaded for resuming.
 
 A compatible custom scorer must expose `score_prefix(chat, trajectory)` and
 `checkpoint_sha256`, so checkpoint identity can be checked before decoding.
@@ -216,8 +219,9 @@ chosen cadence.
 
 `token_stats` and the evaluation runner's token-derived FLOP estimates cover
 generation, **excluding BELT scoring**. The result records
-`metadata.scoring_cost_in_token_stats=false`. Fewer generated tokens alone
-do not establish lower latency or lower total compute for this adapter.
+`metadata.scoring_cost_in_token_stats=false`. The sample metrics JSONL also
+records `scoring_cost_in_token_stats=false`. Fewer generated tokens alone do
+not establish lower latency or lower total compute for this adapter.
 Measure scoring and generation together when assessing end-to-end cost.
 Reusing vLLM's hidden-state capture requires a separate backend implementation
 and validation of its layer, token and step-end alignment.
