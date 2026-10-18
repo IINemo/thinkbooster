@@ -10,6 +10,9 @@ import torch
 
 from .vllm_wire import FEATURE_WIRE_SCHEMA, MAX_CAPTURE_TOKENS, decode_features
 
+DEFAULT_CACHE_ENTRIES = 16
+DEFAULT_CHECKPOINT_BATCH_SIZE = 4
+
 
 def _repair_sampling_params():
     from vllm import SamplingParams
@@ -34,7 +37,7 @@ class BeltVLLMBackend:
     chunk_size = 0
     backend = "vllm"
 
-    def __init__(self, llm, tokenizer=None, max_cache_entries=16):
+    def __init__(self, llm, tokenizer=None, max_cache_entries=DEFAULT_CACHE_ENTRIES):
         if type(max_cache_entries) is not int or max_cache_entries < 1:
             raise ValueError("max_cache_entries must be a positive integer")
         self._engine = llm
@@ -85,6 +88,8 @@ class BeltVLLMBackend:
             "feature_dtype": "float32",
             "feature_wire_schema": FEATURE_WIRE_SCHEMA,
             "feature_cache_ownership": "first_cached_causal_prefix",
+            "capture_token_limit": MAX_CAPTURE_TOKENS,
+            "max_cache_entries": self.max_cache_entries,
             "cache_entries": len(self._cache),
             "stats": self.stats,
             "scoring_cost_in_token_stats": False,
@@ -219,7 +224,57 @@ class BeltVLLMBackend:
                 self._cache.popitem(last=False)
         return count
 
+    def _preflight_capacity(self, args, kwargs):
+        prompts = kwargs.get("prompts", args[0] if args else None)
+        batch = prompts if isinstance(prompts, (list, tuple)) else [prompts]
+        if not batch:
+            raise ValueError("BELT vLLM requires a nonempty prompt batch")
+        if len(batch) > self.max_cache_entries:
+            raise ValueError(
+                "BELT vLLM batch exceeds max_cache_entries; reduce the batch "
+                "or explicitly increase feature-cache capacity"
+            )
+        params = kwargs.get("sampling_params", args[1] if len(args) > 1 else None)
+        if params is None:
+            params = self._engine.get_default_sampling_params()
+        if isinstance(params, (list, tuple)):
+            if len(params) != len(batch):
+                raise ValueError("BELT sampling_params must match the prompt batch")
+        else:
+            params = [params] * len(batch)
+        bound = 0
+        for prompt, param in zip(batch, params):
+            if getattr(param, "n", None) != 1:
+                raise ValueError("BELT vLLM supports only n=1")
+            maximum = getattr(param, "max_tokens", None)
+            if type(maximum) is not int or maximum < 1:
+                raise ValueError(
+                    "BELT vLLM requires a finite positive integer max_tokens"
+                )
+            if isinstance(prompt, dict):
+                if set(prompt) - {"prompt", "prompt_token_ids", "cache_salt"}:
+                    raise ValueError("BELT vLLM supports only text/token-ID prompts")
+                if "prompt_token_ids" in prompt:
+                    size = len(self._token_tuple(prompt["prompt_token_ids"]))
+                elif isinstance(prompt.get("prompt"), str):
+                    size = len(self._engine.get_tokenizer().encode(prompt["prompt"]))
+                else:
+                    raise ValueError("BELT vLLM requires a text/token-ID prompt")
+            elif isinstance(prompt, str):
+                # Pinned Qwen3 uses encode() defaults in vLLM's preprocessor.
+                # Ignore optional truncation to keep this an upper bound.
+                size = len(self._engine.get_tokenizer().encode(prompt))
+            else:
+                raise ValueError("BELT vLLM requires a text/token-ID prompt")
+            bound += size + maximum
+        if bound > MAX_CAPTURE_TOKENS:
+            raise ValueError(
+                f"BELT capture token limit exceeded by conservative generation "
+                f"bound: {bound} > {MAX_CAPTURE_TOKENS}; reduce batch/prefix/max_tokens"
+            )
+
     def _generate(self, args, kwargs, repair=False):
+        self._preflight_capacity(args, kwargs)
         self._rpc("belt_reset_capture")
         start = time.perf_counter()
         counter = "repair_calls" if repair else "generation_calls"

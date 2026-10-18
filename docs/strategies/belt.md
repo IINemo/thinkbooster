@@ -191,6 +191,7 @@ scoring model on GPU 1:
 
 ```bash
 python scripts/run_tts_eval.py \
+  --config-path "$PWD/config" \
   --config-name experiments/belt/math500_qwen3_1p7b \
   strategy.policy_path=/absolute/path/to/belt-policy.json
 ```
@@ -207,6 +208,7 @@ the native BELT reader on GPU 0:
 
 ```bash
 python scripts/run_tts_eval.py \
+  --config-path "$PWD/config" \
   --config-name experiments/belt/math500_qwen3_1p7b_vllm \
   strategy.policy_path=/absolute/path/to/belt-policy.json
 ```
@@ -233,6 +235,22 @@ RPC. The transport uses a versioned little-endian float32 byte payload with
 explicit dimensions; the frontend checks byte length, capture bounds and finite
 values before making owned CPU arrays. It requires no insecure serialization
 setting. Leave GPU memory room for these copies and the small native reader.
+
+The example uses `generation.checkpoint_batch_size=4`. Raw generation batches
+must fit the backend's `max_cache_entries` (default 16); direct Python callers
+can explicitly raise that constructor limit when memory permits. Before capture
+reset or generation, the backend rejects a conservative sum of prompt-token
+counts plus each request's `max_tokens` above 131072. Text uses the engine
+tokenizer; explicit token IDs and per-request sampling parameters are supported.
+Omitted parameters come from `LLM.get_default_sampling_params()`. Unbounded
+`max_tokens` and unsupported prompt schemas are rejected; optional prompt
+truncation does not reduce this conservative estimate. There is no automatic
+microbatching. Unexpected recomputation or stop-abort lag can still overflow:
+the worker stops capturing within the bound, then reports an error through the
+flush utility RPC and releases buffers. It does not raise capacity errors inside
+the model hook or return partial features. Failed overflow calls report observed
+and retained rows in the error; successful-call capture totals do not estimate
+uncaptured work from those failures.
 
 The feature cache matches actual prompt/completion token IDs. Causal prefixes
 can share features only while their token IDs match exactly. Retokenizing

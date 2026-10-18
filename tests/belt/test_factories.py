@@ -192,10 +192,13 @@ def test_evaluation_files_preserve_belt_decisions_and_cost_scope(
 
 
 def test_opt_in_vllm_example_uses_one_gpu_and_preserves_hf_default():
+    from thinkbooster.belt.vllm_backend import DEFAULT_CHECKPOINT_BATCH_SIZE
+
     root = Path(__file__).resolve().parents[2]
     with initialize_config_dir(version_base=None, config_dir=str(root / "config")):
         cfg = compose(config_name="experiments/belt/math500_qwen3_1p7b_vllm")
     assert cfg.scorer.backend == "vllm" and cfg.scorer.device == "cuda:0"
+    assert cfg.generation.checkpoint_batch_size == DEFAULT_CHECKPOINT_BATCH_SIZE
     assert config().scorer.backend == "hf"
 
 
@@ -211,6 +214,11 @@ def test_opt_in_vllm_example_uses_one_gpu_and_preserves_hf_default():
         ("model.quantization", "fp8", "quantization"),
         ("model.dtype", "float16", "bfloat16"),
         ("system.torch_dtype", "float32", "bfloat16"),
+        ("generation.checkpoint_batch_size", 0, "checkpoint_batch_size"),
+        ("generation.checkpoint_batch_size", -1, "checkpoint_batch_size"),
+        ("generation.checkpoint_batch_size", True, "checkpoint_batch_size"),
+        ("generation.checkpoint_batch_size", 17, "checkpoint_batch_size"),
+        ("generation.checkpoint_batch_size", None, "checkpoint_batch_size"),
     ],
 )
 def test_vllm_backend_rejects_unsupported_config_before_allocation(
@@ -282,3 +290,31 @@ def test_vllm_backend_hydra_routes_generation_and_binds_lazy_scorer(
     assert scorer._runtime_options["feature_provider"] is step_generator.model
     assert scorer._runtime_options["tokenizer"] == "tokenizer"
     assert scorer._runtime_options["base_config"] is engine.model_config.hf_config
+
+
+@pytest.mark.parametrize("backend,expected_batch", [("vllm", 4), ("hf", 19)])
+def test_backend_default_checkpoint_batch_size(
+    factories, tmp_path, monkeypatch, fitted_config, backend, expected_batch
+):
+    cfg = fitted_config
+    cfg.scorer.backend = backend
+    if "checkpoint_batch_size" in cfg.generation:
+        del cfg.generation["checkpoint_batch_size"]
+    monkeypatch.setattr(factories, "build_evaluators", lambda config: {})
+    seen = {}
+    monkeypatch.setattr(
+        factories,
+        "_generate_trajectories_batch",
+        lambda **kwargs: seen.update(kwargs) or [],
+    )
+    factories.generate_trajectories(
+        results=[],
+        save_path=tmp_path,
+        strategy=object(),
+        dataset=[{"question": "q", "answer": "4"}] * 19,
+        processed_indices=set(),
+        prompt_template="",
+        data_name="math500",
+        config=cfg,
+    )
+    assert seen["checkpoint_batch_size"] == expected_batch

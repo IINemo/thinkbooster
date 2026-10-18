@@ -112,6 +112,7 @@ See [Service API Guide](docs/service/api_guide.md) for the full reference.
 ```bash
 # Beam search on GSM8K (3 samples for quick verification)
 python scripts/run_tts_eval.py \
+  --config-path "$PWD/config" \
   --config-name experiments/beam_search/gsm8k/window_all/mean/beam_search_vllm_qwen25_math_7b_instruct_gsm8k_prm \
   dataset.subset=3
 ```

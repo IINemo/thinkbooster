@@ -33,6 +33,9 @@ class Engine:
         self.rpc_names = []
         self.resets = 0
         self.generated = []
+        self.default_params = SimpleNamespace(n=1, max_tokens=7)
+        self.default_param_calls = 0
+        self.tokenizer = SimpleNamespace(encode=lambda text: list(range(len(text))))
         self.llm_engine = SimpleNamespace(
             engine_core=SimpleNamespace(collective_rpc=self.rpc)
         )
@@ -51,7 +54,11 @@ class Engine:
         return True
 
     def get_tokenizer(self):
-        return "tokenizer"
+        return self.tokenizer
+
+    def get_default_sampling_params(self):
+        self.default_param_calls += 1
+        return self.default_params
 
 
 def backend(calls, monkeypatch, **kwargs):
@@ -70,7 +77,7 @@ def test_generation_is_transparent_and_does_not_expose_llm_bypass(monkeypatch):
     item = output("r", [10, 11], [12, 13])
     model, engine = backend([([item], {"r": capture([0, 1, 2])})], monkeypatch)
     assert getattr(model, "llm", model) is model
-    assert model.generate(["text"], SimpleNamespace(n=1)) == [item]
+    assert model.generate(["text"], SimpleNamespace(n=1, max_tokens=8)) == [item]
     features, attention, keep, skipped = model.get_features([[10, 11, 12, 13]], "cpu")
     assert features.shape == (1, 3, 2048)
     torch.testing.assert_close(features[0, :, 0], torch.tensor([0.0, 1.0, 2.0]))
@@ -337,7 +344,7 @@ def test_decode_overrun_past_returned_tokens_is_discarded_and_counted(monkeypatc
     item = output("r", [10, 11], [12, 13])
     states = {"r": capture([0, 1, 2, 3, 4, 5], [0, 1, 2, 30, 40, 50])}
     model, _ = backend([([item], states)], monkeypatch)
-    assert model.generate(["text"], SimpleNamespace(n=1)) == [item]
+    assert model.generate(["text"], SimpleNamespace(n=1, max_tokens=8)) == [item]
     assert model.stats["generation_captured_tokens"] == 6
     assert model.stats["discarded_overrun_rows"] == 2
     features, *_ = model.get_features([[10, 11, 12, 13]], "cpu")
@@ -392,7 +399,9 @@ def test_generator_compute_uncertainty_false_calls_capture_wrapper(monkeypatch):
     generator.thinking_mode = True
     generator.tokenizer = SimpleNamespace(encode=lambda text: [10, 11])
     generator._build_prompt = lambda request, trajectory: "prompt"
-    generator._create_sampling_params = lambda **kwargs: SimpleNamespace(n=1)
+    generator._create_sampling_params = lambda **kwargs: SimpleNamespace(
+        n=1, max_tokens=8
+    )
     generator._detect_line_repetitions = lambda text: False
     generator._process_generation_output = lambda **kwargs: SimpleNamespace(
         is_trajectory_complete=False, other_data={}, token_ids=[12, 13]
@@ -486,10 +495,105 @@ def test_rpc_applies_capture_bound_across_all_requests(monkeypatch):
     import thinkbooster.belt.vllm_backend as module
 
     monkeypatch.setattr(module, "MAX_CAPTURE_TOKENS", 2)
-    records = [output("a", [1, 2], [3]), output("b", [4], [5])]
-    model, _ = backend(
-        [(records, {"a": capture([0, 1]), "b": capture([0])})], monkeypatch
-    )
+    model, engine = backend([], monkeypatch)
+    engine.captured = {"a": capture([0, 1]), "b": capture([0])}
     with pytest.raises(RuntimeError, match="BELT feature wire"):
-        model.generate(["a", "b"])
+        model._rpc("belt_get_capture")
     assert not model._cache
+
+
+def test_raw_batch_must_fit_cache_before_capture_reset_or_generation(monkeypatch):
+    model, engine = backend([], monkeypatch, max_cache_entries=1)
+    before = list(engine.rpc_names)
+    with pytest.raises(ValueError, match="max_cache_entries"):
+        model.generate([{"prompt_token_ids": [1]}, {"prompt_token_ids": [2]}])
+    assert engine.generated == [] and engine.rpc_names == before
+    assert model.stats["generation_calls"] == 0
+
+
+@pytest.mark.parametrize("keyword", [False, True])
+def test_capacity_preflight_uses_engine_default_sampling_params(monkeypatch, keyword):
+    import thinkbooster.belt.vllm_backend as module
+
+    monkeypatch.setattr(module, "MAX_CAPTURE_TOKENS", 8)
+    model, engine = backend([], monkeypatch)
+    engine.default_params = SimpleNamespace(n=1, max_tokens=7)
+    before = list(engine.rpc_names)
+    args, kwargs = ((), {"prompts": "xy"}) if keyword else (("xy",), {})
+    with pytest.raises(ValueError, match="capture.*limit"):
+        model.generate(*args, **kwargs)
+    assert engine.default_param_calls == 1
+    assert engine.generated == [] and engine.rpc_names == before
+    assert model.stats["generation_calls"] == 0
+
+
+def test_exact_capacity_boundary_and_per_request_params_preserve_inputs(monkeypatch):
+    import thinkbooster.belt.vllm_backend as module
+
+    monkeypatch.setattr(module, "MAX_CAPTURE_TOKENS", 10)
+    records = [output("a", [1, 2], [3]), output("b", [4, 5, 6], [7])]
+    model, engine = backend(
+        [(records, {"a": capture([0, 1]), "b": capture([0, 1, 2])})],
+        monkeypatch,
+        max_cache_entries=2,
+    )
+    # Explicit token IDs govern counting even if the optional display text is
+    # much longer. The second request uses the engine tokenizer's defaults.
+    prompts = [
+        {"prompt_token_ids": [1, 2], "prompt": "long display text"},
+        {"prompt": "abc"},
+    ]
+    params = [SimpleNamespace(n=1, max_tokens=4), SimpleNamespace(n=1, max_tokens=1)]
+    assert model.generate(prompts=prompts, sampling_params=params) == records
+    assert engine.generated == [((), {"prompts": prompts, "sampling_params": params})]
+    assert len(model._cache) == 2
+    assert model.stats["generation_captured_tokens"] == 5
+    assert model.stats["repair_calls"] == 0
+
+
+@pytest.mark.parametrize("maximum", [None, float("inf"), 0, -1, True, 1.5])
+def test_unbounded_or_invalid_generation_limit_fails_before_capture_reset(
+    monkeypatch, maximum
+):
+    model, engine = backend([], monkeypatch)
+    before = list(engine.rpc_names)
+    with pytest.raises(ValueError, match="max_tokens"):
+        model.generate(
+            {"prompt_token_ids": [1]}, SimpleNamespace(n=1, max_tokens=maximum)
+        )
+    assert engine.generated == [] and engine.rpc_names == before
+
+
+@pytest.mark.parametrize(
+    "prompts,params,message",
+    [
+        ([], SimpleNamespace(n=1, max_tokens=1), "nonempty"),
+        (["a", "b"], [SimpleNamespace(n=1, max_tokens=1)], "sampling_params"),
+        ({"data": "unsupported"}, SimpleNamespace(n=1, max_tokens=1), "prompt"),
+        (
+            {"prompt_token_ids": [1], "multi_modal_data": {}},
+            SimpleNamespace(n=1, max_tokens=1),
+            "prompt",
+        ),
+    ],
+)
+def test_unsupported_or_mismatched_capacity_inputs_fail_before_reset(
+    monkeypatch, prompts, params, message
+):
+    model, engine = backend([], monkeypatch)
+    before = list(engine.rpc_names)
+    with pytest.raises(ValueError, match=message):
+        model.generate(prompts, params)
+    assert engine.generated == [] and engine.rpc_names == before
+
+
+def test_repair_capacity_preflight_runs_before_reset_or_gpu_call(monkeypatch):
+    import thinkbooster.belt.vllm_backend as module
+
+    monkeypatch.setattr(module, "MAX_CAPTURE_TOKENS", 3)
+    model, engine = backend([], monkeypatch)
+    before = list(engine.rpc_names)
+    with pytest.raises(ValueError, match="capture.*limit"):
+        model.get_features([[1, 2, 3]], "cpu")
+    assert engine.generated == [] and engine.rpc_names == before
+    assert model.stats["repair_calls"] == 0

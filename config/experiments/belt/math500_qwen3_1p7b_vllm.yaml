@@ -9,3 +9,7 @@ run_name: belt_vllm_qwen3_1p7b_seed${system.seed}_${now:%H-%M-%S}
 scorer:
   backend: vllm
   device: cuda:0
+
+# Keep each active strategy batch within bounded feature/capture ownership.
+generation:
+  checkpoint_batch_size: 4

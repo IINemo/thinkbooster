@@ -71,6 +71,8 @@ class BeltHiddenStatesExtension:
     def belt_reset_capture(self):
         self._belt_capture = {}
         self._belt_capture_tokens = 0
+        self._belt_capture_seen_tokens = 0
+        self._belt_capture_overflow = False
 
     def _belt_capture_input(self, module, args, kwargs):
         names = ("positions", "hidden_states", "residual")
@@ -85,6 +87,14 @@ class BeltHiddenStatesExtension:
             raise RuntimeError("BELT unsupported residual/position shape")
         if residual is not None and residual.shape != hidden.shape:
             raise RuntimeError("BELT residual shape mismatch")
+        self._belt_capture_seen_tokens += hidden.shape[0]
+        if self._belt_capture_overflow:
+            return
+        if self._belt_capture_tokens + hidden.shape[0] > self._belt_max_capture_tokens:
+            # Recomputations or frontend abort lag can exceed the conservative
+            # preflight. Fail from the later utility RPC, never the model hook.
+            self._belt_capture_overflow = True
+            return
         # Fused add+RMSNorm mutates both input branches immediately after this
         # pre-hook. Detaching alone aliases storage; take an independent copy.
         full = (hidden if residual is None else hidden + residual).detach().clone()
@@ -109,8 +119,6 @@ class BeltHiddenStatesExtension:
             or any(b < a for a, b in zip(offsets, offsets[1:]))
         ):
             raise RuntimeError("BELT request attribution failed: invalid token slices")
-        if self._belt_capture_tokens + hidden.shape[0] > self._belt_max_capture_tokens:
-            raise RuntimeError("BELT capture buffer token limit exceeded")
         # Keep bounded independent GPU copies until the flush RPC. Copying to
         # CPU here would synchronize the GPU on every single decode token.
         for key, start, end in zip(req_ids, offsets, offsets[1:]):
@@ -122,6 +130,15 @@ class BeltHiddenStatesExtension:
         self._belt_capture_tokens += hidden.shape[0]
 
     def belt_get_capture(self):
+        if self._belt_capture_overflow:
+            message = (
+                "BELT capture buffer token limit exceeded: "
+                f"observed={self._belt_capture_seen_tokens}, "
+                f"retained={self._belt_capture_tokens}, "
+                f"limit={self._belt_max_capture_tokens}; reduce batch/prefix/max_tokens"
+            )
+            self.belt_reset_capture()
+            raise RuntimeError(message)
         result = {}
         for key, chunks in self._belt_capture.items():
             positions = torch.cat([positions for positions, _ in chunks]).cpu()

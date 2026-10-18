@@ -1,3 +1,7 @@
+import importlib
+from concurrent.futures import Future
+from importlib.metadata import PackageNotFoundError, version
+from queue import Queue
 from types import SimpleNamespace
 
 import numpy as np
@@ -118,8 +122,79 @@ def test_capture_buffer_is_bounded():
     obj, layer = worker()
     obj._belt_max_capture_tokens = 2
     obj.belt_setup_capture()
+    # Capacity failure must not escape the model hook or allocate residual
+    # clones: the engine should finish normally, then fail through utility RPC.
+    hidden = torch.ones(3, 2048)
+    layer(torch.tensor([0, 1, 0]), hidden, None)
+    assert hidden[0, 0] == 101
+    assert not obj._belt_capture
     with pytest.raises(RuntimeError, match="buffer token limit"):
-        layer(torch.tensor([0, 1, 0]), torch.ones(3, 2048), None)
+        obj.belt_get_capture()
+    assert obj.belt_get_capture() == {}
+
+
+def test_capture_overflow_is_sticky_and_rpc_failure_releases_buffers_for_reuse():
+    obj, layer = worker(("a",), (0, 1))
+    obj._belt_max_capture_tokens = 1
+    obj.belt_setup_capture()
+    layer(torch.tensor([0]), torch.ones(1, 2048), None)
+    layer(torch.tensor([1]), torch.ones(1, 2048), None)
+    layer(torch.tensor([2]), torch.ones(1, 2048), None)
+    assert obj._belt_capture_tokens == 1
+    assert obj._belt_capture_seen_tokens == 3
+    with pytest.raises(RuntimeError, match="observed=3.*retained=1"):
+        obj.belt_get_capture()
+    assert not obj._belt_capture and obj._belt_capture_tokens == 0
+    assert obj._belt_capture_seen_tokens == 0
+    layer(torch.tensor([5]), torch.full((1, 2048), 2.0), None)
+    result = obj.belt_get_capture()
+    assert result["a"]["positions"] == [5]
+    assert decode_features(result["a"]["features"])[0, 0] == 2
+
+
+def test_real_vllm_utility_error_reaches_client_and_next_call_succeeds():
+    try:
+        installed = version("vllm")
+    except PackageNotFoundError:
+        pytest.skip("Real vLLM package required for utility exception regression")
+    if installed != "0.12.0":
+        pytest.skip("Utility exception regression targets supported vLLM 0.12.0")
+    core = importlib.import_module("vllm.v1.engine.core")
+    client = importlib.import_module("vllm.v1.engine.core_client")
+    obj, layer = worker(("a",), (0, 1))
+    obj._belt_max_capture_tokens = 1
+    obj.belt_setup_capture()
+    layer(torch.tensor([0]), torch.ones(1, 2048), None)
+    layer(torch.tensor([1]), torch.ones(1, 2048), None)
+
+    def collective_rpc(method):
+        assert method == "belt_get_capture"
+        return [obj.belt_get_capture()]
+
+    # Exercise the actual utility dispatcher/client future handling without
+    # constructing an engine or loading GPU weights.
+    dispatcher = SimpleNamespace(
+        collective_rpc=collective_rpc,
+        output_queue=Queue(),
+        _convert_msgspec_args=core.EngineCoreProc._convert_msgspec_args,
+    )
+
+    def invoke(call_id):
+        core.EngineCoreProc._handle_client_request(
+            dispatcher,
+            core.EngineCoreRequestType.UTILITY,
+            (0, call_id, "collective_rpc", ("belt_get_capture",)),
+        )
+        _, outputs = dispatcher.output_queue.get_nowait()
+        future = Future()
+        client._process_utility_output(outputs.utility_output, {call_id: future})
+        return future
+
+    with pytest.raises(Exception, match="buffer token limit.*observed=2"):
+        invoke(1).result()
+    layer(torch.tensor([5]), torch.ones(1, 2048), None)
+    result = invoke(2).result()
+    assert result[0]["a"]["positions"] == [5]
 
 
 @pytest.mark.parametrize("cache_dtype", ["fp8", "fp8_e4m3", "fp8_e5m2"])

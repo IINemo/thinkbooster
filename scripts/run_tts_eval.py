@@ -389,6 +389,22 @@ def _belt_backend(config):
         raise ValueError("BELT scorer.backend must be hf or vllm")
     if backend == "vllm":
         from thinkbooster.belt.runtime import BACKBONE, BACKBONE_REVISION
+        from thinkbooster.belt.vllm_backend import (
+            DEFAULT_CACHE_ENTRIES,
+            DEFAULT_CHECKPOINT_BATCH_SIZE,
+        )
+
+        checkpoint_batch_size = config.generation.get(
+            "checkpoint_batch_size", DEFAULT_CHECKPOINT_BATCH_SIZE
+        )
+        if (
+            type(checkpoint_batch_size) is not int
+            or not 1 <= checkpoint_batch_size <= DEFAULT_CACHE_ENTRIES
+        ):
+            raise ValueError(
+                "BELT vLLM generation.checkpoint_batch_size must be an integer "
+                f"between 1 and {DEFAULT_CACHE_ENTRIES}"
+            )
 
         if config.model.type != "vllm":
             raise ValueError("BELT backend=vllm requires model.type=vllm")
@@ -552,9 +568,14 @@ def create_model(config):
         llm = LLM(**llm_kwargs)
         belt_provider = None
         if belt_backend == "vllm":
-            from thinkbooster.belt.vllm_backend import BeltVLLMBackend
+            from thinkbooster.belt.vllm_backend import (
+                DEFAULT_CACHE_ENTRIES,
+                BeltVLLMBackend,
+            )
 
-            belt_provider = BeltVLLMBackend(llm)
+            belt_provider = BeltVLLMBackend(
+                llm, max_cache_entries=DEFAULT_CACHE_ENTRIES
+            )
 
         # Create sampling params (will be updated by strategy)
         sampling_params = SamplingParams(
@@ -1417,6 +1438,8 @@ def _generate_trajectories_batch(
     """
     strategy_name = getattr(strategy, "__class__", type(strategy)).__name__
     log.info(f"Using batch generation mode for {strategy_name}")
+    if type(checkpoint_batch_size) is not int or checkpoint_batch_size < 1:
+        raise ValueError("checkpoint_batch_size must be a positive integer")
 
     subset_size = len(dataset)
 
@@ -1493,8 +1516,11 @@ def _generate_trajectories_batch(
             f"samples {batch_start}-{batch_end - 1} ({len(chunk_requests)} samples)"
         )
 
+        progressive_checkpoint_saved = False
+
         # Define progressive save callback for this chunk
         def _save_callback(strategy_results, phase="post_generation"):
+            nonlocal progressive_checkpoint_saved
             temp_results = list(results)  # copy previous chunks
             for i_idx, inst, gold, strat_res in zip(
                 chunk_indices, chunk_instances, chunk_gold_answers, strategy_results
@@ -1526,6 +1552,7 @@ def _generate_trajectories_batch(
                     }
                 )
             save_results_json(temp_results, save_path_file)
+            progressive_checkpoint_saved = True
             log.info(
                 f"Progressive save ({phase}): {len(temp_results)} results to {save_path_file}"
             )
@@ -1541,19 +1568,21 @@ def _generate_trajectories_batch(
             log.error(f"Chunk {chunk_idx + 1} generation failed: {e}")
             log.error(f"Traceback:\n{traceback.format_exc()}")
             log.error("Saving partial results collected so far and exiting")
-            save_results_json(results, save_path_file)
-            log.info(f"Checkpoint saved: {len(results)}/{subset_size} samples complete")
-            return results
+            if not progressive_checkpoint_saved:
+                try:
+                    save_results_json(results, save_path_file)
+                    log.info(
+                        f"Checkpoint saved: {len(results)}/{subset_size} samples complete"
+                    )
+                except Exception as save_error:
+                    log.error(f"Failed to save checkpoint: {save_error}")
+            raise
 
         if len(chunk_results) != len(chunk_indices):
-            log.error(
+            raise RuntimeError(
                 f"Chunk generation returned {len(chunk_results)} results "
-                f"but expected {len(chunk_indices)}. Truncating to shorter list."
+                f"but expected {len(chunk_indices)}"
             )
-            # Truncate to match
-            chunk_indices = chunk_indices[: len(chunk_results)]
-            chunk_instances = chunk_instances[: len(chunk_results)]
-            chunk_gold_answers = chunk_gold_answers[: len(chunk_results)]
 
         # Save batch results immediately to avoid data loss
         batch_results_path = save_path_file.parent / "batch_results.jsonl"
@@ -1961,8 +1990,16 @@ def generate_trajectories(
         phase1_evaluators = {"exact_match": exact_match_evaluator}
         log.info(f"Phase 1 evaluator: data_name={exact_match_evaluator.data_name}")
 
-    # Get checkpoint batch size: default to dataset subset size (process all at once)
     checkpoint_batch_size = len(dataset)
+    scorer_config = getattr(config, "scorer", None)
+    if (
+        scorer_config is not None
+        and scorer_config.get("type") == "belt"
+        and scorer_config.get("backend", "hf") == "vllm"
+    ):
+        from thinkbooster.belt.vllm_backend import DEFAULT_CHECKPOINT_BATCH_SIZE
+
+        checkpoint_batch_size = DEFAULT_CHECKPOINT_BATCH_SIZE
     if config is not None and hasattr(config, "generation"):
         checkpoint_batch_size = config.generation.get(
             "checkpoint_batch_size", checkpoint_batch_size
