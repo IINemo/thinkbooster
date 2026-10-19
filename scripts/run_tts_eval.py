@@ -1438,8 +1438,6 @@ def _generate_trajectories_batch(
     """
     strategy_name = getattr(strategy, "__class__", type(strategy)).__name__
     log.info(f"Using batch generation mode for {strategy_name}")
-    if type(checkpoint_batch_size) is not int or checkpoint_batch_size < 1:
-        raise ValueError("checkpoint_batch_size must be a positive integer")
 
     subset_size = len(dataset)
 
@@ -1489,6 +1487,11 @@ def _generate_trajectories_batch(
     if not requests_to_process:
         log.info("No new samples to process")
         return results
+
+    # Validate after the no-work return: an empty shard defaults its batch size
+    # to len(dataset) == 0 and must remain a no-op.
+    if type(checkpoint_batch_size) is not int or checkpoint_batch_size < 1:
+        raise ValueError("checkpoint_batch_size must be a positive integer")
 
     total_to_process = len(requests_to_process)
     log.info(

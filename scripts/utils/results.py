@@ -87,6 +87,17 @@ def load_results_json(json_path: Path):
         with open(json_path, "r", encoding="utf-8") as f:
             results = json.load(f)
 
+        # Progressive snapshots (e.g. offline BoN before scoring) carry a
+        # scoring_phase and are kept on failure for inspection only. Treating
+        # them as processed would turn unscored rows into final results.
+        snapshots = [r for r in results if "scoring_phase" in r]
+        if snapshots:
+            log.warning(
+                f"Ignoring {len(snapshots)} unfinished progressive-snapshot rows "
+                f"in {json_path}; those samples will be regenerated"
+            )
+            results = [r for r in results if "scoring_phase" not in r]
+
         # Extract processed indices
         processed_indices = {r["index"] for r in results if "index" in r}
 

@@ -107,6 +107,60 @@ def test_first_chunk_progressive_snapshot_is_not_overwritten(runner, tmp_path):
     assert saved[0]["generated_trajectory"] == "answer"
 
 
+def test_resume_regenerates_samples_left_as_progressive_snapshots(runner, tmp_path):
+    # Offline BoN saves unscored candidates before scoring; if scoring fails,
+    # --resume must not treat that snapshot as a finished result.
+    def fail_after_snapshot(requests, indices, save_callback):
+        if indices == [0]:
+            return [output()]
+        save_callback([output()], phase="post_generation")
+        raise RuntimeError("scoring failed")
+
+    with pytest.raises(RuntimeError, match="scoring failed"):
+        invoke(runner, tmp_path, fail_after_snapshot, count=2)
+    results, processed = runner.load_results_json(tmp_path / "results.json")
+    assert processed == {0}
+    assert [row["index"] for row in results] == [0]
+
+    regenerated = []
+
+    def generate(requests, indices, save_callback):
+        regenerated.extend(indices)
+        return [output() for _ in indices]
+
+    final = runner._generate_trajectories_batch(
+        results=results,
+        save_path=tmp_path,
+        strategy=SimpleNamespace(generate_trajectories_batch=generate),
+        dataset=[{"question": f"q{i}", "answer": "4"} for i in range(2)],
+        processed_indices=processed,
+        prompt_template="",
+        system_prompt="",
+        question_field="question",
+        answer_field="answer",
+        phase1_evaluators={},
+        save_path_file=tmp_path / "results.json",
+        sample_metrics_path=tmp_path / "metrics.jsonl",
+        checkpoint_batch_size=1,
+    )
+    assert regenerated == [1]
+    assert sorted(row["index"] for row in final) == [0, 1]
+    assert all("scoring_phase" not in row for row in final)
+
+
+def test_empty_dataset_with_default_batch_size_is_a_no_op(runner, tmp_path):
+    # generate_trajectories() defaults checkpoint_batch_size to len(dataset).
+    calls = []
+    results = invoke(
+        runner,
+        tmp_path,
+        lambda *args, **kwargs: calls.append(args),
+        count=0,
+        checkpoint_batch_size=0,
+    )
+    assert results == [] and calls == []
+
+
 def test_checkpoint_save_failure_does_not_replace_generation_error(
     runner, tmp_path, monkeypatch
 ):
