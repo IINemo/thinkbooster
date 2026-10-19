@@ -22,6 +22,23 @@ CHECKPOINT_REVISIONS = {
 _NATIVE_IMPORT_LOCK = threading.RLock()
 
 
+def require_native_reader():
+    """Import the pinned BELT reader and locate its native tree, or fail now.
+
+    The runtime loads lazily at the first query; callers that allocate a
+    generation model first use this to fail before that allocation.
+    """
+    try:
+        from rl_controller.rollout_contract import resolve_native_root
+        from rl_controller.scripts.rl_train import HeadStateFn
+    except ImportError as error:
+        raise ImportError(
+            "BELT inference needs the pinned BELT source checkout installed with "
+            "pip install --no-deps -e /path/to/BELT; see docs/strategies/belt.md"
+        ) from error
+    return resolve_native_root().resolve(), HeadStateFn
+
+
 @contextmanager
 def _native_reader_imports(native_root):
     """Restore public reader imports after the pinned factory finishes loading.
@@ -164,15 +181,7 @@ class BeltRuntime:
     ):
         if feature_provider is not None and tokenizer is None:
             raise ValueError("An injected BELT feature provider requires a tokenizer")
-        try:
-            from rl_controller.rollout_contract import resolve_native_root
-            from rl_controller.scripts.rl_train import HeadStateFn
-        except ImportError as error:
-            raise ImportError(
-                "BELT inference needs the pinned BELT source checkout installed with "
-                "pip install --no-deps -e /path/to/BELT; see docs/strategies/belt.md"
-            ) from error
-        native_root = resolve_native_root().resolve()
+        native_root, HeadStateFn = require_native_reader()
         import torch
 
         weight, template, record = download_checkpoint(checkpoint_repo, seed, cache_dir)

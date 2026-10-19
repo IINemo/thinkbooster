@@ -109,7 +109,13 @@ try:
 except ImportError:
     POLYGRAPH_UNCERTAINTY_AVAILABLE = False
     VLLMWithUncertainty = None
-from utils.results import load_results_json, parse_resume_arguments, save_results_json
+from utils.results import (
+    load_results_json,
+    parse_resume_arguments,
+    prune_jsonl_rows,
+    results_file_readable,
+    save_results_json,
+)
 
 from thinkbooster.evaluation import (
     EvaluatorAlignScore,
@@ -260,6 +266,15 @@ def load_model(
     return model
 
 
+def dataset_prompt_template(config) -> str:
+    """The user-turn template: dataset.prompt_file if set, else the inline
+    dataset.prompt_template (most configs use "{question}", which is the bare
+    question either way)."""
+    if config.dataset.get("prompt_file"):
+        return load_prompt_template(config.dataset.prompt_file)
+    return config.dataset.get("prompt_template") or ""
+
+
 def load_prompt_template(prompt_file: str) -> str:
     """Load prompt template from file"""
     with open(prompt_file, "r") as f:
@@ -399,6 +414,11 @@ def _belt_backend(config):
     backend = config.scorer.get("backend", "hf")
     if backend not in ("hf", "vllm"):
         raise ValueError("BELT scorer.backend must be hf or vllm")
+    from thinkbooster.belt.runtime import require_native_reader
+
+    # The reader loads lazily at the first query, after vLLM is allocated and
+    # the first step has run; a missing BELT checkout should fail here instead.
+    require_native_reader()
     if backend == "vllm":
         from thinkbooster.belt.runtime import BACKBONE, BACKBONE_REVISION
         from thinkbooster.belt.vllm_backend import (
@@ -2534,11 +2554,12 @@ def evaluate_results(
     all_validities = []
     all_reasoning_steps = []
     for r in results:
-        if "validity_scores" in r and r["validity_scores"]:
-            valid = [s for s in r["validity_scores"] if s is not None]
-            if valid:
-                all_validities.extend(valid)
-                all_reasoning_steps.append(r.get("reasoning_steps", len(r["steps"])))
+        valid = [s for s in (r.get("validity_scores") or []) if s is not None]
+        all_validities.extend(valid)
+        # BELT leaves unqueried steps at None, so a trace that closed thinking
+        # before its first query still has reasoning steps to count.
+        if valid or (r.get("metadata") or {}).get("strategy") == "belt":
+            all_reasoning_steps.append(r.get("reasoning_steps", len(r["steps"])))
 
     # Token / FLOPs aggregates
     missing_stats_count = sum(1 for r in results if r.get("token_stats") is None)
@@ -2793,6 +2814,9 @@ def evaluate_results(
 
 
 _experiment_info = {}  # Populated in main(), read by crash handler
+# What main() raised: Hydra reports a task failure as sys.exit(1), so the crash
+# handler below would otherwise see only SystemExit and never the error.
+_main_failure = {}
 
 
 @hydra.main(
@@ -2802,6 +2826,20 @@ _experiment_info = {}  # Populated in main(), read by crash handler
 )
 def main(config):
     """Main evaluation function"""
+    try:
+        return _run_evaluation(config)
+    except BaseException as error:
+        _main_failure["error"] = error
+        try:
+            from hydra.core.hydra_config import HydraConfig
+
+            _main_failure["output_dir"] = HydraConfig.get().runtime.output_dir
+        except Exception:
+            pass
+        raise
+
+
+def _run_evaluation(config):
     stderr_file = None  # Initialize for cleanup
 
     import socket
@@ -3031,11 +3069,7 @@ def main(config):
             f"Dataset: using samples {start_idx} to {end_idx-1} ({len(dataset)} samples)"
         )
 
-    prompt_template = (
-        load_prompt_template(config.dataset.prompt_file)
-        if config.dataset.prompt_file
-        else ""
-    )
+    prompt_template = dataset_prompt_template(config)
 
     # Load system prompt if configured
     system_prompt = getattr(config.dataset, "system_prompt", "") or ""
@@ -3082,6 +3116,22 @@ def main(config):
     # Load existing results if available (for resuming interrupted runs)
     results_path = Path(output_dir) / "results.json"
     results, processed_indices = load_results_json(results_path)
+    # Samples missing from results.json (all of them, if a kill came before
+    # the first save) are regenerated and appended again. An unreadable
+    # results.json is not evidence of that: keep the JSONL logs for recovery.
+    if results_file_readable(results_path):
+        prune_jsonl_rows(
+            Path(output_dir) / "batch_results.jsonl", processed_indices, "index"
+        )
+        prune_jsonl_rows(
+            Path(output_dir) / "sample_metrics.jsonl",
+            processed_indices,
+            "sample_index",
+        )
+    else:
+        log.warning(
+            f"{results_path} is unreadable; keeping JSONL logs untouched for recovery"
+        )
 
     # NOTE: Don't shuffle - keep original dataset order for reproducibility
     # dataset = dataset.shuffle(seed=config.system.seed)
@@ -3238,7 +3288,11 @@ if __name__ == "__main__":
 
     try:
         main()
-    except (KeyboardInterrupt, MemoryError, Exception) as e:
+    except (KeyboardInterrupt, MemoryError, Exception, SystemExit) as caught:
+        if isinstance(caught, SystemExit) and caught.code in (0, None):
+            raise
+        e = _main_failure.get("error", caught)
+        output_dir = output_dir or _main_failure.get("output_dir")
         import logging
 
         error_log = logging.getLogger(__name__)
@@ -3258,7 +3312,7 @@ if __name__ == "__main__":
         elif isinstance(e, MemoryError):
             error_log.error(f"Job failed due to MemoryError (GPU/CPU OOM): {e}")
         else:
-            error_log.exception(f"Job failed with exception: {e}")
+            error_log.error(f"Job failed with exception: {e}", exc_info=e)
 
         # Send Telegram "crashed" notification
         try:

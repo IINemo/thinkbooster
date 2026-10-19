@@ -4,7 +4,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from belt_requests import built_request
 from hydra import compose, initialize_config_dir
+from omegaconf import open_dict
 
 from thinkbooster.belt.runtime import BACKBONE_REVISION
 from thinkbooster.scorers import StepScorerBELT
@@ -33,6 +35,31 @@ def manifest_identity(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def native_reader_present(monkeypatch):
+    monkeypatch.setattr(
+        "thinkbooster.belt.runtime.require_native_reader", lambda: (None, None)
+    )
+
+
+@pytest.mark.parametrize("backend", ["hf", "vllm"])
+def test_missing_belt_checkout_fails_before_vllm_allocation(
+    factories, monkeypatch, fitted_config, backend
+):
+    def missing():
+        raise ImportError("BELT inference needs the pinned BELT source checkout")
+
+    monkeypatch.setattr("thinkbooster.belt.runtime.require_native_reader", missing)
+    calls = []
+    monkeypatch.setattr(factories, "LLM", lambda **kw: calls.append(kw), raising=False)
+    fitted_config.scorer.backend = backend
+    if backend == "vllm":
+        fitted_config.scorer.device = "cuda:0"
+    with pytest.raises(ImportError, match="BELT source checkout"):
+        factories.create_model(fitted_config)
+    assert calls == []
+
+
 @pytest.fixture
 def fitted_config(tmp_path):
     cfg = config()
@@ -43,6 +70,7 @@ def fitted_config(tmp_path):
                 "schema": "thinkbooster-belt-policy/v1",
                 "checkpoint_sha256": "a" * 64,
                 "feature_space": "H",
+                "hidden_dtype": "float32",
                 "weights": [1],
                 "intercept": 0,
                 "means": [0],
@@ -61,6 +89,7 @@ def test_hydra_example_has_pinned_model_and_no_paid_judge():
     assert cfg.scorer.checkpoint_repo.endswith("ReProbeInit")
     assert cfg.scorer.seed == 0
     assert cfg.evaluation.batch_evaluators == []
+    assert cfg.generation.checkpoint_batch_size == 4
 
 
 def test_missing_policy_fails_before_loading_a_model(factories):
@@ -301,8 +330,8 @@ def test_backend_default_checkpoint_batch_size(
 ):
     cfg = fitted_config
     cfg.scorer.backend = backend
-    if "checkpoint_batch_size" in cfg.generation:
-        del cfg.generation["checkpoint_batch_size"]
+    with open_dict(cfg):
+        cfg.generation.pop("checkpoint_batch_size", None)
     monkeypatch.setattr(factories, "build_evaluators", lambda config: {})
     seen = {}
     monkeypatch.setattr(
@@ -374,3 +403,57 @@ def test_non_belt_metadata_is_not_written_to_result_files(
     saved = json.loads((tmp_path / "results.json").read_text())
     for row in [results[0], batch, *saved]:
         assert "metadata" not in row
+
+
+def test_reasoning_step_average_counts_belt_rows_without_queries(
+    factories, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(factories, "build_evaluators", lambda config: {})
+    row = dict(
+        question="q",
+        gold_answer="4",
+        generated_answer="4",
+        trajectory="t",
+        extracted_answer="4",
+        steps=["a", "b"],
+        completed=True,
+        token_stats={},
+    )
+    results = [
+        dict(row, index=0, reasoning_steps=4, validity_scores=[None, 0.5, None]),
+        # Closed thinking before its first query: every step is unqueried.
+        dict(
+            row,
+            index=1,
+            reasoning_steps=2,
+            validity_scores=[None, None],
+            metadata={"strategy": "belt"},
+        ),
+        # Other strategies keep the old rule.
+        dict(row, index=2, reasoning_steps=9, validity_scores=[None]),
+    ]
+    factories.evaluate_results(config(), results, str(tmp_path))
+    metrics = json.loads((tmp_path / "metrics.json").read_text())
+    assert metrics["avg_reasoning_steps_per_trajectory"] == 3.0
+
+
+def test_example_prompt_reaches_the_request_builder():
+    from thinkbooster.strategies.strategy_belt import _belt_chat
+
+    request = built_request(config(), "Q?")
+    assert _belt_chat(request) == [
+        {
+            "role": "user",
+            "content": "Answer the following question. Reply with the answer only. "
+            "Answer enclosed with \\boxed{}.\n<Question>: Q?",
+        }
+    ]
+
+
+def test_prompt_file_still_wins_over_inline_template(factories, tmp_path):
+    cfg = config()
+    path = tmp_path / "prompt.txt"
+    path.write_text("From file: {question}")
+    with open_dict(cfg):
+        cfg.dataset.prompt_file = str(path)
+    assert factories.dataset_prompt_template(cfg) == "From file: {question}"

@@ -38,6 +38,9 @@ packages during initialization, then restores the previous modules and
 `sys.path`, including when loading fails. A subsequent `import luh` therefore
 uses the application's original reader. BELT initializers are serialized;
 do not import `luh` or `train_luh` in another thread during initialization.
+The evaluation runner checks that this checkout is importable before it
+allocates the generation model, so a missing install fails at startup rather
+than at the first query.
 Native scoring retains its own module references and needs no further imports
 of those packages. The separate BELT runtime and model assets retain their
 original notices and terms; see [BELT's source notice](https://github.com/EdisonNi-hku/BELT/blob/main/NOTICE.md).
@@ -107,7 +110,7 @@ a threshold selected using compatible policy-fit/development data.
 | `threshold` | Explicit decision-logit cutoff; stop when logit ≥ threshold |
 | `length_scale` | Prefix-length denominator for five-input B policies; default 12000 |
 | `logit_clip` | B belief clipping before conversion to logits; default `1e-4` |
-| `hidden_dtype` | H feature storage convention, `float32` (default) or `float16` |
+| `hidden_dtype` | H feature storage convention, `float32` or `float16`; required for H, unused by B |
 
 H consumes all 768 hidden coordinates in their saved order. B consumes
 `logit(q), logit(v), logit(r), logit(stability)` in that order, optionally
@@ -122,7 +125,9 @@ the pinned checkpoint manifest, without loading probe weights or a backbone.
 Historical H policy fits read float16 representation dumps. Set
 `hidden_dtype="float16"` when using their coefficients and normalization;
 the policy rounds hidden coordinates to float16 before standardization.
-New fits on `signal.hidden` use the default float32 convention.
+New fits on `signal.hidden` use `hidden_dtype="float32"`. H policies have no
+default: a policy fit under one convention and read under the other scores
+every coordinate off by its rounding error, without any error.
 
 For a selected fitted row and its matching normalization arrays, serialize
 the policy as follows. The variables `selected_fit`, `normalization` and
@@ -141,6 +146,7 @@ policy = BeltStoppingPolicy(
     means=tuple(normalization["mean"]),
     stds=tuple(normalization["std"]),
     threshold=selected_logit_threshold,
+    hidden_dtype="float32",  # "float16" for fits on float16 hidden dumps
 )
 with open("belt-policy.json", "w") as stream:
     json.dump({"schema": "thinkbooster-belt-policy/v1", **asdict(policy)}, stream)
@@ -187,19 +193,27 @@ ends on a new block end, at block index `b` with
 as BELT counts them; block 1 is never a decision under the default
 `min_steps=2`, and blocks past `max_blocks` are generated without queries. A
 block longer than `max_step_tokens` is kept whole (not trimmed to a sentence)
-and finished by the next round; no decision is made at that cut. `max_steps` caps generation rounds. A stop closes thinking and requests a final answer. Natural answers
-are preserved. A step cap, context limit or failed/incomplete answer is
-reported separately from a completed answer. Every decision records its
-block index, step index, beliefs, prefix length, policy logit, threshold and
-checkpoint hash. Injected
-`\n</think>\n\n` control text follows Qwen3's closing format and is recorded
-separately from generated output tokens. `validity_scores` has one entry per
+and finished by the next round; no decision is made at that cut. `max_steps`
+caps generation rounds. A stop closes thinking and requests a final answer.
+Natural answers are preserved. When reasoning ends at a limit instead
+(`max_steps`, `context_limit`, `repetition_detected`, `garbage_detected`),
+thinking is closed and a final answer is still generated, as online best-of-n
+does; `completion_reason` keeps the limit, `metadata.forced_answer_reason`
+names it, and `completed` says whether that forced answer is complete. Every
+decision records its block index, step index, beliefs, prefix length, policy
+logit, threshold and checkpoint hash. Injected control text closes thinking
+as BELT does, `</think>\n\n` directly after a block's blank line (or
+`\n</think>\n\n` after a cut mid-block), and is recorded separately from
+generated output tokens. An empty leading system turn is dropped before
+generation and scoring: the probe was trained on a user-only chat, and Qwen3's
+template renders an empty system block. `validity_scores` has one entry per
 returned step: queried reasoning steps contain `q`; unqueried steps, injected
 control text and final answers contain `None`.
 The evaluation runner preserves stopping reasons and decision metadata in
 progressive checkpoints, batch JSONL files and final results. Other strategies'
 metadata is not written to result files. On resume, progressive-checkpoint rows
-are discarded and those samples are regenerated; final rows are kept.
+are discarded and those samples are regenerated; final rows are kept, and
+`batch_results.jsonl` and `sample_metrics.jsonl` keep one line per kept sample.
 
 A compatible custom scorer must expose `score_prefix(chat, trajectory)` and
 `checkpoint_sha256`, so checkpoint identity can be checked before decoding.
@@ -281,7 +295,12 @@ tokens per generation call and transfer to float32 CPU arrays on the flush
 RPC. The transport uses a versioned little-endian float32 byte payload with
 explicit dimensions; the frontend checks byte length, capture bounds and finite
 values before making owned CPU arrays. It requires no insecure serialization
-setting. Leave GPU memory room for these copies and the small native reader.
+setting. Budget memory for them outside `gpu_memory_utilization`: the GPU
+copies are bfloat16, at most 131072 x 2048 x 2 bytes (0.5 GiB) per call. On
+the host, a flush briefly holds up to about 3 GiB (the float32 array, its wire
+payload and the decoded copy), and the feature cache keeps float32 rows for up
+to `max_cache_entries` requests: 16 x 32768 tokens x 2048 x 4 bytes, 4 GiB, at
+the defaults. The native reader adds a small GPU footprint.
 
 The example uses `generation.checkpoint_batch_size=4`. The runner accepts at
 most `min(16, 131072 // max_model_len)` (4 at the default 32768-token context),
@@ -382,8 +401,11 @@ generation token statistics; report backend counters alongside end-to-end cost.
 
 ## Validation and reproduction scope
 
-The adapter steps and scores on BELT's blank-line blocks, but uses
-ThinkBooster's configured prompts and answer phase. Fit or validate policy parameters on that same interface before using them
+The adapter steps and scores on BELT's blank-line blocks, and the example
+config uses BELT's chain prompt for boxed answers (a user-only turn,
+`rollout_contract.prompt_ids_for`); an integration test checks the rendered
+prompt token for token. The answer phase is ThinkBooster's: free generation
+after the close, not BELT's `\boxed{` seed with a `}` stop. Fit or validate policy parameters on that same interface before using them
 for stopping. Published BELT paper readings use the original trajectory banks,
 query grid and evaluation protocol; those numbers are not measurements of
 this integration. The independent BELT repository retains the paper evidence.
@@ -438,6 +460,21 @@ Unicode and a longer trace. Predeclared limits are relative L2 ≤ 0.02 for
 backbone features and reader representations, maximum belief error ≤ 0.01,
 and fixture-policy logit error ≤ 0.05. Keep those cases, coefficients and limits
 fixed when interpreting a run.
+
+To separate ordinary bf16 drift from a real capture bug, the `hf` phase also
+forwards the same token IDs through the backbone in float32 (sdpa, TF32
+disabled) and records each case's noise floor: the error of the HF bf16
+reference against that fp32 reference. In the `vllm` phase a fixed case passes
+a check if it is within the fixed tolerance, or else if its error against the
+fp32 reference is at most `NOISE_FACTOR` (2.0) times that noise floor.
+`vllm.json` always reports both numbers, the ratio, which rule passed
+(`case_checks`, `passed_via_noise_floor`) and the tolerance-only result
+(`tolerance_only_checks`). For offline diagnosis the phase saves the vLLM
+fixed-case features (`vllm_features.pt`) and a per-position error profile for
+each case (`position_profiles`: decile buckets plus the worst token positions);
+`hf-generated` remains tolerance-only. A phase removes its own and downstream
+reports before any check that can fail, so a failed rerun never leaves an
+earlier `passed` report behind.
 
 The vLLM phase saves four actual 64-token continuations, their captured
 `[T-1,2048]` features, and trained reader representations, beliefs and fixture

@@ -38,6 +38,10 @@ generation:
   top_k: 20
   batch_size: 1
   max_length: 32768
+  # Save results every 4 samples; without it MATH-500 is one 500-sample chunk
+  # and a killed run loses everything. 4 is also the vLLM backend's cap at
+  # 32k context, so `scorer.backend=vllm` works as an override.
+  checkpoint_batch_size: 4
 
 dataset:
   dataset_path: HuggingFaceH4/MATH-500
@@ -49,6 +53,8 @@ dataset:
   answer_field: answer
   answer_format: numeric
   data_name: math500
-  system_prompt: "Reason step by step and put your final answer within \\boxed{}."
-  prompt_template: "{question}"
+  # BELT's chain prompt (rollout_contract.prompt_ids_for, boxed format): a
+  # user-only turn; the strategy drops the empty system turn.
+  system_prompt: ""
+  prompt_template: "Answer the following question. Reply with the answer only. Answer enclosed with \\boxed{{}}.\n<Question>: {question}"
   prompt_file: null

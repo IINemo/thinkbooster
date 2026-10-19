@@ -45,6 +45,7 @@ def worker(req_ids=("a", "b"), starts=(0, 2, 3)):
         tensor_parallel_size=1, pipeline_parallel_size=1
     )
     obj.cache_config = SimpleNamespace(cache_dtype="auto")
+    obj.compilation_config = SimpleNamespace(mode=0)
     obj.lora_config = None
     obj.speculative_config = None
     return obj, layers[16]
@@ -108,6 +109,14 @@ def test_direct_api_rejects_unsupported_model_config(field, value, message):
     obj, _ = worker()
     setattr(obj.model_runner.model_config, field, value)
     with pytest.raises(ValueError, match=message):
+        obj.belt_setup_capture()
+
+
+@pytest.mark.parametrize("mode", [1, 2, 3])
+def test_compiled_model_is_rejected_even_when_eager(mode):
+    obj, _ = worker()
+    obj.compilation_config.mode = mode
+    with pytest.raises(ValueError, match="compilation mode"):
         obj.belt_setup_capture()
 
 

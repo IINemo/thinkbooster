@@ -12,6 +12,11 @@ on:
       - "config/**/belt*"
       - "config/experiments/belt/**"
       - "scripts/run_tts_eval.py"
+      - "scripts/utils/results.py"
+      - "scripts/analysis/reeval.py"
+      - "thinkbooster/generators/**"
+      - "tests/run_tts_eval/**"
+      - "pyproject.toml"
       - ".github/workflows/belt.yml"
 
 permissions:
@@ -43,12 +48,23 @@ jobs:
         run: |
           python -m pytest tests/belt -m "not integration" -o addopts= -v
           python tests/strategy_registry.py --validate
+      - name: Run the real Hydra entrypoint (config composition, resume, crash path)
+        run: |
+          for name in math500_qwen3_1p7b math500_qwen3_1p7b_vllm; do
+            python scripts/run_tts_eval.py --config-path "$PWD/config" \
+              --config-name "experiments/belt/$name" --cfg job \
+              strategy.policy_path=/dev/null > /dev/null
+          done
+          python -m pytest tests/run_tts_eval/test_crash_reporting.py \
+            tests/run_tts_eval/test_batch_failures.py -o addopts= -v
       - name: Install pinned native BELT reader
         run: |
           git clone https://github.com/EdisonNi-hku/BELT.git "$RUNNER_TEMP/belt-runtime"
           git -C "$RUNNER_TEMP/belt-runtime" checkout fc9b0670e430ed3519eb0df25aef0f5788a8b29c
           python -m pip install --no-deps -e "$RUNNER_TEMP/belt-runtime"
-      - name: Check original reader parity and real Qwen tokenizer boundaries on CPU
+      - name: Check reader parity, Qwen tokenizer block ends and block rules vs BELT
         env:
           BELT_TEST_CACHE: ${{ runner.temp }}/belt-hf
-        run: python -m pytest tests/belt/test_native_reader.py -m integration -o addopts= -v
+        run: |
+          python -m pytest tests/belt/test_native_reader.py -m integration -o addopts= -v
+          python -m pytest tests/belt/test_blocks.py -o addopts= -v

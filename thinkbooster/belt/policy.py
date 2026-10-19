@@ -6,7 +6,7 @@ import re
 import struct
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Tuple
+from typing import Mapping, Optional, Tuple
 
 TARGETS = ("q", "v", "r", "stability")
 
@@ -47,15 +47,22 @@ class BeltStoppingPolicy:
     threshold: float
     length_scale: float = 12000.0
     logit_clip: float = 1e-4
-    hidden_dtype: str = "float32"
+    # Required for H: a float16-fit policy read as float32 (or the reverse)
+    # scores every coordinate off by its rounding error without any error.
+    hidden_dtype: Optional[str] = None
 
     def __post_init__(self):
         if not re.fullmatch(r"[0-9a-f]{64}", self.checkpoint_sha256):
             raise ValueError("checkpoint_sha256 must identify the fitted probe")
         if self.feature_space not in ("H", "B"):
             raise ValueError("feature_space must be H or B")
-        if self.hidden_dtype not in ("float32", "float16"):
+        if self.hidden_dtype not in (None, "float32", "float16"):
             raise ValueError("hidden_dtype must be float32 or float16")
+        if self.feature_space == "H" and self.hidden_dtype is None:
+            raise ValueError(
+                "H policies must state hidden_dtype: float16 for fits on float16 "
+                "hidden dumps (historical BELT fits), float32 for signal.hidden"
+            )
         width = len(self.weights)
         if width == 0 or len(self.means) != width or len(self.stds) != width:
             raise ValueError("weights, means and stds must have equal nonzero lengths")

@@ -23,6 +23,14 @@ class BeltHiddenStatesExtension:
             raise ValueError("BELT vLLM requires TP=1 and PP=1")
         if not runner.model_config.enforce_eager:
             raise ValueError("BELT vLLM requires enforce_eager=True")
+        # enforce_eager only defaults compilation off; an explicit mode keeps
+        # torch.compile, whose graph never runs a hook registered afterwards.
+        mode = getattr(self.compilation_config, "mode", None)
+        if mode is not None and int(mode) != 0:
+            raise ValueError(
+                "BELT vLLM requires compilation mode NONE (0); got "
+                f"{mode!r}, which compiles past the capture hook"
+            )
         model_config = runner.model_config
         model_ref = str(model_config.model).rstrip("/")
         pinned_repo = (

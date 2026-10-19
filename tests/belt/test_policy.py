@@ -24,6 +24,7 @@ def policy(**kwargs):
         means=(1.0, 2.0),
         stds=(1.0, 2.0),
         threshold=1.5,
+        hidden_dtype="float32",
     )
     values.update(kwargs)
     return BeltStoppingPolicy(**values)
@@ -119,3 +120,17 @@ def test_policy_file_roundtrip_requires_explicit_threshold(tmp_path):
 def test_invalid_signal_is_rejected(belief):
     with pytest.raises(ValueError):
         replace(signal(), beliefs=dict(q=belief, v=0.5, r=0.5, stability=0.5))
+
+
+def test_hidden_policies_must_state_their_hidden_dtype():
+    with pytest.raises(ValueError, match="hidden_dtype"):
+        policy(hidden_dtype=None)
+    # B policies never read the hidden representation.
+    belief = policy(
+        feature_space="B",
+        weights=(1, 0, 0, 0),
+        means=(0,) * 4,
+        stds=(1,) * 4,
+        hidden_dtype=None,
+    )
+    assert belief.hidden_dtype is None

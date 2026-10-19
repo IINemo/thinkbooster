@@ -238,3 +238,78 @@ _generate_trajectories_batch(
     )
     assert result.returncode != 0
     assert "RuntimeError: batch-generation-subprocess-failure" in result.stderr
+
+
+def test_resume_after_kill_leaves_one_jsonl_line_per_sample(
+    runner, tmp_path, monkeypatch
+):
+    # A hard kill after a chunk's JSONL append but before results.json is saved
+    # leaves a line for a sample that resume will regenerate and append again.
+    real_save = runner.save_results_json
+
+    def killed_on_second_chunk(results, path):
+        if any(row.get("index") == 1 for row in results):
+            raise KeyboardInterrupt
+        real_save(results, path)
+
+    monkeypatch.setattr(runner, "save_results_json", killed_on_second_chunk)
+    with pytest.raises(KeyboardInterrupt):
+        invoke(runner, tmp_path, lambda r, i, save_callback: [output()], count=2)
+    monkeypatch.setattr(runner, "save_results_json", real_save)
+    jsonl = tmp_path / "batch_results.jsonl"
+    with open(jsonl, "a") as stream:
+        stream.write('{"index": 1, "traj')  # torn by the kill
+    results, processed = runner.load_results_json(tmp_path / "results.json")
+    assert processed == {0}
+
+    assert runner.prune_jsonl_rows(jsonl, processed) == 2
+    final = runner._generate_trajectories_batch(
+        results=results,
+        save_path=tmp_path,
+        strategy=SimpleNamespace(
+            generate_trajectories_batch=lambda r, i, save_callback: [output()]
+        ),
+        dataset=[{"question": f"q{i}", "answer": "4"} for i in range(2)],
+        processed_indices=processed,
+        prompt_template="",
+        system_prompt="",
+        question_field="question",
+        answer_field="answer",
+        phase1_evaluators={},
+        save_path_file=tmp_path / "results.json",
+        sample_metrics_path=tmp_path / "metrics.jsonl",
+        checkpoint_batch_size=1,
+    )
+    lines = [json.loads(x) for x in jsonl.read_text().splitlines()]
+    assert sorted(row["index"] for row in final) == [0, 1]
+    assert [row["index"] for row in lines] == [0, 1]
+
+
+def test_prune_keeps_last_line_per_kept_sample(runner, tmp_path):
+    path = tmp_path / "sample_metrics.jsonl"
+    path.write_text(
+        "\n".join(
+            json.dumps(row)
+            for row in [
+                {"sample_index": 0, "v": "old"},
+                {"sample_index": 2, "v": "stale"},
+                {"sample_index": 0, "v": "new"},
+            ]
+        )
+        + "\n"
+    )
+    assert runner.prune_jsonl_rows(path, {0}, "sample_index") == 2
+    assert [json.loads(x) for x in path.read_text().splitlines()] == [
+        {"sample_index": 0, "v": "new"}
+    ]
+    assert runner.prune_jsonl_rows(path, {0}, "sample_index") == 0
+
+
+def test_truncated_results_file_is_not_read_as_nothing_processed(runner, tmp_path):
+    path = tmp_path / "results.json"
+    runner.save_results_json([{"index": 0}], path)
+    assert runner.results_file_readable(path)
+    assert not path.with_name("results.json.tmp").exists()
+    path.write_text('[{"index": 0}, {"ind')  # a kill mid-write, before the fix
+    assert not runner.results_file_readable(path)
+    assert runner.results_file_readable(tmp_path / "missing.json")

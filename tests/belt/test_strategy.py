@@ -23,7 +23,9 @@ def candidate(text, complete=False, thinking_complete=False, **data):
 
 
 def policy(threshold=2):
-    return BeltStoppingPolicy(SHA, "H", (1,), 0, (0,), (1,), threshold)
+    return BeltStoppingPolicy(
+        SHA, "H", (1,), 0, (0,), (1,), threshold, hidden_dtype="float32"
+    )
 
 
 class Scorer:
@@ -164,14 +166,61 @@ def test_blocks_past_max_blocks_are_not_queried():
     assert [d["block"] for d in result["metadata"]["decisions"]] == [1, 2]
 
 
-def test_max_steps_does_not_claim_a_completed_answer():
+def test_max_steps_forces_an_answer_and_keeps_the_reason():
+    generator = Generator(
+        {0: [candidate("a"), candidate("b")]}, {0: candidate("\\boxed{4}", True)}
+    )
+    result = StrategyBELT(
+        generator, Scorer(), policy(10), max_steps=2
+    ).generate_trajectory(requests(1)[0])
+    assert result["completion_reason"] == "max_steps"
+    assert result["max_steps_hit"] and result["completed"]
+    assert result["metadata"]["forced_answer_reason"] == "max_steps"
+    assert result["trajectory"] == "ab\n</think>\n\n\\boxed{4}"
+
+
+def test_max_steps_without_an_answer_is_incomplete():
     generator = Generator({0: [candidate("a"), candidate("b")]})
     result = StrategyBELT(
         generator, Scorer(), policy(10), max_steps=2
     ).generate_trajectory(requests(1)[0])
     assert result["completion_reason"] == "max_steps"
     assert result["max_steps_hit"] and not result["completed"]
-    assert not generator.answer_calls
+    assert len(generator.answer_calls) == 1
+
+
+@pytest.mark.parametrize(
+    "reason", ["context_limit", "repetition_detected", "garbage_detected"]
+)
+def test_limits_force_an_answer_after_closing_thinking(reason):
+    step = candidate("partial", complete=True, completion_reason=reason)
+    generator = Generator({0: [step]}, {0: candidate("\\boxed{4}", True)})
+    result = StrategyBELT(generator, Scorer(), policy(10)).generate_trajectory(
+        requests(1)[0]
+    )
+    # The generator skips complete trajectories, so the flag must be cleared.
+    assert not step.is_trajectory_complete
+    assert generator.answer_calls[0][1][0][-1].text == "\n</think>\n\n"
+    assert result["trajectory"] == "partial\n</think>\n\n\\boxed{4}"
+    assert result["completion_reason"] == reason
+    assert result["completed"]
+    assert result["metadata"]["forced_answer_reason"] == reason
+
+
+def test_context_limit_after_thinking_closed_still_answers():
+    step = candidate(
+        "done</think>",
+        complete=True,
+        thinking_complete=True,
+        completion_reason="context_limit",
+    )
+    generator = Generator({0: [step]}, {0: candidate("\\boxed{4}", True)})
+    result = StrategyBELT(generator, Scorer(), policy(10)).generate_trajectory(
+        requests(1)[0]
+    )
+    assert result["metadata"]["injected_control_text"] == []
+    assert result["trajectory"] == "done</think>\\boxed{4}"
+    assert result["completion_reason"] == "context_limit" and result["completed"]
 
 
 def test_missing_answer_is_incomplete():
@@ -227,9 +276,10 @@ def test_policy_stop_closes_thinking_and_records_control_text():
     result = StrategyBELT(
         generator, Scorer(), policy(0), min_steps=1
     ).generate_trajectory(requests(1)[0])
-    assert result["trajectory"] == "reason\n\n\n</think>\n\n\\boxed{4}"
-    assert result["metadata"]["injected_control_text"] == ["\n</think>\n\n"]
-    assert generator.answer_calls[0][1][0][-1].text == "\n</think>\n\n"
+    # BELT's close follows the block's blank line directly.
+    assert result["trajectory"] == "reason\n\n</think>\n\n\\boxed{4}"
+    assert result["metadata"]["injected_control_text"] == ["</think>\n\n"]
+    assert generator.answer_calls[0][1][0][-1].text == "</think>\n\n"
     assert result["validity_scores"] == [0.7, None, None]
     assert result["reasoning_steps"] == 1
     assert result["token_stats"]["output_tokens"] == len(
@@ -332,3 +382,40 @@ def test_non_thinking_generator_is_rejected(attrs):
         setattr(generator, name, value)
     with pytest.raises(ValueError, match="thinking-mode generator"):
         StrategyBELT(generator, Scorer(), policy())
+
+
+def test_empty_system_turn_is_dropped_for_generation_and_scoring():
+    generator = Generator(
+        {0: [candidate("reason\n\n")]}, {0: candidate("\\boxed{4}", True)}
+    )
+    seen = []
+    scorer = Scorer()
+    original = scorer.score_prefix
+    scorer.score_prefix = lambda chat, trajectory: seen.append(chat) or original(
+        chat, trajectory
+    )
+    chat = [{"role": "system", "content": ""}, {"role": "user", "content": "q"}]
+    StrategyBELT(generator, scorer, policy(0), min_steps=1).generate_trajectory(chat)
+    assert seen == [[{"role": "user", "content": "q"}]]
+
+
+def test_nonempty_system_turn_is_kept():
+    from thinkbooster.strategies.strategy_belt import _belt_chat
+
+    chat = [{"role": "system", "content": "be brief"}, {"role": "user", "content": "q"}]
+    assert _belt_chat(chat) == chat
+
+
+@pytest.mark.parametrize(
+    "text, close",
+    [
+        ("a\n\n", "</think>\n\n"),
+        ("a\n\t\n", "</think>\n\n"),
+        ("a\n\n  ", "</think>\n\n"),
+        ("a mid-block", "\n</think>\n\n"),
+    ],
+)
+def test_close_follows_any_block_end_directly(text, close):
+    from thinkbooster.strategies.strategy_belt import _close_text
+
+    assert _close_text([candidate(text)]) == close

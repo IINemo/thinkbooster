@@ -24,6 +24,22 @@ def _completion_reason(candidate):
     return reason.value if hasattr(reason, "value") else reason
 
 
+def _belt_chat(request):
+    """Drop an empty leading system turn: BELT's probe was trained on a
+    user-only chat, and Qwen3's template renders an empty system block."""
+    if request and request[0].get("role") == "system":
+        if not (request[0].get("content") or "").strip():
+            return list(request[1:])
+    return request
+
+
+def _close_text(trajectory):
+    # BELT closes right after a block end ("</think>\n\n"), whatever the
+    # separator's whitespace; a mid-block cut gets its own line first.
+    text = convert_trajectory_to_string(trajectory)
+    return CLOSE_TAG + "\n\n" if ends_on_block(text) else "\n</think>\n\n"
+
+
 def _accepts_step_options(method):
     try:
         params = inspect.signature(method).parameters
@@ -136,6 +152,7 @@ class StrategyBELT(StrategyBase):
             raise ValueError("sample_indices must be unique within a BELT batch")
         if not requests:
             return []
+        requests = [_belt_chat(request) for request in requests]
         self._check_cancelled()
         self.step_generator.reset_per_sample_stats()
         model = getattr(self.step_generator, "model", None)
@@ -149,7 +166,60 @@ class StrategyBELT(StrategyBase):
         reasoning_steps = [0 for _ in requests]
         injected_control_text = [[] for _ in requests]
         last_block = [0 for _ in requests]
+        # Limit that ended reasoning before a stop; the answer is then forced,
+        # as online best-of-n does, instead of grading the thinking text.
+        forced = [None for _ in requests]
         active = list(range(len(requests)))
+
+        def generate_answers(answering):
+            """Close thinking where still open and generate one final answer."""
+            self._check_cancelled()
+            for i in answering:
+                if trajectories[i] and forced[i]:
+                    # The limit marked the last step complete, and the generator
+                    # skips answering complete trajectories.
+                    trajectories[i][-1].is_trajectory_complete = False
+                if (
+                    self.thinking_mode
+                    and "</think>" not in convert_trajectory_to_string(trajectories[i])
+                ):
+                    close = _close_text(trajectories[i])
+                    trajectories[i].append(
+                        StepCandidate(
+                            text=close,
+                            token_ids=[],
+                            is_complete=True,
+                            is_trajectory_complete=False,
+                            is_thinking_complete=True,
+                            other_data={"belt_control_text": True},
+                        )
+                    )
+                    injected_control_text[i].append(close)
+            answers = self.step_generator.generate_answer_candidates_batch(
+                requests=[requests[i] for i in answering],
+                trajectories=[trajectories[i] for i in answering],
+                candidates_per_step=1,
+                sample_ids=[sample_indices[i] for i in answering],
+            )
+            if len(answers) != len(answering):
+                raise RuntimeError(
+                    "BELT answer generator returned the wrong batch size"
+                )
+            for i, candidates in zip(answering, answers):
+                if not candidates:
+                    if not forced[i]:
+                        reasons[i] = "answer_generation_failed"
+                    continue
+                if len(candidates) != 1:
+                    raise RuntimeError("BELT expects one answer per sample")
+                final = candidates[0]
+                trajectories[i].append(final)
+                answer_text[i] = final.raw_text or final.text
+                completed[i] = _answer_is_complete(final)
+                # A forced answer keeps the limit as its reason; `completed`
+                # says whether the answer itself is usable.
+                if not completed[i] and not forced[i]:
+                    reasons[i] = "answer_incomplete"
 
         for step in range(1, self.max_steps + 1):
             if not active:
@@ -184,7 +254,8 @@ class StrategyBELT(StrategyBase):
                     "repetition_detected",
                     "garbage_detected",
                 ):
-                    reasons[i] = reason
+                    reasons[i] = forced[i] = reason
+                    answering.append(i)
                     continue
                 text = candidate.raw_text or candidate.text
                 closed_thinking = (
@@ -240,50 +311,13 @@ class StrategyBELT(StrategyBase):
                         continue
                 continuing.append(i)
             if answering:
-                self._check_cancelled()
-                for i in answering:
-                    if (
-                        self.thinking_mode
-                        and "</think>"
-                        not in convert_trajectory_to_string(trajectories[i])
-                    ):
-                        trajectories[i].append(
-                            StepCandidate(
-                                text="\n</think>\n\n",
-                                token_ids=[],
-                                is_complete=True,
-                                is_trajectory_complete=False,
-                                is_thinking_complete=True,
-                                other_data={"belt_control_text": True},
-                            )
-                        )
-                        injected_control_text[i].append("\n</think>\n\n")
-                answers = self.step_generator.generate_answer_candidates_batch(
-                    requests=[requests[i] for i in answering],
-                    trajectories=[trajectories[i] for i in answering],
-                    candidates_per_step=1,
-                    sample_ids=[sample_indices[i] for i in answering],
-                )
-                if len(answers) != len(answering):
-                    raise RuntimeError(
-                        "BELT answer generator returned the wrong batch size"
-                    )
-                for i, candidates in zip(answering, answers):
-                    if not candidates:
-                        reasons[i] = "answer_generation_failed"
-                        continue
-                    if len(candidates) != 1:
-                        raise RuntimeError("BELT expects one answer per sample")
-                    answer = candidates[0]
-                    trajectories[i].append(answer)
-                    answer_text[i] = answer.raw_text or answer.text
-                    completed[i] = _answer_is_complete(answer)
-                    if not completed[i]:
-                        reasons[i] = "answer_incomplete"
+                generate_answers(answering)
             active = continuing
 
         for i in active:
-            reasons[i] = "max_steps"
+            reasons[i] = forced[i] = "max_steps"
+        if active:
+            generate_answers(active)
         results = []
         scoring_metadata = dict(
             getattr(self.scorer, "metadata", {"scoring_backend": "hf"})
@@ -320,6 +354,7 @@ class StrategyBELT(StrategyBase):
                         "checkpoint_sha256": self.policy.checkpoint_sha256,
                         "decisions": decisions[i],
                         "injected_control_text": injected_control_text[i],
+                        "forced_answer_reason": forced[i],
                         "scoring_cost_in_token_stats": False,
                     },
                 }

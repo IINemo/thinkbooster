@@ -199,3 +199,41 @@ def test_injected_provider_loads_only_reader_and_matches_original_head(monkeypat
     torch.testing.assert_close(actual_hidden, captured[-1][-1], rtol=0, atol=1e-6)
     assert runtime.metadata["scoring_backend"] == "vllm"
     assert runtime.metadata["backend_stats"] == {"repair_calls": 0}
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not os.getenv("BELT_TEST_CACHE"), reason="Set BELT_TEST_CACHE")
+def test_example_prompt_matches_belt_chain_prompt_token_for_token():
+    from pathlib import Path
+
+    from hydra import compose, initialize_config_dir
+    from rl_controller.rollout_contract import prompt_ids_for
+    from transformers import AutoTokenizer
+
+    from thinkbooster.belt.runtime import BACKBONE, BACKBONE_REVISION
+    from thinkbooster.strategies.strategy_belt import _belt_chat
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        BACKBONE, revision=BACKBONE_REVISION, cache_dir=os.environ["BELT_TEST_CACHE"]
+    )
+    root = Path(__file__).resolve().parents[2]
+    with initialize_config_dir(version_base=None, config_dir=str(root / "config")):
+        cfg = compose(config_name="experiments/belt/math500_qwen3_1p7b")
+    from belt_requests import built_request
+
+    question = "What is the smallest positive integer $n$ with $n^2 > 50$?"
+    # The request as run_tts_eval builds it, from its own prompt lookup.
+    request = built_request(cfg, question)
+    ours = tokenizer.apply_chat_template(
+        _belt_chat(request),
+        tokenize=True,
+        add_generation_prompt=True,
+        enable_thinking=True,
+    )
+    belt = prompt_ids_for(
+        tokenizer,
+        question,
+        encode=lambda text: tokenizer.encode(text, add_special_tokens=False),
+        decode=lambda ids: tokenizer.decode(ids),
+    )
+    assert list(ours) == list(belt)
