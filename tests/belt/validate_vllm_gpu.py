@@ -484,7 +484,10 @@ def strategy_smoke(backend, config, args):
     from thinkbooster.step_boundary_detectors.thinking import ThinkingMarkerDetector
     from thinkbooster.strategies.strategy_belt import StrategyBELT
 
-    detector = ThinkingMarkerDetector(min_step_tokens=16, max_step_tokens=32)
+    from thinkbooster.belt.blocks import ends_on_block
+
+    # BELT steps are blank-line blocks: no minimum, room for a whole block.
+    detector = ThinkingMarkerDetector(min_step_tokens=0, max_step_tokens=128)
     generator = VLLMStepGenerator(
         model=backend,
         thinking_mode=True,
@@ -508,8 +511,10 @@ def strategy_smoke(backend, config, args):
     )
     policy = fixture_policy(args.checksum, force_stop=True)
     with forbid_hf_backbone_loads():
-        strategy = StrategyBELT(generator, scorer, policy, max_steps=2)
+        # Plumbing smoke: stop at the earliest block end, block 1 included.
+        strategy = StrategyBELT(generator, scorer, policy, max_steps=8, min_steps=1)
         result = strategy.generate_trajectory(SMOKE_CHAT)
+        texts = [step.raw_text or step.text for step in result["steps"]]
         require(
             scorer.runtime.feature_provider is backend,
             "Strategy did not use its generation feature provider",
@@ -521,8 +526,8 @@ def strategy_smoke(backend, config, args):
                 policy, "force stop at first eligible query"
             ),
             "generator": {
-                "min_step_tokens": 16,
-                "max_step_tokens": 32,
+                "min_step_tokens": 0,
+                "max_step_tokens": 128,
                 "answer_max_tokens": 64,
                 "seed": 0,
             },
@@ -534,7 +539,7 @@ def strategy_smoke(backend, config, args):
             "completion_reason": result["completion_reason"],
             "reasoning_steps": result["reasoning_steps"],
             "metadata": result["metadata"],
-            "step_texts": [step.raw_text or step.text for step in result["steps"]],
+            "step_texts": texts,
             "checks": {
                 "queried_real_reader": stats["queries"] >= 1
                 and bool(result["metadata"]["decisions"]),
@@ -548,6 +553,10 @@ def strategy_smoke(backend, config, args):
                 ]
                 is False,
                 "scoring_backend": result["metadata"]["scoring_backend"] == "vllm",
+                "decisions_at_block_ends": all(
+                    ends_on_block("".join(texts[: row["step"]]))
+                    for row in result["metadata"]["decisions"]
+                ),
             },
         }
         strategy.cleanup()

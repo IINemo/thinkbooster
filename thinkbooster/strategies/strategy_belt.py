@@ -1,6 +1,14 @@
 """End thinking using a fitted policy on frozen BELT signals."""
 
+import inspect
+
 from thinkbooster.belt import BeltStoppingPolicy
+from thinkbooster.belt.blocks import (
+    BLOCK_STOP_STRING,
+    CLOSE_TAG,
+    block_count,
+    ends_on_block,
+)
 from thinkbooster.generators.base import (
     StepCandidate,
     StepCandidateGeneratorBase,
@@ -16,6 +24,18 @@ def _completion_reason(candidate):
     return reason.value if hasattr(reason, "value") else reason
 
 
+def _accepts_step_options(method):
+    try:
+        params = inspect.signature(method).parameters
+    except (TypeError, ValueError):
+        return False
+    return any(p.kind is p.VAR_KEYWORD for p in params.values()) or {
+        "stop_tokens_override",
+        "include_stop_str_in_output",
+        "truncate_at_sentence",
+    } <= set(params)
+
+
 def _answer_is_complete(candidate):
     return bool(
         candidate.is_trajectory_complete
@@ -27,10 +47,23 @@ def _answer_is_complete(candidate):
 
 
 class StrategyBELT(StrategyBase):
-    """One reasoning trajectory per request, with explicit BELT stopping."""
+    """One reasoning trajectory per request, with explicit BELT stopping.
+
+    Each step is one BELT block: generation stops on a blank line and keeps it,
+    and the policy is queried only when the thinking text ends on a block end.
+    `min_steps`, `max_blocks` and `query_stride` count blocks as BELT does
+    (block 1 is never a decision); `max_steps` caps generation rounds.
+    """
 
     def __init__(
-        self, step_generator, scorer, policy, max_steps=128, min_steps=1, query_stride=1
+        self,
+        step_generator,
+        scorer,
+        policy,
+        max_steps=1024,
+        min_steps=2,
+        query_stride=1,
+        max_blocks=128,
     ):
         if step_generator is None or not hasattr(scorer, "score_prefix"):
             raise ValueError("BELT requires a step generator and a BELT prefix scorer")
@@ -45,6 +78,16 @@ class StrategyBELT(StrategyBase):
                     "BELT stopping requires implemented batched step and answer APIs; "
                     "use VLLMStepGenerator or a compatible generator"
                 )
+        if not _accepts_step_options(step_generator.generate_step_candidates_batch):
+            raise ValueError(
+                "BELT blocks need per-call stop strings and untrimmed output "
+                "(stop_tokens_override, include_stop_str_in_output, "
+                "truncate_at_sentence)"
+            )
+        # vLLM ignores stop strings until min_tokens, which would merge short
+        # blocks (BELT's average about 40 tokens) into one step.
+        if getattr(step_generator, "min_step_tokens", 0):
+            raise ValueError("BELT blocks require strategy.min_step_tokens=0")
         thinking_mode = bool(
             getattr(
                 step_generator,
@@ -60,12 +103,14 @@ class StrategyBELT(StrategyBase):
                 "BELT stopping requires a thinking-mode generator "
                 "(thinking_mode=True and disable_thinking_mode not set)"
             )
+        if type(max_steps) is not int or max_steps < 1:
+            raise ValueError("max_steps must be a positive integer")
         if (
-            type(max_steps) is not int
+            type(max_blocks) is not int
             or type(min_steps) is not int
-            or not 1 <= min_steps <= max_steps
+            or not 1 <= min_steps <= max_blocks
         ):
-            raise ValueError("Require 1 <= min_steps <= max_steps")
+            raise ValueError("Require 1 <= min_steps <= max_blocks")
         if type(query_stride) is not int or query_stride < 1:
             raise ValueError("query_stride must be a positive integer")
         if not isinstance(policy, BeltStoppingPolicy):
@@ -77,6 +122,7 @@ class StrategyBELT(StrategyBase):
         self.max_steps = max_steps
         self.min_steps = min_steps
         self.query_stride = query_stride
+        self.max_blocks = max_blocks
         self.thinking_mode = thinking_mode
 
     def generate_trajectories_batch(
@@ -102,6 +148,7 @@ class StrategyBELT(StrategyBase):
         answer_text = [None for _ in requests]
         reasoning_steps = [0 for _ in requests]
         injected_control_text = [[] for _ in requests]
+        last_block = [0 for _ in requests]
         active = list(range(len(requests)))
 
         for step in range(1, self.max_steps + 1):
@@ -114,6 +161,9 @@ class StrategyBELT(StrategyBase):
                 candidates_per_step=1,
                 compute_uncertainty=False,
                 sample_ids=[sample_indices[i] for i in active],
+                stop_tokens_override=[BLOCK_STOP_STRING, CLOSE_TAG],
+                include_stop_str_in_output=True,
+                truncate_at_sentence=False,
             )
             if len(outputs) != len(active):
                 raise RuntimeError("BELT generator returned the wrong batch size")
@@ -157,13 +207,25 @@ class StrategyBELT(StrategyBase):
                     reasons[i] = "thinking_complete"
                     answering.append(i)
                     continue
-                if step >= self.min_steps and step % self.query_stride == 0:
+                prefix = convert_trajectory_to_string(trajectories[i])
+                block = block_count(prefix)
+                # One decision per new block end; a step that stops mid-block
+                # (length cut) or adds only whitespace is not a boundary.
+                if not ends_on_block(prefix) or block <= last_block[i]:
+                    continuing.append(i)
+                    continue
+                last_block[i] = block
+                if (
+                    self.min_steps <= block <= self.max_blocks
+                    and block % self.query_stride == 0
+                ):
                     signal = self.scorer.score_prefix(requests[i], trajectories[i])
                     value = self.policy.decision_logit(signal)
                     stop = value >= self.policy.threshold
                     decisions[i].append(
                         {
-                            "step": step,
+                            "step": len(trajectories[i]),
+                            "block": block,
                             "prefix_tokens": signal.prefix_tokens,
                             "beliefs": dict(signal.beliefs),
                             "policy_logit": value,

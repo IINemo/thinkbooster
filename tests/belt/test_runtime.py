@@ -56,11 +56,10 @@ def runtime():
 
 def test_readout_targets_and_full_boundary_history():
     probe = runtime()
-    result = probe.score_prefix(
-        [{"role": "user", "content": "question"}], ["ab", "cd", "ef"]
-    )
+    steps = ["ab\n\n", "cd\n\n", "ef"]
+    result = probe.score_prefix([{"role": "user", "content": "question"}], steps)
     assert probe.state_fn.calls == [
-        ([101, 102, 103], [97, 98, 99, 100, 101, 102], 3, [2, 4, 6])
+        ([101, 102, 103], [ord(c) for c in "".join(steps)], 3, [4, 8, 10])
     ]
     assert result.hidden == (1, 2)
     assert result.beliefs["q"] == 0.5
@@ -71,7 +70,7 @@ def test_readout_targets_and_full_boundary_history():
     assert result.beliefs["stability"] == pytest.approx(
         torch.sigmoid(torch.tensor(3.0)).item()
     )
-    assert result.prefix_tokens == 6
+    assert result.prefix_tokens == 10
     assert probe.state_fn.cleared == 1
 
 
@@ -91,30 +90,47 @@ def test_reader_failure_clears_cached_state():
     assert probe.state_fn.cleared == 1
 
 
-def test_token_merged_across_step_cut_belongs_to_earlier_step():
-    # vLLM strips the "\nSo " stop string, so one step ends ".\n" and the next
-    # starts "\nSo"; the joined text tokenizes ".\n\n" as a single token.
+@pytest.mark.parametrize(
+    "steps",
+    [
+        ["x.\n\nSo", " y.\n\n"],
+        ["x.", "\n\nSo y", ".\n\n"],
+        ["x.\n\nSo y.\n\n"],
+    ],
+)
+def test_block_ends_come_from_the_text_not_the_step_cuts(steps):
     probe = runtime()
     probe.tokenizer = MergingTokenizer()
-    probe.score_prefix([{"role": "user", "content": "q"}], ["x.\n", "\nSo", "y"])
+    probe.score_prefix([{"role": "user", "content": "q"}], steps)
     _, completion_ids, blocks, ends = probe.state_fn.calls[0]
-    assert completion_ids == [ord("x"), 1000, ord("S"), ord("o"), ord("y")]
-    assert (blocks, ends) == (3, [2, 4, 5])
+    x, s, o, y = (ord(c) for c in "xSoy")
+    # ".\n\n" is one token and closes its block.
+    assert completion_ids == [x, 1000, s, o, ord(" "), y, 1000]
+    assert (blocks, ends) == (2, [2, 7])
 
 
-def test_step_swallowed_by_previous_token_adds_no_block():
+@pytest.mark.parametrize(
+    "text, ends",
+    [
+        ("a\n\n\n", [4]),  # trailing whitespace belongs to the closed block
+        ("a\n \nb\n\n\n\nc", [4, 7, 10]),  # "\n \n" closes; "\n\n\n\n" once
+        ("\n\na\n\n", [5]),  # a leading blank line closes no block
+        ("a\n\nb", [3, 4]),  # a mid-block tip is still the last end
+    ],
+)
+def test_block_end_rule_matches_belt(text, ends):
     probe = runtime()
-    probe.tokenizer = MergingTokenizer()
-    probe.score_prefix([{"role": "user", "content": "q"}], ["x.", "\n", "\ny"])
-    assert probe.state_fn.calls[0][2:] == (2, [2, 3])
+    probe.score_prefix([{"role": "user", "content": "q"}], [text])
+    assert probe.state_fn.calls[0][3] == ends
 
 
 def test_step_objects_are_supported():
     probe = runtime()
     probe.score_prefix(
-        [{"role": "user", "content": "q"}], [SimpleNamespace(raw_text="ab", text="ab")]
+        [{"role": "user", "content": "q"}],
+        [SimpleNamespace(raw_text="ab\n\n", text="ab")],
     )
-    assert probe.state_fn.calls[0][-1] == [2]
+    assert probe.state_fn.calls[0][-1] == [4]
 
 
 @pytest.mark.parametrize(

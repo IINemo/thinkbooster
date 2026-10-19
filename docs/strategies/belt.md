@@ -78,9 +78,12 @@ interface includes all four beliefs and checkpoint identity in its metadata.
 Ranking by a belief is distinct from evaluating a fitted stopping policy.
 
 `score_prefix` applies the chat template and tokenizes the joined step text
-once. Character offsets map the step cuts to token ends. A token spanning a
-cut belongs to the earlier step; a step entirely swallowed by that token adds
-no new block. For exact replay of an existing tokenized bank, use
+once. Block ends come from the text, by BELT's own rule, not from how it was
+cut into steps: a block ends at a blank line (`\n[ \t]*\n`) that follows
+non-whitespace text, and the end marker goes after the separator. The prefix
+end is always the last block end; whitespace after a blank line belongs to the
+block it closes. Character offsets map these ends to tokens, and a token
+spanning an end (`.\n\n`) belongs to the block it closes. For exact replay of an existing tokenized bank, use
 `scorer.runtime.score_token_ids(prompt_ids, completion_ids, block_ends)`.
 `block_ends` contains strictly increasing,
 exclusive offsets into completion tokens, including the current prefix end.
@@ -158,9 +161,10 @@ strategy = StrategyBELT(
     step_generator=step_generator,
     scorer=scorer,
     policy="belt-policy.json",
-    max_steps=128,
-    min_steps=1,
+    min_steps=2,
+    max_blocks=128,
     query_stride=1,
+    max_steps=1024,
 )
 result = strategy.generate_trajectory(chat)
 print(result["trajectory"])
@@ -172,11 +176,22 @@ answer APIs, in thinking mode: the strategy rejects generators with
 `thinking_mode=False` or `disable_thinking_mode=True`, because the reader
 scores thinking prompts and a stop must close an open thinking block. The legacy HF generator's single-request API is not supported
 by this strategy. The strategy generates one
-candidate per active request and evaluates the policy on the configured query
-cadence. A stop closes thinking and requests a final answer. Natural answers
+candidate per active request, one BELT block at a time, as BELT itself does:
+each step stops on `"\n\n"` with the stop string kept in the text, so the
+next prompt is exactly what was sampled. The generator must therefore accept
+per-call `stop_tokens_override`, `include_stop_str_in_output` and
+`truncate_at_sentence`, and must have `min_step_tokens=0`; vLLM ignores stop strings before `min_tokens`, which
+would merge short blocks. The policy is queried only when the thinking text
+ends on a new block end, at block index `b` with
+`min_steps <= b <= max_blocks` and `b % query_stride == 0`. Blocks are counted
+as BELT counts them; block 1 is never a decision under the default
+`min_steps=2`, and blocks past `max_blocks` are generated without queries. A
+block longer than `max_step_tokens` is kept whole (not trimmed to a sentence)
+and finished by the next round; no decision is made at that cut. `max_steps` caps generation rounds. A stop closes thinking and requests a final answer. Natural answers
 are preserved. A step cap, context limit or failed/incomplete answer is
 reported separately from a completed answer. Every decision records its
-beliefs, prefix length, policy logit, threshold and checkpoint hash. Injected
+block index, step index, beliefs, prefix length, policy logit, threshold and
+checkpoint hash. Injected
 `\n</think>\n\n` control text follows Qwen3's closing format and is recorded
 separately from generated output tokens. `validity_scores` has one entry per
 returned step: queried reasoning steps contain `q`; unqueried steps, injected
@@ -350,7 +365,7 @@ For `k` queries separated by `d` completion tokens and a prompt of `P` tokens,
 the cumulative scoring input is approximately `k*P + d*k*(k+1)/2` tokens.
 Thus processed prefix tokens grow quadratically with trace length at a fixed
 query interval. The default `query_stride=1` queries after each eligible
-reasoning step; with 50–300 token steps, long traces can require dozens of
+block; blocks average about 40 tokens, so long traces can require a hundred
 full-prefix forwards. A larger stride reduces the number of scoring calls,
 but changes the stopping opportunities: fit or validate the policy on the
 chosen cadence.
@@ -367,8 +382,8 @@ generation token statistics; report backend counters alongside end-to-end cost.
 
 ## Validation and reproduction scope
 
-The adapter uses ThinkBooster's configured prompts and step boundaries.
-Fit or validate policy parameters on that same interface before using them
+The adapter steps and scores on BELT's blank-line blocks, but uses
+ThinkBooster's configured prompts and answer phase. Fit or validate policy parameters on that same interface before using them
 for stopping. Published BELT paper readings use the original trajectory banks,
 query grid and evaluation protocol; those numbers are not measurements of
 this integration. The independent BELT repository retains the paper evidence.
@@ -383,11 +398,12 @@ python tests/strategy_registry.py --validate
 Opt-in CPU tests load a real published checkpoint and compare the adapter
 with the original reader/readout on deterministic frozen features, including
 all end markers and feature alignment. They also exercise the real pinned
-Qwen tokenizer at step cuts produced by stripped generation stop strings:
+Qwen tokenizer at blank-line block ends, and check the block rules against
+BELT's own `rl_controller` on random texts (BELT on `PYTHONPATH`):
 
 ```bash
 BELT_TEST_CACHE=/path/to/hf-cache pytest tests/belt/test_native_reader.py \
-  -m integration -o addopts= -v
+  tests/belt/test_blocks.py -o addopts= -v
 ```
 
 This checks reader inference parity. It does not run generation or a benchmark.

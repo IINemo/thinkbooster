@@ -50,6 +50,7 @@ class Generator:
         self.answers = answers or {}
         self.answer_calls = []
         self.step_calls = []
+        self.step_kwargs = []
         self.stats = {}
 
     def reset_per_sample_stats(self):
@@ -62,6 +63,7 @@ class Generator:
         self, requests, trajectories, sample_ids, **kwargs
     ):
         self.step_calls.append(list(sample_ids))
+        self.step_kwargs.append(kwargs)
         result = []
         for sample_id in sample_ids:
             value = self.scripts[sample_id].pop(0)
@@ -97,7 +99,7 @@ def test_heterogeneous_batch_order_stop_natural_failure_and_token_accounting():
     generator = Generator({42: [first, second], 7: [natural], 11: [None]}, {42: final})
     scorer = Scorer()
     results = StrategyBELT(
-        generator, scorer, policy(), max_steps=3
+        generator, scorer, policy(), max_steps=3, min_steps=1
     ).generate_trajectories_batch(requests(3), [42, 7, 11])
     assert [r["completion_reason"] for r in results] == [
         "belt_stop",
@@ -115,18 +117,51 @@ def test_heterogeneous_batch_order_stop_natural_failure_and_token_accounting():
     assert [d["stop"] for d in results[0]["metadata"]["decisions"]] == [False, True]
 
 
-def test_query_cadence_keeps_unqueried_step_history():
-    generator = Generator(
-        {0: [candidate("a"), candidate("b")]}, {0: candidate("answer", True)}
-    )
+def test_query_cadence_counts_blocks_and_keeps_unqueried_history():
+    blocks = [candidate(f"{x}\n\n") for x in "abcd"]
+    close = candidate("e</think>", thinking_complete=True)
+    generator = Generator({0: blocks + [close]}, {0: candidate("answer", True)})
     scorer = Scorer()
     result = StrategyBELT(
-        generator, scorer, policy(), min_steps=2, query_stride=2
+        generator, scorer, policy(10), query_stride=2
     ).generate_trajectory(requests(1)[0])
-    assert scorer.histories == [["a", "b"]]
-    # Steps a, b, the injected "\n</think>\n\n" control step, then the answer.
-    assert result["validity_scores"] == [None, 0.7, None, None]
+    texts = [b.raw_text for b in blocks]
+    # Block 1 is never a decision; stride 2 then queries blocks 2 and 4.
+    assert scorer.histories == [texts[:2], texts]
+    assert [d["block"] for d in result["metadata"]["decisions"]] == [2, 4]
+    # Blocks a-d, the closing step, then the answer.
+    assert result["validity_scores"] == [None, 0.7, None, 0.7, None, None]
     assert result["completed"]
+
+
+def test_steps_request_blocks_with_the_blank_line_kept():
+    generator = Generator({0: [candidate("a\n\n"), candidate("b")]})
+    StrategyBELT(generator, Scorer(), policy(10), max_steps=2).generate_trajectory(
+        requests(1)[0]
+    )
+    assert generator.step_kwargs[0]["stop_tokens_override"] == ["\n\n", "</think>"]
+    assert generator.step_kwargs[0]["include_stop_str_in_output"] is True
+    assert generator.step_kwargs[0]["truncate_at_sentence"] is False
+
+
+def test_only_new_block_ends_are_decisions():
+    steps = ["first\n\n", "second half", " done\n\n", "\n\n", "third \n\t\n"]
+    generator = Generator({0: [candidate(x) for x in steps]})
+    result = StrategyBELT(
+        generator, Scorer(), policy(10), min_steps=1, max_steps=5
+    ).generate_trajectory(requests(1)[0])
+    decisions = result["metadata"]["decisions"]
+    # Not after the mid-block cut, nor after the whitespace-only step.
+    assert [(d["block"], d["step"]) for d in decisions] == [(1, 1), (2, 3), (3, 5)]
+    assert result["completion_reason"] == "max_steps"
+
+
+def test_blocks_past_max_blocks_are_not_queried():
+    generator = Generator({0: [candidate(f"{x}\n\n") for x in "abc"]})
+    result = StrategyBELT(
+        generator, Scorer(), policy(10), min_steps=1, max_blocks=2, max_steps=3
+    ).generate_trajectory(requests(1)[0])
+    assert [d["block"] for d in result["metadata"]["decisions"]] == [1, 2]
 
 
 def test_max_steps_does_not_claim_a_completed_answer():
@@ -140,10 +175,10 @@ def test_max_steps_does_not_claim_a_completed_answer():
 
 
 def test_missing_answer_is_incomplete():
-    generator = Generator({0: [candidate("reason")]})
-    result = StrategyBELT(generator, Scorer(), policy(0)).generate_trajectory(
-        requests(1)[0]
-    )
+    generator = Generator({0: [candidate("reason\n\n")]})
+    result = StrategyBELT(
+        generator, Scorer(), policy(0), min_steps=1
+    ).generate_trajectory(requests(1)[0])
     assert not result["completed"]
     assert result["completion_reason"] == "answer_generation_failed"
 
@@ -176,28 +211,30 @@ def test_context_limit_is_not_natural_completion():
 def test_length_limited_answer_is_incomplete_even_when_generator_marks_complete():
     answer = candidate("truncated answer", complete=True)
     answer.output = SimpleNamespace(finish_reason="length")
-    generator = Generator({0: [candidate("reason")]}, {0: answer})
-    result = StrategyBELT(generator, Scorer(), policy(0)).generate_trajectory(
-        requests(1)[0]
-    )
+    generator = Generator({0: [candidate("reason\n\n")]}, {0: answer})
+    result = StrategyBELT(
+        generator, Scorer(), policy(0), min_steps=1
+    ).generate_trajectory(requests(1)[0])
     assert not result["completed"]
     assert result["completion_reason"] == "answer_incomplete"
 
 
 def test_policy_stop_closes_thinking_and_records_control_text():
     generator = Generator(
-        {0: [candidate("reason")]}, {0: candidate("\\boxed{4}", True)}
+        {0: [candidate("reason\n\n")]}, {0: candidate("\\boxed{4}", True)}
     )
     generator.thinking_mode = True
-    result = StrategyBELT(generator, Scorer(), policy(0)).generate_trajectory(
-        requests(1)[0]
-    )
-    assert result["trajectory"] == "reason\n</think>\n\n\\boxed{4}"
+    result = StrategyBELT(
+        generator, Scorer(), policy(0), min_steps=1
+    ).generate_trajectory(requests(1)[0])
+    assert result["trajectory"] == "reason\n\n\n</think>\n\n\\boxed{4}"
     assert result["metadata"]["injected_control_text"] == ["\n</think>\n\n"]
     assert generator.answer_calls[0][1][0][-1].text == "\n</think>\n\n"
     assert result["validity_scores"] == [0.7, None, None]
     assert result["reasoning_steps"] == 1
-    assert result["token_stats"]["output_tokens"] == len("reason\\boxed{4}".encode())
+    assert result["token_stats"]["output_tokens"] == len(
+        "reason\n\n\\boxed{4}".encode()
+    )
 
 
 def test_cancelled_batch_does_not_generate():
@@ -211,10 +248,33 @@ def test_cancelled_batch_does_not_generate():
     assert not generator.step_calls
 
 
+@pytest.mark.parametrize(
+    "kwargs",
+    [dict(max_steps=0), dict(min_steps=0), dict(min_steps=3, max_blocks=2)],
+)
+def test_invalid_step_and_block_limits_fail(kwargs):
+    with pytest.raises(ValueError):
+        StrategyBELT(Generator({}), Scorer(), policy(), **kwargs)
+
+
+def test_minimum_step_length_is_rejected():
+    generator = Generator({})
+    generator.min_step_tokens = 50
+    with pytest.raises(ValueError, match="min_step_tokens=0"):
+        StrategyBELT(generator, Scorer(), policy())
+
+
+def test_generator_without_per_call_stop_options_is_rejected():
+    class Fixed(Generator):
+        def generate_step_candidates_batch(self, requests, trajectories, sample_ids):
+            return []
+
+    with pytest.raises(ValueError, match="include_stop_str_in_output"):
+        StrategyBELT(Fixed({}), Scorer(), policy())
+
+
 def test_invalid_batch_and_parameters_fail():
     generator = Generator({})
-    with pytest.raises(ValueError):
-        StrategyBELT(generator, Scorer(), policy(), max_steps=0)
     strategy = StrategyBELT(generator, Scorer(), policy())
     with pytest.raises(ValueError):
         strategy.generate_trajectories_batch(requests(2), [1, 1])
@@ -241,7 +301,9 @@ def test_wrong_probe_fails_before_any_generation():
 
 
 def test_backend_metadata_and_counters_preserve_decisions_and_cost_scope():
-    generator = Generator({0: [candidate("reason")]}, {0: candidate("answer", True)})
+    generator = Generator(
+        {0: [candidate("reason\n\n")]}, {0: candidate("answer", True)}
+    )
     resets = []
     generator.model = SimpleNamespace(reset_hs_step_cache=lambda: resets.append(True))
     scorer = Scorer()
@@ -249,9 +311,9 @@ def test_backend_metadata_and_counters_preserve_decisions_and_cost_scope():
         "scoring_backend": "vllm",
         "backend_stats": {"repair_calls": 2, "queries": 1},
     }
-    result = StrategyBELT(generator, scorer, policy(0)).generate_trajectory(
-        requests(1)[0]
-    )
+    result = StrategyBELT(
+        generator, scorer, policy(0), min_steps=1
+    ).generate_trajectory(requests(1)[0])
     assert resets == [True]
     assert result["metadata"]["scoring_backend"] == "vllm"
     assert result["metadata"]["backend_stats"]["repair_calls"] == 2

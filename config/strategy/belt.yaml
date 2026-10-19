@@ -1,8 +1,14 @@
 type: belt
 policy_path: null
-max_steps: 128
-min_steps: 1
+# BELT counts blocks (blank-line separated) and never decides at block 1;
+# blocks past max_blocks are generated but not queried, as in BELT.
+min_steps: 2
+max_blocks: 128
 query_stride: 1
-min_step_tokens: 50
-max_step_tokens: 300
+# Generation rounds; each round is one block.
+max_steps: 1024
+# Blocks average about 40 tokens. A minimum would skip blank-line stops, and
+# a block longer than max_step_tokens is finished by the next round.
+min_step_tokens: 0
+max_step_tokens: 1024
 stop_token_ids: [151645, 151643]

@@ -1411,9 +1411,10 @@ def create_tts_strategy(
             step_generator=step_generator,
             scorer=scorer,
             policy=config.strategy.policy_path,
-            max_steps=config.strategy.get("max_steps", 128),
-            min_steps=config.strategy.get("min_steps", 1),
+            max_steps=config.strategy.get("max_steps", 1024),
+            min_steps=config.strategy.get("min_steps", 2),
             query_stride=config.strategy.get("query_stride", 1),
+            max_blocks=config.strategy.get("max_blocks", 128),
         )
     elif config.strategy.type == "extended_thinking":
         eos_patterns = getattr(config.strategy, "detector_eos_patterns", None)

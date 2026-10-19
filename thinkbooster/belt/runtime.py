@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
+from .blocks import block_end_offsets
 from .policy import TARGETS, BeltSignal
 
 BACKBONE = "Qwen/Qwen3-1.7B"
@@ -286,13 +287,15 @@ class BeltRuntime:
                 self.state_fn.clear_store()
 
     def score_prefix(self, chat, steps):
-        """Tokenize explicit text steps as one prefix and place each step end.
+        """Score the joined step text with an end marker at every BELT block end.
 
+        Blocks are found in the text by BELT's own separator rule, not taken
+        from how the steps were cut, so a step holding several blocks or a cut
+        inside a block places the same markers. The prefix tip is always the
+        last end; trailing whitespace after a block end belongs to that block.
         Generators rebuild the next prompt from the joined step text, so the
-        prefix is tokenized once, as the model reads it. Step cuts often fall
-        inside a merged token (vLLM strips stop strings such as "\\nSo ", leaving
-        ".\\n" | "\\nSo" -> ".\\n\\n"); such a token belongs to the earlier step,
-        i.e. each block ends after the last token that starts inside it.
+        prefix is tokenized once, as the model reads it, and a block ends after
+        the last token that starts inside it (a ".\\n\\n" token closes its block).
         Call score_token_ids for exact replay of an existing tokenized bank.
         """
         if not chat or chat[-1].get("role") == "assistant":
@@ -308,16 +311,21 @@ class BeltRuntime:
             pieces.append(piece)
         if not pieces:
             raise ValueError("BELT needs at least one reasoning step")
+        text = "".join(pieces)
         encoded = self.tokenizer(
-            "".join(pieces), add_special_tokens=False, return_offsets_mapping=True
+            text, add_special_tokens=False, return_offsets_mapping=True
         )
         completion_ids = list(encoded["input_ids"])
         starts = [start for start, _ in encoded["offset_mapping"]]
-        ends, cut = [], 0
-        for piece in pieces:
-            cut += len(piece)
+        cuts = block_end_offsets(text)
+        if cuts and not text[cuts[-1] :].strip():
+            cuts[-1] = len(text)
+        else:
+            cuts.append(len(text))
+        ends = []
+        for cut in cuts:
             end = bisect.bisect_left(starts, cut)
-            # A step swallowed whole by the previous token adds no new block.
+            # A block swallowed whole by the previous token adds no new end.
             if end > (ends[-1] if ends else 0):
                 ends.append(end)
         return self.score_token_ids(list(prompt_ids), completion_ids, ends)

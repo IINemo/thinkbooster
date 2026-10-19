@@ -108,7 +108,7 @@ def test_published_reader_matches_original_forward_with_all_end_markers():
     not os.getenv("BELT_TEST_CACHE"),
     reason="Set BELT_TEST_CACHE to enable checkpoint downloads",
 )
-def test_qwen_tokenizer_scores_steps_cut_at_stripped_stop_strings():
+def test_qwen_tokenizer_places_an_end_after_every_blank_line_block():
     from transformers import AutoTokenizer
 
     from thinkbooster.belt.runtime import BACKBONE, BACKBONE_REVISION
@@ -128,21 +128,23 @@ def test_qwen_tokenizer_scores_steps_cut_at_stripped_stop_strings():
 
     probe = BeltRuntime(tokenizer, State(), torch.nn.Linear(4, 4), "a" * 64)
     chat = [{"role": "user", "content": "What is x?"}]
-    # Real cut points: vLLM strips sentence-start stop strings such as "\nSo ".
-    steps = ["Okay, so x = 5.\n", "\nSo the area is 25.\n", "\nLet me verify this."]
-    probe.score_prefix(chat, steps)
-    completion_ids, ends = calls[-1]
-    assert completion_ids == tokenizer.encode("".join(steps), add_special_tokens=False)
-    assert len(ends) == 3 and ends == sorted(set(ends))
-    assert ends[-1] == len(completion_ids)
-
-    # Where retokenizing each prefix is stable, both methods place the same ends.
-    stable = ["Okay, so x = 5.\n\n", "Wait, let me check.", " Yes."]
-    probe.score_prefix(chat, stable)
-    expected = [
-        len(tokenizer.encode("".join(stable[: i + 1]), add_special_tokens=False))
-        for i in range(len(stable))
+    blocks = [
+        "Okay, so x = 5.\n\n",
+        "So the area is 25.\n\n",
+        "Let me verify this.\n\n",
     ]
+    text = "".join(blocks)
+    expected = [
+        len(tokenizer.encode("".join(blocks[: i + 1]), add_special_tokens=False))
+        for i in range(len(blocks))
+    ]
+    # One step per block, as the strategy generates them.
+    probe.score_prefix(chat, blocks)
+    assert calls[-1] == (tokenizer.encode(text, add_special_tokens=False), expected)
+    # Any other cut of the same text places the same ends.
+    cuts = [8, 23, 36]  # mid-block, mid-block, between the "\n" of a blank line
+    pieces = [text[a:b] for a, b in zip([0] + cuts, cuts + [len(text)])]
+    probe.score_prefix(chat, pieces)
     assert calls[-1][1] == expected
 
 
