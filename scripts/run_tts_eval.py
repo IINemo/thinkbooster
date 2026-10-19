@@ -1661,6 +1661,13 @@ def _generate_trajectories_batch(
                     "all_scores": result.get("all_scores", []),
                     "best_idx": result.get("best_idx"),
                     "completion_reason": result.get("completion_reason"),
+                    # reeval recomputes metrics from these rows; without it the
+                    # step average falls back to len(steps), answer included.
+                    **(
+                        {"reasoning_steps": result["reasoning_steps"]}
+                        if "reasoning_steps" in result
+                        else {}
+                    ),
                     **_persisted_metadata(result),
                 }
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")

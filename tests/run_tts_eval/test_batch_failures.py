@@ -313,3 +313,12 @@ def test_truncated_results_file_is_not_read_as_nothing_processed(runner, tmp_pat
     path.write_text('[{"index": 0}, {"ind')  # a kill mid-write, before the fix
     assert not runner.results_file_readable(path)
     assert runner.results_file_readable(tmp_path / "missing.json")
+
+
+def test_batch_rows_keep_reasoning_steps_for_reeval(runner, tmp_path):
+    def generate(requests, indices, save_callback):
+        return [dict(output(), reasoning_steps=2, steps=["a", "</think>", "x"])]
+
+    invoke(runner, tmp_path, generate)
+    row = json.loads((tmp_path / "batch_results.jsonl").read_text())
+    assert row["reasoning_steps"] == 2
