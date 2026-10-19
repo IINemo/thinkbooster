@@ -43,7 +43,7 @@ class Scorer:
 
 
 class Generator:
-    thinking_mode = False
+    thinking_mode = True
 
     def __init__(self, scripts, answers=None):
         self.scripts = {k: list(v) for k, v in scripts.items()}
@@ -124,7 +124,8 @@ def test_query_cadence_keeps_unqueried_step_history():
         generator, scorer, policy(), min_steps=2, query_stride=2
     ).generate_trajectory(requests(1)[0])
     assert scorer.histories == [["a", "b"]]
-    assert result["validity_scores"] == [None, 0.7, None]
+    # Steps a, b, the injected "\n</think>\n\n" control step, then the answer.
+    assert result["validity_scores"] == [None, 0.7, None, None]
     assert result["completed"]
 
 
@@ -258,3 +259,14 @@ def test_backend_metadata_and_counters_preserve_decisions_and_cost_scope():
     assert result["metadata"]["decisions"][0]["stop"] is True
     assert result["metadata"]["scoring_cost_in_token_stats"] is False
     assert result["completed"] and result["completion_reason"] == "belt_stop"
+
+
+@pytest.mark.parametrize(
+    "attrs", [{"thinking_mode": False}, {"disable_thinking_mode": True}]
+)
+def test_non_thinking_generator_is_rejected(attrs):
+    generator = Generator({})
+    for name, value in attrs.items():
+        setattr(generator, name, value)
+    with pytest.raises(ValueError, match="thinking-mode generator"):
+        StrategyBELT(generator, Scorer(), policy())

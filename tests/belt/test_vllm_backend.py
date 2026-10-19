@@ -551,6 +551,27 @@ def test_exact_capacity_boundary_and_per_request_params_preserve_inputs(monkeypa
     assert model.stats["repair_calls"] == 0
 
 
+def test_capacity_bound_clamps_each_request_to_max_model_len(monkeypatch):
+    import thinkbooster.belt.vllm_backend as module
+
+    monkeypatch.setattr(module, "MAX_CAPTURE_TOKENS", 10)
+    records = [output("a", [1, 2], [3]), output("b", [4, 5], [6])]
+    model, engine = backend(
+        [(records, {"a": capture([0, 1]), "b": capture([0, 1])})],
+        monkeypatch,
+        max_cache_entries=2,
+    )
+    prompts = [{"prompt_token_ids": [1, 2]}, {"prompt_token_ids": [4, 5]}]
+    params = [SimpleNamespace(n=1, max_tokens=100)] * 2
+    # Unknown context length: the unclamped bound 2 * 102 exceeds the limit.
+    with pytest.raises(ValueError, match="capture token limit"):
+        model.generate(prompts=prompts, sampling_params=params)
+    assert engine.generated == []
+    # No request can compute more than max_model_len rows, so 2 * 5 fits.
+    engine.llm_engine.model_config = SimpleNamespace(max_model_len=5)
+    assert model.generate(prompts=prompts, sampling_params=params) == records
+
+
 @pytest.mark.parametrize("maximum", [None, float("inf"), 0, -1, True, 1.5])
 def test_unbounded_or_invalid_generation_limit_fails_before_capture_reset(
     monkeypatch, maximum

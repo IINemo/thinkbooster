@@ -224,6 +224,12 @@ class BeltVLLMBackend:
                 self._cache.popitem(last=False)
         return count
 
+    def _max_model_len(self):
+        engine = getattr(self._engine, "llm_engine", None)
+        config = getattr(engine, "model_config", None)
+        value = getattr(config, "max_model_len", None)
+        return value if type(value) is int and value > 0 else None
+
     def _preflight_capacity(self, args, kwargs):
         prompts = kwargs.get("prompts", args[0] if args else None)
         batch = prompts if isinstance(prompts, (list, tuple)) else [prompts]
@@ -242,6 +248,7 @@ class BeltVLLMBackend:
                 raise ValueError("BELT sampling_params must match the prompt batch")
         else:
             params = [params] * len(batch)
+        max_len = self._max_model_len()
         bound = 0
         for prompt, param in zip(batch, params):
             if getattr(param, "n", None) != 1:
@@ -266,7 +273,11 @@ class BeltVLLMBackend:
                 size = len(self._engine.get_tokenizer().encode(prompt))
             else:
                 raise ValueError("BELT vLLM requires a text/token-ID prompt")
-            bound += size + maximum
+            # vLLM never computes more positions than max_model_len for one
+            # request. Recompute after preemption can repeat rows; the worker
+            # still reports any real overflow through the capture RPC.
+            request_bound = size + maximum
+            bound += min(request_bound, max_len) if max_len else request_bound
         if bound > MAX_CAPTURE_TOKENS:
             raise ValueError(
                 f"BELT capture token limit exceeded by conservative generation "

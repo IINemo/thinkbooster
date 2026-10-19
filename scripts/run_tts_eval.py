@@ -380,6 +380,18 @@ def set_random_seeds(seed):
         torch.cuda.manual_seed_all(seed)
 
 
+def _persisted_metadata(result):
+    """Strategy metadata to write into result files: BELT's decision provenance only.
+
+    Other strategies' metadata was never persisted and can be large (DeepConf
+    keeps full traces with per-token confidence arrays), so it stays in memory.
+    """
+    metadata = result.get("metadata")
+    if isinstance(metadata, dict) and metadata.get("strategy") == "belt":
+        return {"metadata": metadata}
+    return {}
+
+
 def _belt_backend(config):
     """Validate the opt-in backend before any generation model allocation."""
     if config.scorer is None or config.scorer.type != "belt":
@@ -393,17 +405,31 @@ def _belt_backend(config):
             DEFAULT_CACHE_ENTRIES,
             DEFAULT_CHECKPOINT_BATCH_SIZE,
         )
+        from thinkbooster.belt.vllm_wire import MAX_CAPTURE_TOKENS
 
         checkpoint_batch_size = config.generation.get(
             "checkpoint_batch_size", DEFAULT_CHECKPOINT_BATCH_SIZE
         )
+        # Same lookup create_model passes to vLLM as max_model_len. A batch of
+        # full-length requests must fit the capture buffer, or long traces abort
+        # the run mid-dataset.
+        max_model_len = config.model.get(
+            "max_context_budget", config.model.get("max_model_len", 32768)
+        )
+        limit = min(DEFAULT_CACHE_ENTRIES, MAX_CAPTURE_TOKENS // max_model_len)
+        if limit < 1:
+            raise ValueError(
+                f"BELT vLLM requires max_model_len <= {MAX_CAPTURE_TOKENS}; "
+                f"got {max_model_len}"
+            )
         if (
             type(checkpoint_batch_size) is not int
-            or not 1 <= checkpoint_batch_size <= DEFAULT_CACHE_ENTRIES
+            or not 1 <= checkpoint_batch_size <= limit
         ):
             raise ValueError(
                 "BELT vLLM generation.checkpoint_batch_size must be an integer "
-                f"between 1 and {DEFAULT_CACHE_ENTRIES}"
+                f"between 1 and {limit} (feature cache {DEFAULT_CACHE_ENTRIES}, "
+                f"capture limit {MAX_CAPTURE_TOKENS} / max_model_len {max_model_len})"
             )
 
         if config.model.type != "vllm":
@@ -1548,7 +1574,7 @@ def _generate_trajectories_batch(
                         "best_idx": strat_res.get("best_idx"),
                         "completed": strat_res.get("completed", False),
                         "completion_reason": strat_res.get("completion_reason"),
-                        "metadata": strat_res.get("metadata", {}),
+                        **_persisted_metadata(strat_res),
                         "is_correct": None,
                         "eval": {},
                         "scoring_phase": phase,
@@ -1614,7 +1640,7 @@ def _generate_trajectories_batch(
                     "all_scores": result.get("all_scores", []),
                     "best_idx": result.get("best_idx"),
                     "completion_reason": result.get("completion_reason"),
-                    "metadata": result.get("metadata", {}),
+                    **_persisted_metadata(result),
                 }
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
         log.info(f"Saved {len(chunk_results)} batch results to {batch_results_path}")
@@ -1838,7 +1864,7 @@ def _generate_trajectories_batch(
                 "validity_scores": result.get("validity_scores", []),
                 "completed": result["completed"],
                 "completion_reason": result.get("completion_reason"),
-                "metadata": result.get("metadata", {}),
+                **_persisted_metadata(result),
                 "is_correct": bool(is_correct),  # Primary (exact_match)
                 "eval": eval_results,  # Per-evaluator results
                 "instance_data": dict(

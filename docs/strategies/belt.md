@@ -168,7 +168,9 @@ print(result["metadata"]["decisions"])
 ```
 
 Use `VLLMStepGenerator` or a generator implementing both batched step and
-answer APIs. The legacy HF generator's single-request API is not supported
+answer APIs, in thinking mode: the strategy rejects generators with
+`thinking_mode=False` or `disable_thinking_mode=True`, because the reader
+scores thinking prompts and a stop must close an open thinking block. The legacy HF generator's single-request API is not supported
 by this strategy. The strategy generates one
 candidate per active request and evaluates the policy on the configured query
 cadence. A stop closes thinking and requests a final answer. Natural answers
@@ -180,8 +182,9 @@ separately from generated output tokens. `validity_scores` has one entry per
 returned step: queried reasoning steps contain `q`; unqueried steps, injected
 control text and final answers contain `None`.
 The evaluation runner preserves stopping reasons and decision metadata in
-progressive checkpoints, batch JSONL files and final results, including when
-results are reloaded for resuming.
+progressive checkpoints, batch JSONL files and final results. Other strategies'
+metadata is not written to result files. On resume, progressive-checkpoint rows
+are discarded and those samples are regenerated; final rows are kept.
 
 A compatible custom scorer must expose `score_prefix(chat, trajectory)` and
 `checkpoint_sha256`, so checkpoint identity can be checked before decoding.
@@ -265,11 +268,14 @@ explicit dimensions; the frontend checks byte length, capture bounds and finite
 values before making owned CPU arrays. It requires no insecure serialization
 setting. Leave GPU memory room for these copies and the small native reader.
 
-The example uses `generation.checkpoint_batch_size=4`. Raw generation batches
-must fit the backend's `max_cache_entries` (default 16); direct Python callers
-can explicitly raise that constructor limit when memory permits. Before capture
-reset or generation, the backend rejects a conservative sum of prompt-token
-counts plus each request's `max_tokens` above 131072. Text uses the engine
+The example uses `generation.checkpoint_batch_size=4`. The runner accepts at
+most `min(16, 131072 // max_model_len)` (4 at the default 32768-token context),
+so a batch of full-length requests always fits the capture buffer. Raw
+generation batches must fit the backend's `max_cache_entries` (default 16);
+direct Python callers can explicitly raise that constructor limit when memory
+permits. Before capture reset or generation, the backend rejects a conservative
+sum over requests of `min(prompt tokens + max_tokens, max_model_len)` above
+131072. Text uses the engine
 tokenizer; explicit token IDs and per-request sampling parameters are supported.
 Omitted parameters come from `LLM.get_default_sampling_params()`. Unbounded
 `max_tokens` and unsupported prompt schemas are rejected; optional prompt

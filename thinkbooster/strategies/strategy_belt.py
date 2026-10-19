@@ -45,6 +45,21 @@ class StrategyBELT(StrategyBase):
                     "BELT stopping requires implemented batched step and answer APIs; "
                     "use VLLMStepGenerator or a compatible generator"
                 )
+        thinking_mode = bool(
+            getattr(
+                step_generator,
+                "thinking_mode",
+                getattr(step_generator, "use_thinking_mode", False),
+            )
+        )
+        # The reader scores enable_thinking=True prompts, and a stop must close
+        # an open thinking block. Without thinking, a "stop" would be reported
+        # for what is really a free continuation of the answer phase.
+        if not thinking_mode or getattr(step_generator, "disable_thinking_mode", None):
+            raise ValueError(
+                "BELT stopping requires a thinking-mode generator "
+                "(thinking_mode=True and disable_thinking_mode not set)"
+            )
         if (
             type(max_steps) is not int
             or type(min_steps) is not int
@@ -62,13 +77,7 @@ class StrategyBELT(StrategyBase):
         self.max_steps = max_steps
         self.min_steps = min_steps
         self.query_stride = query_stride
-        self.thinking_mode = bool(
-            getattr(
-                step_generator,
-                "thinking_mode",
-                getattr(step_generator, "use_thinking_mode", False),
-            )
-        )
+        self.thinking_mode = thinking_mode
 
     def generate_trajectories_batch(
         self, requests, sample_indices=None, save_callback=None

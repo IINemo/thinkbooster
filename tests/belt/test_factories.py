@@ -72,6 +72,7 @@ def test_belt_factories_create_lazy_scorer_and_strategy(factories, fitted_config
     cfg = fitted_config
     scorer = factories.create_scorer(cfg)
     generator = SimpleNamespace(
+        thinking_mode=True,
         generate_step_candidates_batch=lambda **kw: [],
         generate_answer_candidates_batch=lambda **kw: [],
     )
@@ -218,6 +219,8 @@ def test_opt_in_vllm_example_uses_one_gpu_and_preserves_hf_default():
         ("generation.checkpoint_batch_size", -1, "checkpoint_batch_size"),
         ("generation.checkpoint_batch_size", True, "checkpoint_batch_size"),
         ("generation.checkpoint_batch_size", 17, "checkpoint_batch_size"),
+        # 4 x 32768 already fills the 131072-row capture buffer.
+        ("generation.checkpoint_batch_size", 5, "between 1 and 4"),
         ("generation.checkpoint_batch_size", None, "checkpoint_batch_size"),
     ],
 )
@@ -318,3 +321,56 @@ def test_backend_default_checkpoint_batch_size(
         config=cfg,
     )
     assert seen["checkpoint_batch_size"] == expected_batch
+
+
+def test_vllm_backend_batch_cap_scales_with_context_length(factories, fitted_config):
+    from omegaconf import OmegaConf
+
+    cfg = fitted_config
+    OmegaConf.update(cfg, "scorer.backend", "vllm", force_add=True)
+    OmegaConf.update(cfg, "model.max_context_budget", 8192, force_add=True)
+    OmegaConf.update(cfg, "generation.checkpoint_batch_size", 16, force_add=True)
+    assert factories._belt_backend(cfg) == "vllm"
+    OmegaConf.update(cfg, "model.max_context_budget", 262144, force_add=True)
+    with pytest.raises(ValueError, match="max_model_len"):
+        factories._belt_backend(cfg)
+
+
+def test_non_belt_metadata_is_not_written_to_result_files(
+    factories, tmp_path, monkeypatch
+):
+    import wandb
+
+    monkeypatch.setattr(wandb, "run", None)
+    heavy = {"strategy": "deepconf", "all_traces": [{"token_confs": [0.1] * 1000}]}
+    output = {
+        "trajectory": "\\boxed{4}",
+        "extracted_answer": "4",
+        "steps": ["\\boxed{4}"],
+        "completed": True,
+        "metadata": heavy,
+        "token_stats": {"tflops": 0.0, "prm_tflops": 0.0},
+    }
+
+    def generate(requests, sample_indices, save_callback):
+        save_callback([output], phase="post_generation")
+        return [output]
+
+    results = factories._generate_trajectories_batch(
+        results=[],
+        save_path=tmp_path,
+        strategy=SimpleNamespace(generate_trajectories_batch=generate),
+        dataset=[{"question": "q", "answer": "4"}],
+        processed_indices=set(),
+        prompt_template="",
+        system_prompt="",
+        question_field="question",
+        answer_field="answer",
+        phase1_evaluators={},
+        save_path_file=tmp_path / "results.json",
+        sample_metrics_path=tmp_path / "metrics.jsonl",
+    )
+    batch = json.loads((tmp_path / "batch_results.jsonl").read_text())
+    saved = json.loads((tmp_path / "results.json").read_text())
+    for row in [results[0], batch, *saved]:
+        assert "metadata" not in row
