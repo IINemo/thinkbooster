@@ -54,6 +54,44 @@ TOLERANCES = {
     "belief_max_abs": 0.01,
     "policy_logit_abs": 0.05,
 }
+# Noise-floor control. A case that misses a fixed tolerance against the HF bf16
+# reference still passes that check only when vLLM is within NOISE_FACTOR times
+# the HF bf16 reference's own error against an HF fp32 forward of the same IDs.
+# Both numbers are always reported; this factor is fixed like the tolerances.
+NOISE_FACTOR = 2.0
+FP32_REFERENCE = {
+    "dtype": "float32",
+    "attn_implementation": "sdpa",
+    "cuda_matmul_allow_tf32": False,
+    "cudnn_allow_tf32": False,
+    "float32_matmul_precision": "highest",
+}
+PASS_CRITERION = (
+    "per case and check: vllm_vs_hf_bf16 <= tolerance, or else "
+    "vllm_vs_hf_fp32 <= noise_factor * hf_bf16_vs_hf_fp32"
+)
+# Each check maps to its tolerance key and the metric read from one case's
+# (feature error, reader signal error) pair.
+CHECK_METRICS = {
+    "features": ("feature_relative_l2", lambda feature, _: feature["relative_l2"]),
+    "hidden": (
+        "hidden_relative_l2",
+        lambda _, signal: signal["hidden"]["relative_l2"],
+    ),
+    "beliefs": ("belief_max_abs", lambda _, signal: signal["max_belief_abs"]),
+    "fixture_policy_logits": (
+        "policy_logit_abs",
+        lambda _, signal: signal["policy_logit_abs"],
+    ),
+}
+PROFILE_BUCKETS = 10
+PROFILE_TOP_K = 5
+HF_ARTIFACTS = ("cases.json", "hf_features.pt", "hf_fp32_features.pt")
+VLLM_ARTIFACTS = (
+    "generated_cases.json",
+    "vllm_generated_features.pt",
+    "vllm_features.pt",
+)
 SMOKE_CHAT = [
     {
         "role": "user",
@@ -306,6 +344,11 @@ def report_identity(args):
         "checkpoint_sha256": args.checksum,
         "software": software_identity(),
         "tolerances": dict(TOLERANCES),
+        "noise_floor_control": {
+            "noise_factor": NOISE_FACTOR,
+            "fp32_reference": dict(FP32_REFERENCE),
+            "pass_criterion": PASS_CRITERION,
+        },
         "policy_fixture": policy_description(
             fixture_policy(args.checksum),
             "reader/logit parity; not a fitted stopping policy",
@@ -324,6 +367,7 @@ def verify_report_identity(report, args):
         "checkpoint_seed",
         "checkpoint_sha256",
         "tolerances",
+        "noise_floor_control",
         "policy_fixture",
     ):
         require(
@@ -345,35 +389,90 @@ def verify_report_identity(report, args):
         )
 
 
-def hf_backbone_features(args, cases):
+@contextmanager
+def strict_fp32_matmul():
+    """The fp32 noise-floor reference must not silently run matmuls in TF32."""
+    saved = (
+        torch.get_float32_matmul_precision(),
+        torch.backends.cuda.matmul.allow_tf32,
+        torch.backends.cudnn.allow_tf32,
+    )
+    torch.set_float32_matmul_precision(FP32_REFERENCE["float32_matmul_precision"])
+    torch.backends.cuda.matmul.allow_tf32 = FP32_REFERENCE["cuda_matmul_allow_tf32"]
+    torch.backends.cudnn.allow_tf32 = FP32_REFERENCE["cudnn_allow_tf32"]
+    try:
+        yield
+    finally:
+        torch.set_float32_matmul_precision(saved[0])
+        torch.backends.cuda.matmul.allow_tf32 = saved[1]
+        torch.backends.cudnn.allow_tf32 = saved[2]
+
+
+def hf_backbone_features(args, cases, dtype=torch.bfloat16):
     """Forward exact saved IDs and free the HF backbone before reader loading."""
     from transformers import AutoModelForCausalLM
 
-    model = (
-        AutoModelForCausalLM.from_pretrained(
-            args.model,
-            dtype=torch.bfloat16,
-            attn_implementation="sdpa",
-            local_files_only=True,
-        )
-        .to("cuda:0")
-        .eval()
+    require(
+        dtype in (torch.bfloat16, torch.float32), "HF reference is bf16 or fp32 only"
     )
-    features, timings = [], []
-    for case in cases:
-        ids = torch.tensor([case["prompt"] + case["completion"]], device="cuda:0")
-        torch.cuda.synchronize()
-        before = time.perf_counter()
-        with torch.inference_mode():
-            output = model(ids, output_hidden_states=True, use_cache=False)
-            features.append(output.hidden_states[16][0, :-1].float().cpu())
-        torch.cuda.synchronize()
-        timings.append(time.perf_counter() - before)
-        del output, ids
-    del model
+    with ExitStack() as stack:
+        if dtype == torch.float32:
+            stack.enter_context(strict_fp32_matmul())
+        model = (
+            AutoModelForCausalLM.from_pretrained(
+                args.model,
+                dtype=dtype,
+                attn_implementation="sdpa",
+                local_files_only=True,
+            )
+            .to("cuda:0")
+            .eval()
+        )
+        require(
+            dtype != torch.float32
+            or all(parameter.dtype == dtype for parameter in model.parameters()),
+            "HF fp32 noise-floor backbone did not load every parameter in float32",
+        )
+        features, timings = [], []
+        for case in cases:
+            ids = torch.tensor([case["prompt"] + case["completion"]], device="cuda:0")
+            torch.cuda.synchronize()
+            before = time.perf_counter()
+            with torch.inference_mode():
+                output = model(ids, output_hidden_states=True, use_cache=False)
+                hidden = output.hidden_states[16]
+                require(hidden.dtype == dtype, "HF residual dtype differs from model")
+                features.append(hidden[0, :-1].float().cpu())
+            torch.cuda.synchronize()
+            timings.append(time.perf_counter() - before)
+            del output, hidden, ids
+        del model
     gc.collect()
     torch.cuda.empty_cache()
     return features, timings
+
+
+def noise_floor(cases, bf16_features, fp32_features, bf16_signals, fp32_signals):
+    """Per-case error of the HF bf16 reference against the HF fp32 reference."""
+    require(
+        len(cases)
+        == len(bf16_features)
+        == len(fp32_features)
+        == len(bf16_signals)
+        == len(fp32_signals),
+        "Noise floor needs one bf16 and one fp32 reference per fixed case",
+    )
+    signal_errors = signal_error_metrics(fp32_signals, bf16_signals)
+    return [
+        {
+            "name": case["name"],
+            "features": error_metrics(fp32, bf16),
+            "signals": signal,
+        }
+        for case, bf16, fp32, signal in zip(
+            cases, bf16_features, fp32_features, signal_errors
+        )
+    ]
 
 
 def hf_phase(args):
@@ -386,8 +485,15 @@ def hf_phase(args):
     start = time.perf_counter()
     features, timings = hf_backbone_features(args, cases)
     torch.save(features, args.output / "hf_features.pt")
+    # Noise-floor control: same weights, IDs and attention, float32 without TF32.
+    # The bf16 backbone is already freed; this one is freed before reader loading.
+    fp32_features, fp32_timings = hf_backbone_features(args, cases, torch.float32)
+    torch.save(fp32_features, args.output / "hf_fp32_features.pt")
     signals = score_cases(
         StoredFeatures(cases, features), tokenizer, config, cases, args
+    )
+    fp32_signals = score_cases(
+        StoredFeatures(cases, fp32_features), tokenizer, config, cases, args
     )
     write_json(
         args.output / "hf.json",
@@ -396,13 +502,18 @@ def hf_phase(args):
             "phase": "hf",
             "status": "passed",
             "overall_status": "pending_vllm_and_generated_parity",
-            "input_artifacts": artifact_hashes(args, ("cases.json", "hf_features.pt")),
+            "input_artifacts": artifact_hashes(args, HF_ARTIFACTS),
             "signals": signals,
+            "fp32_signals": fp32_signals,
+            "noise_floor": noise_floor(
+                cases, features, fp32_features, signals, fp32_signals
+            ),
             "lengths": [
                 len(case["prompt"]) + len(case["completion"]) for case in cases
             ],
             "head_only_load_guard_passed": True,
             "feature_seconds": timings,
+            "fp32_feature_seconds": fp32_timings,
             "phase_seconds": time.perf_counter() - start,
         },
     )
@@ -454,37 +565,151 @@ def signal_error_metrics(reference, actual):
 
 
 def parity_checks(feature_errors, signal_errors):
+    """Fixed tolerances only, every case."""
     require(
         bool(feature_errors) and len(feature_errors) == len(signal_errors),
         "Parity requires a nonempty matched feature/signal bank",
     )
     return {
-        "features": all(
-            error["relative_l2"] <= TOLERANCES["feature_relative_l2"]
-            for error in feature_errors
-        ),
-        "hidden": all(
-            error["hidden"]["relative_l2"] <= TOLERANCES["hidden_relative_l2"]
-            for error in signal_errors
-        ),
-        "beliefs": all(
-            error["max_belief_abs"] <= TOLERANCES["belief_max_abs"]
-            for error in signal_errors
-        ),
-        "fixture_policy_logits": all(
-            error["policy_logit_abs"] <= TOLERANCES["policy_logit_abs"]
-            for error in signal_errors
-        ),
+        check: all(
+            metric(feature, signal) <= TOLERANCES[key]
+            for feature, signal in zip(feature_errors, signal_errors)
+        )
+        for check, (key, metric) in CHECK_METRICS.items()
     }
 
 
+def noise_aware_checks(
+    cases, feature_errors, signal_errors, fp32_feature_errors, fp32_signal_errors, floor
+):
+    """Fixed tolerance first; otherwise compare against the bf16 noise floor.
+
+    ``feature_errors``/``signal_errors`` are vLLM versus HF bf16,
+    ``fp32_*`` are vLLM versus HF fp32 and ``floor`` is ``noise_floor(...)``.
+    Every case records both numbers and which criterion, if any, passed.
+    """
+    require(
+        bool(cases)
+        and len(cases)
+        == len(feature_errors)
+        == len(signal_errors)
+        == len(fp32_feature_errors)
+        == len(fp32_signal_errors)
+        == len(floor),
+        "Noise-aware parity requires matched nonempty per-case errors",
+    )
+    checks = {check: True for check in CHECK_METRICS}
+    case_checks, via_floor = [], []
+    for index, case in enumerate(cases):
+        require(floor[index]["name"] == case["name"], "Noise floor case order differs")
+        row = {"name": case["name"]}
+        for check, (key, metric) in CHECK_METRICS.items():
+            versus_bf16 = metric(feature_errors[index], signal_errors[index])
+            versus_fp32 = metric(fp32_feature_errors[index], fp32_signal_errors[index])
+            floor_value = metric(floor[index]["features"], floor[index]["signals"])
+            bound = NOISE_FACTOR * floor_value
+            if versus_bf16 <= TOLERANCES[key]:
+                criterion = "tolerance"
+            elif versus_fp32 <= bound:
+                criterion = "noise_floor"
+                via_floor.append(f"{case['name']}:{check}")
+            else:
+                criterion = "failed"
+                checks[check] = False
+            row[check] = {
+                "passed_by": criterion,
+                "vllm_vs_hf_bf16": versus_bf16,
+                "tolerance": TOLERANCES[key],
+                "vllm_vs_hf_fp32": versus_fp32,
+                "hf_bf16_vs_hf_fp32": floor_value,
+                "noise_bound": bound,
+                "vllm_fp32_to_floor_ratio": (
+                    versus_fp32 / floor_value if floor_value > 0 else None
+                ),
+            }
+        case_checks.append(row)
+    return checks, case_checks, via_floor
+
+
+def position_profile(reference, actual, token_ids, prompt_length):
+    """Row-wise relative L2 by position bucket plus the worst positions.
+
+    Row ``p`` is the residual after reading ``token_ids[p]`` (``[:-1]`` alignment).
+    """
+    require(
+        reference.ndim == 2
+        and reference.shape == actual.shape
+        and reference.shape[0] > 0
+        and len(token_ids) == reference.shape[0] + 1,
+        "Position profile needs matched [T-1, H] features for T token IDs",
+    )
+    reference, actual = reference.double(), actual.double()
+    diff_norms = (actual - reference).norm(dim=1)
+    reference_norms = reference.norm(dim=1)
+    rows = diff_norms / reference_norms.clamp_min(1e-12)
+    count = rows.shape[0]
+    parts = min(PROFILE_BUCKETS, count)
+    buckets = []
+    for part in range(parts):
+        start, stop = part * count // parts, (part + 1) * count // parts
+        buckets.append(
+            {
+                "start": start,
+                "stop": stop,
+                "relative_l2": (
+                    diff_norms[start:stop].norm()
+                    / reference_norms[start:stop].norm().clamp_min(1e-12)
+                ).item(),
+                "max_row_relative_l2": rows[start:stop].max().item(),
+            }
+        )
+    values, positions = rows.topk(min(PROFILE_TOP_K, count))
+    return {
+        "rows": count,
+        "prompt_rows": prompt_length,
+        "row_relative_l2": {
+            "median": rows.median().item(),
+            "p90": torch.quantile(rows, 0.9).item(),
+            "max": rows.max().item(),
+        },
+        "buckets": buckets,
+        "worst_positions": [
+            {
+                "position": position,
+                "token_id": token_ids[position],
+                "completion_index": (
+                    position - prompt_length if position >= prompt_length else None
+                ),
+                "relative_l2": value,
+            }
+            for value, position in zip(values.tolist(), positions.tolist())
+        ],
+    }
+
+
+def case_position_profiles(cases, bf16_features, fp32_features, vllm_features):
+    profiles = []
+    for case, bf16, fp32, vllm in zip(
+        cases, bf16_features, fp32_features, vllm_features
+    ):
+        ids, prompt_length = case["prompt"] + case["completion"], len(case["prompt"])
+        profiles.append(
+            {
+                "name": case["name"],
+                "vllm_vs_hf_bf16": position_profile(bf16, vllm, ids, prompt_length),
+                "vllm_vs_hf_fp32": position_profile(fp32, vllm, ids, prompt_length),
+                "hf_bf16_vs_hf_fp32": position_profile(fp32, bf16, ids, prompt_length),
+            }
+        )
+    return profiles
+
+
 def strategy_smoke(backend, config, args):
+    from thinkbooster.belt.blocks import ends_on_block
     from thinkbooster.generators.vllm import VLLMStepGenerator
     from thinkbooster.scorers.step_scorer_belt import StepScorerBELT
     from thinkbooster.step_boundary_detectors.thinking import ThinkingMarkerDetector
     from thinkbooster.strategies.strategy_belt import StrategyBELT
-
-    from thinkbooster.belt.blocks import ends_on_block
 
     # BELT steps are blank-line blocks: no minimum, room for a whole block.
     detector = ThinkingMarkerDetector(min_step_tokens=0, max_step_tokens=128)
@@ -593,20 +818,32 @@ def vllm_phase(args):
 
     from thinkbooster.belt.vllm_backend import BeltVLLMBackend
 
-    paths = [args.output / name for name in ("cases.json", "hf_features.pt", "hf.json")]
     require(
-        all(path.is_file() for path in paths),
+        all((args.output / name).is_file() for name in HF_ARTIFACTS + ("hf.json",)),
         "Run the HF phase first in a separate process",
     )
-    cases = json.loads(paths[0].read_text())
-    reference = torch.load(paths[1], map_location="cpu", weights_only=True)
-    hf = json.loads(paths[2].read_text())
+    hf = json.loads((args.output / "hf.json").read_text())
     verify_report_identity(hf, args)
     require(hf["status"] == "passed", "HF reference phase did not pass")
-    verify_artifacts(args, hf["input_artifacts"])
     require(
-        len(hf["signals"]) == len(cases),
+        set(hf["input_artifacts"]) == set(HF_ARTIFACTS),
+        "HF reference artifacts differ from the bf16 + fp32 reference set",
+    )
+    verify_artifacts(args, hf["input_artifacts"])
+    cases = json.loads((args.output / "cases.json").read_text())
+    reference = torch.load(
+        args.output / "hf_features.pt", map_location="cpu", weights_only=True
+    )
+    fp32_reference = torch.load(
+        args.output / "hf_fp32_features.pt", map_location="cpu", weights_only=True
+    )
+    require(
+        len(hf["signals"]) == len(hf["fp32_signals"]) == len(cases),
         "HF reference signal count differs from fixed cases",
+    )
+    require(
+        len(fp32_reference) == len(cases),
+        "HF fp32 reference feature count differs from the fixed cases",
     )
     start = time.perf_counter()
     llm_kwargs = {
@@ -643,7 +880,9 @@ def vllm_phase(args):
                 kept == [0] and not skipped and bool(attention.all()),
                 "Invalid feature coverage",
             )
-            features.append(output[0])
+            features.append(output[0].contiguous())
+        # Saved before any comparison so a failing run can be diagnosed offline.
+        torch.save(features, args.output / "vllm_features.pt")
         cold_stats = backend.stats
         for case, expected in zip(cases, features):
             value, *_ = backend.get_features(
@@ -658,6 +897,23 @@ def vllm_phase(args):
         parity_query_metadata = backend.metadata
         feature_errors = [error_metrics(r, v) for r, v in zip(reference, features)]
         signal_errors = signal_error_metrics(hf["signals"], signals)
+        fp32_feature_errors = [
+            error_metrics(r, v) for r, v in zip(fp32_reference, features)
+        ]
+        fp32_signal_errors = signal_error_metrics(hf["fp32_signals"], signals)
+        # Recomputed from the checksum-verified reference artifacts.
+        floor = noise_floor(
+            cases, reference, fp32_reference, hf["signals"], hf["fp32_signals"]
+        )
+        noise_checks, case_checks, via_floor = noise_aware_checks(
+            cases,
+            feature_errors,
+            signal_errors,
+            fp32_feature_errors,
+            fp32_signal_errors,
+            floor,
+        )
+        profiles = case_position_profiles(cases, reference, fp32_reference, features)
         backend.reset_hs_step_cache()
         params = SamplingParams(
             n=1, max_tokens=64, temperature=0, seed=0, ignore_eos=True
@@ -715,7 +971,7 @@ def vllm_phase(args):
         torch.save(generated_features, args.output / "vllm_generated_features.pt")
         smoke = strategy_smoke(backend, config, args)
         checks = {
-            **parity_checks(feature_errors, signal_errors),
+            **noise_checks,
             "generation_capture_reused_without_repair": generation_repairs == 0,
             "strategy_smoke": all(smoke["checks"].values()),
         }
@@ -726,12 +982,8 @@ def vllm_phase(args):
             "overall_status": (
                 "pending_hf_generated" if all(checks.values()) else "failed"
             ),
-            "input_artifacts": artifact_hashes(
-                args, ("hf.json", "cases.json", "hf_features.pt")
-            ),
-            "generated_artifacts": artifact_hashes(
-                args, ("generated_cases.json", "vllm_generated_features.pt")
-            ),
+            "input_artifacts": artifact_hashes(args, ("hf.json",) + HF_ARTIFACTS),
+            "generated_artifacts": artifact_hashes(args, VLLM_ARTIFACTS),
             "generated_signals": generated_signals,
             "generation_sampling_params": {
                 "n": 1,
@@ -743,6 +995,13 @@ def vllm_phase(args):
             "engine_kwargs": llm_kwargs,
             "feature_errors": feature_errors,
             "signal_errors": signal_errors,
+            "feature_errors_vs_hf_fp32": fp32_feature_errors,
+            "signal_errors_vs_hf_fp32": fp32_signal_errors,
+            "noise_floor": floor,
+            "tolerance_only_checks": parity_checks(feature_errors, signal_errors),
+            "case_checks": case_checks,
+            "passed_via_noise_floor": via_floor,
+            "position_profiles": profiles,
             "signals": signals,
             "checks": checks,
             "generation_queries": len(generated),
@@ -756,6 +1015,8 @@ def vllm_phase(args):
         }
     report["owned_engine_shutdown"] = True
     write_json(args.output / "vllm.json", report)
+    if via_floor:
+        print(f"PASSED_VIA_NOISE_FLOOR {via_floor}; see vllm.json", flush=True)
     require(
         all(checks.values()),
         f"GPU software checks failed: {[key for key, passed in checks.items() if not passed]}; see vllm.json",
@@ -767,14 +1028,7 @@ def hf_generated_phase(args):
     """Check numerical parity of the actual captured prefill AND decode rows."""
     from transformers import AutoConfig, AutoTokenizer
 
-    inputs = (
-        "hf.json",
-        "cases.json",
-        "hf_features.pt",
-        "vllm.json",
-        "generated_cases.json",
-        "vllm_generated_features.pt",
-    )
+    inputs = ("hf.json",) + HF_ARTIFACTS + ("vllm.json",) + VLLM_ARTIFACTS
     require(
         all((args.output / name).is_file() for name in inputs),
         "Run hf then vllm in separate processes before hf-generated",
@@ -785,10 +1039,19 @@ def hf_generated_phase(args):
         vllm["status"] == "passed" and all(vllm["checks"].values()),
         "The preceding vLLM checks must pass before generated parity",
     )
+    require(
+        set(vllm["input_artifacts"]) == {"hf.json", *HF_ARTIFACTS}
+        and set(vllm["generated_artifacts"]) == set(VLLM_ARTIFACTS),
+        "vLLM report artifact sets differ from this helper's chain",
+    )
     verify_artifacts(args, vllm["input_artifacts"])
     verify_artifacts(args, vllm["generated_artifacts"])
     hf = json.loads((args.output / "hf.json").read_text())
     verify_report_identity(hf, args)
+    require(
+        set(hf["input_artifacts"]) == set(HF_ARTIFACTS),
+        "HF reference artifacts differ from the bf16 + fp32 reference set",
+    )
     verify_artifacts(args, hf["input_artifacts"])
     fixed_cases = json.loads((args.output / "cases.json").read_text())
     cases = json.loads((args.output / "generated_cases.json").read_text())
@@ -864,6 +1127,8 @@ def hf_generated_phase(args):
             "phase": "hf-generated",
             "status": "passed" if passed else "failed",
             "overall_status": "passed" if passed else "failed",
+            # Short generated cases only; the noise-floor fallback is not used here.
+            "pass_criterion": "fixed tolerances only",
             "checks": checks,
             "feature_errors": feature_errors,
             "decode_feature_errors": decode_errors,
@@ -892,22 +1157,40 @@ def invalidate_phase_artifacts(args):
         "hf_generated_features.pt",
         "hf-generated_failure.json",
     )
-    vllm = (
-        "vllm.json",
-        "generated_cases.json",
-        "vllm_generated_features.pt",
-        "vllm_failure.json",
-    )
+    vllm = ("vllm.json",) + VLLM_ARTIFACTS + ("vllm_failure.json",)
     names = generated
     if args.phase in ("hf", "vllm"):
         names += vllm
     if args.phase == "hf":
-        names += ("hf.json", "cases.json", "hf_features.pt", "hf_failure.json")
+        names += ("hf.json",) + HF_ARTIFACTS + ("hf_failure.json",)
     for name in names:
         (args.output / name).unlink(missing_ok=True)
 
 
-def main():
+def preflight(args):
+    """Everything that can fail before a phase starts; runs after invalidation."""
+    args.output.mkdir(parents=True, exist_ok=True)
+    require(
+        args.max_num_batched_tokens > 0 and args.max_num_seqs > 0,
+        "vLLM scheduling limits must be positive integers",
+    )
+    args.model = args.model.expanduser().resolve()
+    require(
+        args.model.is_dir() and args.model.name == BACKBONE_REVISION,
+        "--model must be an existing local snapshot ending in the exact pinned revision",
+    )
+    require(
+        torch.cuda.is_available(),
+        "This opt-in helper requires a CUDA GPU; no CPU fallback",
+    )
+    _, record = checkpoint_manifest(DEFAULT_CHECKPOINT, 0, str(args.cache))
+    args.checksum = record["sha256"]
+    torch.set_num_threads(4)
+    torch.manual_seed(0)
+    torch.cuda.manual_seed_all(0)
+
+
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "phase",
@@ -951,43 +1234,28 @@ def main():
         action="store_true",
         help="Disable vLLM APC; the provider's exact-token feature cache remains enabled",
     )
-    args = parser.parse_args()
-    require(
-        args.max_num_batched_tokens > 0 and args.max_num_seqs > 0,
-        "vLLM scheduling limits must be positive integers",
-    )
-    args.model = args.model.expanduser().resolve()
-    require(
-        args.model.is_dir() and args.model.name == BACKBONE_REVISION,
-        "--model must be an existing local snapshot ending in the exact pinned revision",
-    )
-    require(
-        torch.cuda.is_available(),
-        "This opt-in helper requires a CUDA GPU; no CPU fallback",
-    )
-    args.output.mkdir(parents=True, exist_ok=True)
-    torch.set_num_threads(4)
-    torch.manual_seed(0)
-    torch.cuda.manual_seed_all(0)
-    _, record = checkpoint_manifest(DEFAULT_CHECKPOINT, 0, str(args.cache))
-    args.checksum = record["sha256"]
+    args = parser.parse_args(argv)
+    # First, before any check that can fail: a rerun of this phase must never
+    # leave an earlier run's success report (or its downstream reports) behind.
     invalidate_phase_artifacts(args)
     try:
+        preflight(args)
         {"hf": hf_phase, "vllm": vllm_phase, "hf-generated": hf_generated_phase}[
             args.phase
         ](args)
     except Exception as error:
-        write_json(
-            args.output / f"{args.phase}_failure.json",
-            {
-                "schema": SCHEMA,
-                "phase": args.phase,
-                "software_test_only": True,
-                "overall_status": "failed",
-                "error_type": type(error).__name__,
-                "error": str(error),
-            },
-        )
+        if args.output.is_dir():
+            write_json(
+                args.output / f"{args.phase}_failure.json",
+                {
+                    "schema": SCHEMA,
+                    "phase": args.phase,
+                    "software_test_only": True,
+                    "overall_status": "failed",
+                    "error_type": type(error).__name__,
+                    "error": str(error),
+                },
+            )
         raise
 
 
