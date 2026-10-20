@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -64,8 +65,24 @@ def save_results_json(results, json_path: Path):
     """
     json_path = Path(json_path)
     json_data = [safe_serialize(r) for r in results]
-    with open(json_path, "w", encoding="utf-8") as f:
+    # Write then rename: a kill mid-write must not leave a truncated file that
+    # resume would read as "nothing processed".
+    tmp_path = json_path.with_name(json_path.name + ".tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(json_data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, json_path)
+
+
+def results_file_readable(json_path: Path) -> bool:
+    """False only when the file exists but is not a JSON list of results."""
+    json_path = Path(json_path)
+    if not json_path.exists():
+        return True
+    try:
+        with open(json_path, encoding="utf-8") as f:
+            return isinstance(json.load(f), list)
+    except (OSError, ValueError):
+        return False
 
 
 def load_results_json(json_path: Path):
@@ -87,6 +104,17 @@ def load_results_json(json_path: Path):
         with open(json_path, "r", encoding="utf-8") as f:
             results = json.load(f)
 
+        # Progressive snapshots (e.g. offline BoN before scoring) carry a
+        # scoring_phase and are kept on failure for inspection only. Treating
+        # them as processed would turn unscored rows into final results.
+        snapshots = [r for r in results if "scoring_phase" in r]
+        if snapshots:
+            log.warning(
+                f"Ignoring {len(snapshots)} unfinished progressive-snapshot rows "
+                f"in {json_path}; those samples will be regenerated"
+            )
+            results = [r for r in results if "scoring_phase" not in r]
+
         # Extract processed indices
         processed_indices = {r["index"] for r in results if "index" in r}
 
@@ -98,6 +126,46 @@ def load_results_json(json_path: Path):
     except Exception as e:
         log.warning(f"Failed to load existing results from {json_path}: {e}")
         return [], set()
+
+
+def prune_jsonl_rows(jsonl_path: Path, keep_indices, key: str = "index"):
+    """Keep the last line for each sample in keep_indices and drop the rest.
+
+    Per-chunk JSONL files are appended before results.json is saved. On resume,
+    samples missing from results.json are regenerated and appended again, so
+    their earlier lines (and a line torn by a hard kill) must go.
+
+    Returns:
+        Number of dropped lines
+    """
+    jsonl_path = Path(jsonl_path)
+    if not jsonl_path.exists():
+        return 0
+    rows, dropped = {}, 0
+    with open(jsonl_path, encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                index = json.loads(line).get(key)
+            except json.JSONDecodeError:
+                dropped += 1
+                continue
+            if index in keep_indices:
+                dropped += index in rows
+                rows[index] = line if line.endswith("\n") else line + "\n"
+            else:
+                dropped += 1
+    if dropped:
+        tmp_path = jsonl_path.with_name(jsonl_path.name + ".tmp")
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.writelines(rows.values())
+        os.replace(tmp_path, jsonl_path)
+        log.warning(
+            f"Dropped {dropped} stale or duplicate lines from {jsonl_path}; "
+            f"kept {len(rows)} samples present in results.json"
+        )
+    return dropped
 
 
 def find_latest_output_dir():

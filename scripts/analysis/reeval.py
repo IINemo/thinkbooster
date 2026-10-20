@@ -80,10 +80,15 @@ def main():
     log.info(f"Loaded config from {config_path}")
 
     # Load batch results
-    results = []
+    # One row per sample: a resumed run before duplicate pruning could leave
+    # a regenerated sample twice; the later line is the one in results.json.
+    by_index = {}
     with open(batch_results_path) as f:
         for line in f:
-            results.append(json.loads(line))
+            if line.strip():
+                row = json.loads(line)
+                by_index[row["index"]] = row
+    results = list(by_index.values())
     log.info(f"Loaded {len(results)} results from {batch_results_path}")
 
     # Merge compute metrics from sample_metrics.jsonl

@@ -376,6 +376,7 @@ class VLLMStepGenerator(StepCandidateGeneratorBase):
         max_tokens: Optional[int] = None,
         min_tokens: int = 0,
         seed: Optional[int] = None,
+        include_stop_str_in_output: bool = False,
     ) -> SamplingParams:
         """Create SamplingParams with specified stop tokens."""
         return SamplingParams(
@@ -388,6 +389,7 @@ class VLLMStepGenerator(StepCandidateGeneratorBase):
             logprobs=20,
             stop=stop_tokens,
             stop_token_ids=self.stop_token_ids,
+            include_stop_str_in_output=include_stop_str_in_output,
             presence_penalty=self.presence_penalty,
             seed=seed,
         )
@@ -646,6 +648,8 @@ class VLLMStepGenerator(StepCandidateGeneratorBase):
         compute_uncertainty: bool = True,
         sample_ids: Optional[List] = None,
         beam_ids: Optional[List] = None,
+        include_stop_str_in_output: bool = False,
+        truncate_at_sentence: bool = True,
     ) -> List[List[StepCandidate]]:
         """Unified step candidate generation for both thinking and non-thinking modes.
 
@@ -663,6 +667,11 @@ class VLLMStepGenerator(StepCandidateGeneratorBase):
                 Set to False when using PRM scorer (scores computed separately).
             beam_ids: Optional list mapping each trajectory index to a beam_id.
                 Used for logging to identify which beam each trajectory belongs to.
+            include_stop_str_in_output: Keep the matched stop string in the
+                step text, so the rebuilt prompt is exactly what was sampled.
+            truncate_at_sentence: In thinking mode, trim a step that hit
+                max_tokens back to its last sentence boundary. Disable to keep
+                every sampled token and let the next step continue it.
 
         Returns:
             List of candidate lists, one per trajectory. Each inner list contains
@@ -735,6 +744,7 @@ class VLLMStepGenerator(StepCandidateGeneratorBase):
             max_tokens=max_tokens,
             min_tokens=self.min_step_tokens,
             seed=self.seed,
+            include_stop_str_in_output=include_stop_str_in_output,
         )
 
         for traj_i, traj in enumerate(trajectories):
@@ -819,7 +829,11 @@ class VLLMStepGenerator(StepCandidateGeneratorBase):
                     actual_hit_max_tokens = stop_reason == "length" or (
                         stop_reason is None and len(token_ids) >= max_tokens
                     )
-                    if actual_hit_max_tokens and not thinking_complete:
+                    if (
+                        actual_hit_max_tokens
+                        and not thinking_complete
+                        and truncate_at_sentence
+                    ):
                         log.warning(
                             f"Path {traj_idx} cand {cand_idx}: hit max tokens "
                             f"({len(token_ids)} >= {max_tokens}), "
@@ -1272,6 +1286,8 @@ class VLLMStepGenerator(StepCandidateGeneratorBase):
         compute_uncertainty: bool = True,
         sample_ids: Optional[List] = None,
         beam_ids: Optional[List] = None,
+        include_stop_str_in_output: bool = False,
+        truncate_at_sentence: bool = True,
     ) -> List[List[StepCandidate]]:
         """Generate step candidates with per-trajectory requests.
 
@@ -1291,6 +1307,10 @@ class VLLMStepGenerator(StepCandidateGeneratorBase):
                 Multiple trajectories can map to the same sample_id (e.g., beam search).
             beam_ids: Optional list mapping each trajectory index to a beam_id.
                 Used for logging to identify which beam each trajectory belongs to.
+            include_stop_str_in_output: Keep the matched stop string in the step
+                text (vLLM strips it by default).
+            truncate_at_sentence: Trim a thinking step cut by max_tokens to its
+                last sentence boundary (default). Disable to keep it whole.
 
         Returns:
             List of candidate lists, one per trajectory.
@@ -1309,6 +1329,8 @@ class VLLMStepGenerator(StepCandidateGeneratorBase):
             compute_uncertainty=compute_uncertainty,
             sample_ids=sample_ids,
             beam_ids=beam_ids,
+            include_stop_str_in_output=include_stop_str_in_output,
+            truncate_at_sentence=truncate_at_sentence,
         )
 
     def generate_answer_candidates_batch(

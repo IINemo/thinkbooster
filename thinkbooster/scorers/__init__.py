@@ -1,4 +1,5 @@
 from .majority_voting import ChainMajorityVotingScorer, MajorityVotingScorer
+from .step_scorer_belt import StepScorerBELT
 from .step_scorer_confidence import StepScorerConfidence
 from .step_scorer_llm_critic import StepScorerLLMCritic
 from .step_scorer_prm import StepScorerPRM
@@ -8,6 +9,7 @@ __all__ = [
     "ChainMajorityVotingScorer",
     "MajorityVotingScorer",
     "StepScorerConfidence",
+    "StepScorerBELT",
     "StepScorerLLMCritic",
     "StepScorerPRM",
     "StepScorerUncertainty",

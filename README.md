@@ -10,13 +10,14 @@
 
 [Quick Start](#quick-start) | [Key Features](#key-features) | [Strategies](#supported-strategies) | [Visual Debugger](#visual-debugger) | [Documentation](#documentation)
 
-ThinkBooster is an open-source framework for **test-time compute scaling** of large language models. It implements nine state-of-the-art scaling strategies — beam search, best-of-N, self-consistency, DeepConf, MUR, phi-decoding, and more — scored by process reward models (PRMs), uncertainty estimators, LLM-as-a-critic, and ReProbes. The framework includes an evaluation pipeline for math, science, and coding benchmarks, an OpenAI-compatible endpoint gateway, and an interactive visual debugger for inspecting strategy behavior step by step.
+ThinkBooster is an open-source framework for **test-time compute scaling** of large language models. It implements scaling and early-stopping strategies — beam search, best-of-N, self-consistency, DeepConf, MUR, phi-decoding, BELT, and more — scored by process reward models (PRMs), uncertainty estimators, LLM-as-a-critic, and ReProbes. The framework includes an evaluation pipeline for math, science, and coding benchmarks, an OpenAI-compatible endpoint gateway, and an interactive visual debugger for inspecting strategy behavior step by step.
 
 ---
 
 ## Key Features
 
-- **9 scaling strategies** — beam search, best-of-N, self-consistency, DeepConf, MUR, phi-decoding, extended thinking, uncertainty CoT, and adaptive scaling (online and offline)
+- **Scaling and early-stopping strategies** — beam search, best-of-N, self-consistency, DeepConf, MUR, phi-decoding, extended thinking, uncertainty CoT, adaptive scaling, and BELT
+- **BELT adapter (Python/Hydra)** — four belief readouts, hidden representations, and explicit fitted stopping policies; defaults to the published ReProbe-initialized Qwen checkpoints
 - **4 scorer families** — process reward models (PRMs), uncertainty/confidence scores, LLM-as-a-critic, and ReProbes; with configurable aggregation (min, mean, max, product) and sliding window
 - **OpenAI-compatible endpoint gateway** — drop-in replacement for any OpenAI SDK; select strategy and scorer via URL path; enables "Pro reasoning mode" for any LLM deployment
 - **Visual debugger** — interactive web UI for comparing strategies, inspecting step-by-step reasoning traces and confidence signals
@@ -111,6 +112,7 @@ See [Service API Guide](docs/service/api_guide.md) for the full reference.
 ```bash
 # Beam search on GSM8K (3 samples for quick verification)
 python scripts/run_tts_eval.py \
+  --config-path "$PWD/config" \
   --config-name experiments/beam_search/gsm8k/window_all/mean/beam_search_vllm_qwen25_math_7b_instruct_gsm8k_prm \
   dataset.subset=3
 ```
@@ -152,6 +154,11 @@ See [service_app/README.md](service_app/README.md) for details on cached example
 
 ## Supported Strategies
 
+**BELT early stopping** is available through the Python and Hydra interfaces,
+using published Qwen3-1.7B probes and an explicit fitted stopping policy.
+See the [BELT integration guide](docs/strategies/belt.md) for checkpoint loading,
+belief scoring and stopping-policy configuration.
+
 | Strategy | Online/Offline | LLM Access | Prefill | Description |
 |---|---|---|---|---|
 | Best-of-N | Offline | Black-box | No | Sample N solutions, select best by scorer |
@@ -163,6 +170,7 @@ See [service_app/README.md](service_app/README.md) for details on cached example
 | DeepConf Offline | Offline | White-box | No | Rerank candidates by model confidence scores |
 | Phi-decoding | Online | White-box | Yes | Foresight sampling and adaptive pruning |
 | Uncertainty CoT | Online | White-box | Yes | Generate multiple trajectories when uncertain |
+| BELT | Online | White-box | Yes | End thinking using a fitted policy on BELT beliefs or hidden representations |
 
 ---
 

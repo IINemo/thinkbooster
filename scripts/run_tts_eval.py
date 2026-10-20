@@ -109,7 +109,13 @@ try:
 except ImportError:
     POLYGRAPH_UNCERTAINTY_AVAILABLE = False
     VLLMWithUncertainty = None
-from utils.results import load_results_json, parse_resume_arguments, save_results_json
+from utils.results import (
+    load_results_json,
+    parse_resume_arguments,
+    prune_jsonl_rows,
+    results_file_readable,
+    save_results_json,
+)
 
 from thinkbooster.evaluation import (
     EvaluatorAlignScore,
@@ -260,6 +266,15 @@ def load_model(
     return model
 
 
+def dataset_prompt_template(config) -> str:
+    """The user-turn template: dataset.prompt_file if set, else the inline
+    dataset.prompt_template (most configs use "{question}", which is the bare
+    question either way)."""
+    if config.dataset.get("prompt_file"):
+        return load_prompt_template(config.dataset.prompt_file)
+    return config.dataset.get("prompt_template") or ""
+
+
 def load_prompt_template(prompt_file: str) -> str:
     """Load prompt template from file"""
     with open(prompt_file, "r") as f:
@@ -380,13 +395,123 @@ def set_random_seeds(seed):
         torch.cuda.manual_seed_all(seed)
 
 
+def _persisted_metadata(result):
+    """Strategy metadata to write into result files: BELT's decision provenance only.
+
+    Other strategies' metadata was never persisted and can be large (DeepConf
+    keeps full traces with per-token confidence arrays), so it stays in memory.
+    """
+    metadata = result.get("metadata")
+    if isinstance(metadata, dict) and metadata.get("strategy") == "belt":
+        return {"metadata": metadata}
+    return {}
+
+
+def _belt_backend(config):
+    """Validate the opt-in backend before any generation model allocation."""
+    if config.scorer is None or config.scorer.type != "belt":
+        return None
+    backend = config.scorer.get("backend", "hf")
+    if backend not in ("hf", "vllm"):
+        raise ValueError("BELT scorer.backend must be hf or vllm")
+    from thinkbooster.belt.runtime import require_native_reader
+
+    # The reader loads lazily at the first query, after vLLM is allocated and
+    # the first step has run; a missing BELT checkout should fail here instead.
+    require_native_reader()
+    if backend == "vllm":
+        from thinkbooster.belt.runtime import BACKBONE, BACKBONE_REVISION
+        from thinkbooster.belt.vllm_backend import (
+            DEFAULT_CACHE_ENTRIES,
+            DEFAULT_CHECKPOINT_BATCH_SIZE,
+        )
+        from thinkbooster.belt.vllm_wire import MAX_CAPTURE_TOKENS
+
+        checkpoint_batch_size = config.generation.get(
+            "checkpoint_batch_size", DEFAULT_CHECKPOINT_BATCH_SIZE
+        )
+        # Same lookup create_model passes to vLLM as max_model_len. A batch of
+        # full-length requests must fit the capture buffer, or long traces abort
+        # the run mid-dataset.
+        max_model_len = config.model.get(
+            "max_context_budget", config.model.get("max_model_len", 32768)
+        )
+        limit = min(DEFAULT_CACHE_ENTRIES, MAX_CAPTURE_TOKENS // max_model_len)
+        if limit < 1:
+            raise ValueError(
+                f"BELT vLLM requires max_model_len <= {MAX_CAPTURE_TOKENS}; "
+                f"got {max_model_len}"
+            )
+        if (
+            type(checkpoint_batch_size) is not int
+            or not 1 <= checkpoint_batch_size <= limit
+        ):
+            raise ValueError(
+                "BELT vLLM generation.checkpoint_batch_size must be an integer "
+                f"between 1 and {limit} (feature cache {DEFAULT_CACHE_ENTRIES}, "
+                f"capture limit {MAX_CAPTURE_TOKENS} / max_model_len {max_model_len})"
+            )
+
+        if config.model.type != "vllm":
+            raise ValueError("BELT backend=vllm requires model.type=vllm")
+        if config.model.model_path != BACKBONE:
+            raise ValueError("BELT vLLM requires the pinned Qwen/Qwen3-1.7B backbone")
+        if config.model.get("revision") != BACKBONE_REVISION:
+            raise ValueError("BELT vLLM requires the pinned backbone revision")
+        if (
+            config.model.get("tokenizer_revision", BACKBONE_REVISION)
+            != BACKBONE_REVISION
+        ):
+            raise ValueError("BELT vLLM requires the pinned tokenizer revision")
+        if (
+            config.model.get("tensor_parallel_size", 1) != 1
+            or config.model.get("pipeline_parallel_size", 1) != 1
+        ):
+            raise ValueError("BELT vLLM requires TP=1 and PP=1")
+        if config.model.get("quantization") is not None:
+            raise ValueError("BELT vLLM does not support quantization")
+        if config.model.get("kv_cache_dtype", "auto") != "auto":
+            raise ValueError("BELT vLLM requires kv_cache_dtype=auto")
+        if config.model.get("enforce_eager", True) is not True:
+            raise ValueError("BELT vLLM requires enforce_eager=True")
+        for dtype in (
+            config.model.get("dtype", "bfloat16"),
+            config.model.get("torch_dtype", "bfloat16"),
+            config.system.get("torch_dtype", "bfloat16"),
+        ):
+            if dtype != "bfloat16":
+                raise ValueError("BELT vLLM initially supports only dtype=bfloat16")
+    return backend
+
+
 def create_scorer(config):
+    _belt_backend(config)
     # DeepConf and self_consistency don't use a scorer
     if config.strategy.type in ("deepconf", "self_consistency"):
         return None
     if config.scorer is None:
         return None
-    if config.scorer.type == "prm":
+    if config.scorer.type == "belt":
+        from thinkbooster.belt import BeltStoppingPolicy
+        from thinkbooster.scorers.step_scorer_belt import StepScorerBELT
+
+        if config.strategy.type == "belt" and not config.strategy.get("policy_path"):
+            raise ValueError(
+                "strategy.policy_path must identify a fitted BELT stopping policy"
+            )
+        scorer = StepScorerBELT(
+            checkpoint_repo=config.scorer.checkpoint_repo,
+            seed=config.scorer.get("seed", 0),
+            device=config.scorer.get("device", "cuda:0"),
+            dtype=config.scorer.get("dtype", "bfloat16"),
+            cache_dir=config.scorer.get("cache_dir"),
+            hs_chunk_size=config.scorer.get("hs_chunk_size", 8192),
+            target=config.scorer.get("target", "q"),
+        )
+        if config.strategy.type == "belt":
+            policy = BeltStoppingPolicy.from_file(config.strategy.policy_path)
+            policy.validate_checkpoint(scorer.checkpoint_sha256)
+    elif config.scorer.type == "prm":
         scorer = StepScorerPRM(
             prm_model_path=config.scorer.model_path,
             device=config.scorer.device,
@@ -431,6 +556,11 @@ def create_scorer(config):
 
 
 def create_model(config):
+    belt_backend = _belt_backend(config)
+    if config.strategy.type == "belt":
+        if config.scorer is None or config.scorer.type != "belt":
+            raise ValueError("BELT stopping requires scorer.type=belt")
+        create_scorer(config)  # Validate the policy before allocating the vLLM model.
     if config.model.type == "vllm":
         # vLLM backend - fast inference with PagedAttention
         # Uncertainty scoring is done locally using lm-polygraph estimators
@@ -452,11 +582,22 @@ def create_model(config):
             "kv_cache_dtype": config.model.get("kv_cache_dtype", "auto"),
             "seed": config.system.seed,
         }
+        if config.model.get("revision"):
+            llm_kwargs["revision"] = config.model.revision
+            llm_kwargs["tokenizer_revision"] = config.model.get(
+                "tokenizer_revision", config.model.revision
+            )
 
         use_native_hs_capture = getattr(config.model, "use_native_hs_capture", None)
         if use_native_hs_capture is None:
             use_native_hs_capture = config.scorer.type == "uhead"
-        if use_native_hs_capture:
+        if belt_backend == "vllm":
+            llm_kwargs["dtype"] = "bfloat16"
+            llm_kwargs["enforce_eager"] = True
+            llm_kwargs["worker_extension_cls"] = (
+                "thinkbooster.belt.vllm_worker.BeltHiddenStatesExtension"
+            )
+        elif use_native_hs_capture:
             log.info("Using native hidden state capture via vLLM worker extension")
             llm_kwargs["enforce_eager"] = True
             llm_kwargs["worker_extension_cls"] = config.model.get(
@@ -471,6 +612,16 @@ def create_model(config):
             llm_kwargs["enable_sleep_mode"] = True
 
         llm = LLM(**llm_kwargs)
+        belt_provider = None
+        if belt_backend == "vllm":
+            from thinkbooster.belt.vllm_backend import (
+                DEFAULT_CACHE_ENTRIES,
+                BeltVLLMBackend,
+            )
+
+            belt_provider = BeltVLLMBackend(
+                llm, max_cache_entries=DEFAULT_CACHE_ENTRIES
+            )
 
         # Create sampling params (will be updated by strategy)
         sampling_params = SamplingParams(
@@ -510,12 +661,12 @@ def create_model(config):
 
             # Self-consistency, baseline, extended_thinking, and llm_critic don't need uncertainty wrapper
             scorer_type = config.scorer.type if config.scorer else "entropy"
-            if (
-                config.strategy.type
-                in ("self_consistency", "baseline", "extended_thinking")
-                or scorer_type == "llm_critic"
-            ):
-                vllm_model = llm
+            if config.strategy.type in (
+                "self_consistency",
+                "baseline",
+                "extended_thinking",
+            ) or scorer_type in ("llm_critic", "belt"):
+                vllm_model = belt_provider if belt_provider is not None else llm
                 log.info(
                     f"Strategy={config.strategy.type}, scorer={scorer_type}: "
                     f"using raw vLLM (no uncertainty wrapper)"
@@ -928,6 +1079,18 @@ def _create_api_model_for_scorer(model_cfg):
 def create_tts_strategy(
     config, model, step_generator, scorer, output_dir=None, flop_calculator=None
 ):
+    if _belt_backend(config) == "vllm":
+        from thinkbooster.belt.vllm_backend import BeltVLLMBackend
+
+        provider = getattr(step_generator, "model", None)
+        if not isinstance(provider, BeltVLLMBackend):
+            raise ValueError(
+                "BELT vLLM scorer requires the generator's BeltVLLMBackend"
+            )
+        base_config = getattr(
+            getattr(provider, "model_config", None), "hf_config", None
+        )
+        scorer.bind_feature_provider(provider, provider.get_tokenizer(), base_config)
     # Set model on scorer if it supports it (e.g., StepScorerLLMCritic)
     if scorer is not None and hasattr(scorer, "set_model"):
         scorer_model_cfg = getattr(config.scorer, "model", None)
@@ -1257,6 +1420,22 @@ def create_tts_strategy(
             uncertainty_threshold=config.strategy.uncertainty_threshold,
             uncertainty_sampling=config.strategy.uncertainty_sampling,
         )
+    elif config.strategy.type == "belt":
+        from thinkbooster.strategies.strategy_belt import StrategyBELT
+
+        if config.scorer.type != "belt" or not config.strategy.get("policy_path"):
+            raise ValueError(
+                "BELT stopping requires scorer=belt and strategy.policy_path"
+            )
+        strategy = StrategyBELT(
+            step_generator=step_generator,
+            scorer=scorer,
+            policy=config.strategy.policy_path,
+            max_steps=config.strategy.get("max_steps", 1024),
+            min_steps=config.strategy.get("min_steps", 2),
+            query_stride=config.strategy.get("query_stride", 1),
+            max_blocks=config.strategy.get("max_blocks", 128),
+        )
     elif config.strategy.type == "extended_thinking":
         eos_patterns = getattr(config.strategy, "detector_eos_patterns", None)
         if eos_patterns:
@@ -1356,6 +1535,11 @@ def _generate_trajectories_batch(
         log.info("No new samples to process")
         return results
 
+    # Validate after the no-work return: an empty shard defaults its batch size
+    # to len(dataset) == 0 and must remain a no-op.
+    if type(checkpoint_batch_size) is not int or checkpoint_batch_size < 1:
+        raise ValueError("checkpoint_batch_size must be a positive integer")
+
     total_to_process = len(requests_to_process)
     log.info(
         f"Batch generating {total_to_process} samples with checkpoint_batch_size={checkpoint_batch_size}..."
@@ -1382,8 +1566,11 @@ def _generate_trajectories_batch(
             f"samples {batch_start}-{batch_end - 1} ({len(chunk_requests)} samples)"
         )
 
+        progressive_checkpoint_saved = False
+
         # Define progressive save callback for this chunk
         def _save_callback(strategy_results, phase="post_generation"):
+            nonlocal progressive_checkpoint_saved
             temp_results = list(results)  # copy previous chunks
             for i_idx, inst, gold, strat_res in zip(
                 chunk_indices, chunk_instances, chunk_gold_answers, strategy_results
@@ -1407,12 +1594,15 @@ def _generate_trajectories_batch(
                         "all_step_scores": strat_res.get("all_step_scores", []),
                         "best_idx": strat_res.get("best_idx"),
                         "completed": strat_res.get("completed", False),
+                        "completion_reason": strat_res.get("completion_reason"),
+                        **_persisted_metadata(strat_res),
                         "is_correct": None,
                         "eval": {},
                         "scoring_phase": phase,
                     }
                 )
             save_results_json(temp_results, save_path_file)
+            progressive_checkpoint_saved = True
             log.info(
                 f"Progressive save ({phase}): {len(temp_results)} results to {save_path_file}"
             )
@@ -1428,19 +1618,21 @@ def _generate_trajectories_batch(
             log.error(f"Chunk {chunk_idx + 1} generation failed: {e}")
             log.error(f"Traceback:\n{traceback.format_exc()}")
             log.error("Saving partial results collected so far and exiting")
-            save_results_json(results, save_path_file)
-            log.info(f"Checkpoint saved: {len(results)}/{subset_size} samples complete")
-            return results
+            if not progressive_checkpoint_saved:
+                try:
+                    save_results_json(results, save_path_file)
+                    log.info(
+                        f"Checkpoint saved: {len(results)}/{subset_size} samples complete"
+                    )
+                except Exception as save_error:
+                    log.error(f"Failed to save checkpoint: {save_error}")
+            raise
 
         if len(chunk_results) != len(chunk_indices):
-            log.error(
+            raise RuntimeError(
                 f"Chunk generation returned {len(chunk_results)} results "
-                f"but expected {len(chunk_indices)}. Truncating to shorter list."
+                f"but expected {len(chunk_indices)}"
             )
-            # Truncate to match
-            chunk_indices = chunk_indices[: len(chunk_results)]
-            chunk_instances = chunk_instances[: len(chunk_results)]
-            chunk_gold_answers = chunk_gold_answers[: len(chunk_results)]
 
         # Save batch results immediately to avoid data loss
         batch_results_path = save_path_file.parent / "batch_results.jsonl"
@@ -1468,6 +1660,15 @@ def _generate_trajectories_batch(
                     "all_step_scores": result.get("all_step_scores", []),
                     "all_scores": result.get("all_scores", []),
                     "best_idx": result.get("best_idx"),
+                    "completion_reason": result.get("completion_reason"),
+                    # reeval recomputes metrics from these rows; without it the
+                    # step average falls back to len(steps), answer included.
+                    **(
+                        {"reasoning_steps": result["reasoning_steps"]}
+                        if "reasoning_steps" in result
+                        else {}
+                    ),
+                    **_persisted_metadata(result),
                 }
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
         log.info(f"Saved {len(chunk_results)} batch results to {batch_results_path}")
@@ -1550,6 +1751,11 @@ def _generate_trajectories_batch(
                 "prm_tokens_this_sample": _token_stats.get("prm_input_tokens", 0),
                 "prm_tflops_this_sample": _safe_tflops(_token_stats, "prm_tflops"),
             }
+            cost_scope = (result.get("metadata") or {}).get(
+                "scoring_cost_in_token_stats"
+            )
+            if cost_scope is not None:
+                _compute_metrics["scoring_cost_in_token_stats"] = cost_scope
             for key in (
                 "trajectory_tokens",
                 "answer_tokens",
@@ -1685,6 +1891,8 @@ def _generate_trajectories_batch(
                 "reasoning_steps": result.get("reasoning_steps", len(result["steps"])),
                 "validity_scores": result.get("validity_scores", []),
                 "completed": result["completed"],
+                "completion_reason": result.get("completion_reason"),
+                **_persisted_metadata(result),
                 "is_correct": bool(is_correct),  # Primary (exact_match)
                 "eval": eval_results,  # Per-evaluator results
                 "instance_data": dict(
@@ -1839,8 +2047,16 @@ def generate_trajectories(
         phase1_evaluators = {"exact_match": exact_match_evaluator}
         log.info(f"Phase 1 evaluator: data_name={exact_match_evaluator.data_name}")
 
-    # Get checkpoint batch size: default to dataset subset size (process all at once)
     checkpoint_batch_size = len(dataset)
+    scorer_config = getattr(config, "scorer", None)
+    if (
+        scorer_config is not None
+        and scorer_config.get("type") == "belt"
+        and scorer_config.get("backend", "hf") == "vllm"
+    ):
+        from thinkbooster.belt.vllm_backend import DEFAULT_CHECKPOINT_BATCH_SIZE
+
+        checkpoint_batch_size = DEFAULT_CHECKPOINT_BATCH_SIZE
     if config is not None and hasattr(config, "generation"):
         checkpoint_batch_size = config.generation.get(
             "checkpoint_batch_size", checkpoint_batch_size
@@ -2345,11 +2561,12 @@ def evaluate_results(
     all_validities = []
     all_reasoning_steps = []
     for r in results:
-        if "validity_scores" in r and r["validity_scores"]:
-            valid = [s for s in r["validity_scores"] if s is not None]
-            if valid:
-                all_validities.extend(valid)
-                all_reasoning_steps.append(r.get("reasoning_steps", len(r["steps"])))
+        valid = [s for s in (r.get("validity_scores") or []) if s is not None]
+        all_validities.extend(valid)
+        # BELT leaves unqueried steps at None, so a trace that closed thinking
+        # before its first query still has reasoning steps to count.
+        if valid or (r.get("metadata") or {}).get("strategy") == "belt":
+            all_reasoning_steps.append(r.get("reasoning_steps", len(r["steps"])))
 
     # Token / FLOPs aggregates
     missing_stats_count = sum(1 for r in results if r.get("token_stats") is None)
@@ -2604,6 +2821,9 @@ def evaluate_results(
 
 
 _experiment_info = {}  # Populated in main(), read by crash handler
+# What main() raised: Hydra reports a task failure as sys.exit(1), so the crash
+# handler below would otherwise see only SystemExit and never the error.
+_main_failure = {}
 
 
 @hydra.main(
@@ -2613,6 +2833,20 @@ _experiment_info = {}  # Populated in main(), read by crash handler
 )
 def main(config):
     """Main evaluation function"""
+    try:
+        return _run_evaluation(config)
+    except BaseException as error:
+        _main_failure["error"] = error
+        try:
+            from hydra.core.hydra_config import HydraConfig
+
+            _main_failure["output_dir"] = HydraConfig.get().runtime.output_dir
+        except Exception:
+            pass
+        raise
+
+
+def _run_evaluation(config):
     stderr_file = None  # Initialize for cleanup
 
     import socket
@@ -2842,11 +3076,7 @@ def main(config):
             f"Dataset: using samples {start_idx} to {end_idx-1} ({len(dataset)} samples)"
         )
 
-    prompt_template = (
-        load_prompt_template(config.dataset.prompt_file)
-        if config.dataset.prompt_file
-        else ""
-    )
+    prompt_template = dataset_prompt_template(config)
 
     # Load system prompt if configured
     system_prompt = getattr(config.dataset, "system_prompt", "") or ""
@@ -2893,6 +3123,22 @@ def main(config):
     # Load existing results if available (for resuming interrupted runs)
     results_path = Path(output_dir) / "results.json"
     results, processed_indices = load_results_json(results_path)
+    # Samples missing from results.json (all of them, if a kill came before
+    # the first save) are regenerated and appended again. An unreadable
+    # results.json is not evidence of that: keep the JSONL logs for recovery.
+    if results_file_readable(results_path):
+        prune_jsonl_rows(
+            Path(output_dir) / "batch_results.jsonl", processed_indices, "index"
+        )
+        prune_jsonl_rows(
+            Path(output_dir) / "sample_metrics.jsonl",
+            processed_indices,
+            "sample_index",
+        )
+    else:
+        log.warning(
+            f"{results_path} is unreadable; keeping JSONL logs untouched for recovery"
+        )
 
     # NOTE: Don't shuffle - keep original dataset order for reproducibility
     # dataset = dataset.shuffle(seed=config.system.seed)
@@ -3049,7 +3295,11 @@ if __name__ == "__main__":
 
     try:
         main()
-    except (KeyboardInterrupt, MemoryError, Exception) as e:
+    except (KeyboardInterrupt, MemoryError, Exception, SystemExit) as caught:
+        if isinstance(caught, SystemExit) and caught.code in (0, None):
+            raise
+        e = _main_failure.get("error", caught)
+        output_dir = output_dir or _main_failure.get("output_dir")
         import logging
 
         error_log = logging.getLogger(__name__)
@@ -3069,7 +3319,7 @@ if __name__ == "__main__":
         elif isinstance(e, MemoryError):
             error_log.error(f"Job failed due to MemoryError (GPU/CPU OOM): {e}")
         else:
-            error_log.exception(f"Job failed with exception: {e}")
+            error_log.error(f"Job failed with exception: {e}", exc_info=e)
 
         # Send Telegram "crashed" notification
         try:
