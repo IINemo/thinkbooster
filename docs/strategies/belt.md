@@ -29,7 +29,7 @@ available:
 
 ```bash
 git clone https://github.com/EdisonNi-hku/BELT.git ../BELT
-git -C ../BELT checkout fc9b0670e430ed3519eb0df25aef0f5788a8b29c
+git -C ../BELT checkout 332eab8d00592793c991686fd6e958e0f3c0f8ea
 pip install --no-deps -e ../BELT
 ```
 

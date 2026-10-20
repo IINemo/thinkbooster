@@ -1,7 +1,7 @@
 """BELT reasoning blocks, as the probe was trained and queried on them.
 
 Copied from BELT `rl_controller/rollout_contract.py` and `rollout_runner.py`
-(pinned fc9b067). A block ends at a blank line; generation stops on "\\n\\n"
+(pinned 332eab8). A block ends at a blank line; generation stops on "\\n\\n"
 with the stop string kept in the text; the head sees an end marker at EVERY
 block end, placed after the separator; a policy is queried only when the text
 ends on a block end, and never at block 1.

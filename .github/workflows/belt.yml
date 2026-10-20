@@ -60,7 +60,7 @@ jobs:
       - name: Install pinned native BELT reader
         run: |
           git clone https://github.com/EdisonNi-hku/BELT.git "$RUNNER_TEMP/belt-runtime"
-          git -C "$RUNNER_TEMP/belt-runtime" checkout fc9b0670e430ed3519eb0df25aef0f5788a8b29c
+          git -C "$RUNNER_TEMP/belt-runtime" checkout 332eab8d00592793c991686fd6e958e0f3c0f8ea
           python -m pip install --no-deps -e "$RUNNER_TEMP/belt-runtime"
       - name: Check reader parity, Qwen tokenizer block ends and block rules vs BELT
         env:
