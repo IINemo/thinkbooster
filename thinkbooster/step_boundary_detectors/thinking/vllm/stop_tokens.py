@@ -211,6 +211,8 @@ STRUCTURE_TOKENS = [
 # Answer/completion patterns (for trajectory completion)
 ANSWER_TOKENS = [
     "</think>",
+    "</think_fast>",  # K2-Think medium reasoning budget
+    "</think_faster>",  # K2-Think low reasoning budget
     "<Answer>:",
     "\n<Answer>:",
 ]
