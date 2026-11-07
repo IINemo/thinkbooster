@@ -1,0 +1,36 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;background:#ffffff;}
+  body{display:flex;justify-content:center;padding:26px 30px;
+       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .card{display:inline-block;}
+  table{border-collapse:collapse;font-size:16px;color:#15181d;}
+  th,td{padding:11px 18px;text-align:center;white-space:nowrap;}
+  thead .grp th{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#6b7280;
+                font-weight:600;padding-bottom:2px;border:none;}
+  thead .hdr th{background:#111827;color:#fff;font-weight:600;}
+  thead .hdr th:first-child{background:#111827;}
+  tbody td:first-child,thead .hdr th:first-child{text-align:left;font-weight:600;}
+  tbody tr{border-bottom:1px solid #e8eaed;}
+  tbody tr:last-child{border-bottom:2px solid #111827;}
+  .best{font-weight:800;color:#0b7a3b;}
+  .dash{color:#c2c7ce;}
+  caption{caption-side:bottom;text-align:left;color:#6b7280;font-size:13.5px;
+          padding-top:14px;max-width:760px;line-height:1.5;}
+  .kb{border-left:1px solid #e8eaed;}
+</style></head><body><div class="card">
+<table>
+  <caption><b>GPT-OSS-120B with a PRM scorer</b>, across QA, coding, and CUDA-kernel generation. Best per column in bold. Dropping in best-of-N lifts CUDA-kernel correctness from 26 to 30 and cuts syntax errors by five points; compilation dips one point as the reward model favors more ambitious kernels.</caption>
+  <thead>
+    <tr class="grp"><th></th><th></th><th></th><th></th><th colspan="3">KernelBench</th></tr>
+    <tr class="hdr">
+      <th>Strategy</th><th>GPQA-Diamond</th><th>HumanEval+</th><th>MBPP+</th>
+      <th class="kb">Syntax</th><th>Compilation</th><th>Correctness</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Raw CoT</td><td>70.3</td><td>83.5</td><td>76.0</td><td class="kb">82.0</td><td class="best">65.0</td><td>26.0</td></tr>
+    <tr><td>Offline Best-of-N</td><td>72.2</td><td>85.4</td><td class="best">78.8</td><td class="kb best">87.0</td><td>64.0</td><td class="best">30.0</td></tr>
+    <tr><td>Beam Search</td><td class="best">73.2</td><td class="best">87.8</td><td>78.4</td><td class="kb dash">—</td><td class="dash">—</td><td class="dash">—</td></tr>
+  </tbody>
+</table>
+</div></body></html>
