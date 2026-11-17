@@ -1,0 +1,71 @@
+# @package _global_
+# Offline Best-of-N with GPT-OSS-120B local vLLM + UHead scorer on GPQA-Diamond.
+
+defaults:
+  - /config
+  - /model/vllm_qwen3
+  - /generation/default
+  - /system/default
+  - /strategy/offline_bon
+  - /scorer/uhead_vllm
+  - /evaluation/exact_match_only
+  - _self_
+
+run_name: "offline_bon_vllm_gpt_oss_120b_gpqa_diamond_uhead_${scorer.uq_head_path}_seed${system.seed}_${now:%H-%M-%S}"
+
+verbose: true
+report_to: wandb
+wandb_project: llm-tts-eval-gpqa-diamond
+wandb_group: "offline_bon_vllm_gpt_oss_120b_gpqa_diamond_uhead"
+
+model:
+  type: "vllm"
+  model_path: "openai/gpt-oss-120b"
+  model_short_name: "vllm_gpt_oss_120b"
+  gpu_memory_utilization: 0.7
+  tensor_parallel_size: 2
+  enable_prefix_caching: true
+  trust_remote_code: true
+  max_context_budget: 32768
+  disable_thinking_mode: false
+
+system:
+  device: cuda
+  seed: 0
+
+scorer:
+  type: uhead
+  uq_head_path: "ArtemVazhentsev21/uhead_math500_gpt_oss_120b_claim_pro_fixed_repaired_l21_cap30"
+  max_model_len: 32000
+  gpu_memory_utilization: 0.2
+  tensor_parallel_size: 1
+  device: cuda:1
+  batch_size: 1
+
+generation:
+  max_new_tokens: 32000
+  temperature: 0.65
+  top_p: 0.95
+  top_k: 20
+  batch_size: 1
+  max_length: 65536
+
+strategy:
+  type: offline_best_of_n
+  max_steps: 100
+  max_step_tokens: 2048
+  num_trajectories: 8
+
+dataset:
+  data_name: "gpqa_diamond"
+  dataset_path: "test-time-compute/test_gpqa_diamond"
+  dataset_config: null
+  dataset_split: "test"
+  subset: null
+  offset: 0
+  question_field: "question"
+  answer_field: "answer"
+  answer_format: "char"
+  system_prompt: "You are an expert in graduate-level science. Answer the following multiple choice question. Think step by step and provide your final answer as a single letter (A, B, C, or D) within \\boxed{}."
+  prompt_template: "{question}"
+  prompt_file: null

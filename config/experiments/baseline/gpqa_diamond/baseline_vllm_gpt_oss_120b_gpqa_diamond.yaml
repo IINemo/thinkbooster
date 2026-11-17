@@ -1,0 +1,63 @@
+# @package _global_
+# Baseline evaluation for GPT-OSS-120B local vLLM on GPQA-Diamond.
+
+defaults:
+  - /config
+  - /model/vllm_qwen3
+  - /generation/default
+  - /system/default
+  - /strategy/baseline
+  - /scorer/entropy
+  - /evaluation/exact_match_only
+  - _self_
+
+run_name: "baseline_vllm_gpt_oss_120b_gpqa_diamond_seed${system.seed}_${now:%H-%M-%S}"
+
+verbose: true
+report_to: wandb
+wandb_project: llm-tts-eval-gpqa-diamond
+wandb_group: "baseline_vllm_gpt_oss_120b_gpqa_diamond"
+
+model:
+  type: "vllm"
+  model_path: "openai/gpt-oss-120b"
+  model_short_name: "vllm_gpt_oss_120b"
+  gpu_memory_utilization: 0.7
+  tensor_parallel_size: 2
+  enable_prefix_caching: true
+  trust_remote_code: true
+  max_context_budget: 32768
+  disable_thinking_mode: false
+
+system:
+  device: cuda
+  seed: 0
+
+generation:
+  max_new_tokens: 32000
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+  batch_size: 1
+  max_length: 65536
+
+strategy:
+  type: baseline
+  batch_generation: true
+  min_step_tokens: 0
+  max_step_tokens: 32000
+  detector_answer_patterns: []
+
+dataset:
+  data_name: "gpqa_diamond"
+  dataset_path: "test-time-compute/test_gpqa_diamond"
+  dataset_config: null
+  dataset_split: "test"
+  subset: null
+  offset: 0
+  question_field: "question"
+  answer_field: "answer"
+  answer_format: "char"
+  system_prompt: "You are an expert in graduate-level science. Answer the following multiple choice question. Think step by step and provide your final answer as a single letter (A, B, C, or D) within \\boxed{}."
+  prompt_template: "{question}"
+  prompt_file: null
