@@ -42,7 +42,8 @@ def grade(evaluator, question, answer, gold, seconds=5):
     previous = signal.signal(signal.SIGALRM, expire)
     signal.alarm(seconds)
     try:
-        return bool(evaluator._score_single((question, "\\boxed{" + answer + "}", gold))), False
+        # Same call as the evaluation runner, which grades the extracted answer.
+        return bool(evaluator._score_single((question, answer, gold), pre_extracted=True)), False
     except TimeoutError:
         return answer.strip() == gold.strip(), True
     finally:
@@ -68,12 +69,40 @@ def prompt_text(config, question):
     return template.format(question=question) if "{question}" in template else question
 
 
+def regrade(run, out):
+    config = OmegaConf.load(run / ".hydra" / "config.yaml")
+    by_index = {s["index"]: s for s in json.loads((run / "results.json").read_text())}
+    evaluator = EvaluatorExactMatch(
+        dataset_answer_format=config.dataset.answer_format,
+        data_name=config.dataset.data_name,
+    )
+    rows = [json.loads(line) for line in out.read_text().splitlines()]
+    for row in rows:
+        sample = by_index[row["index"]]
+        row["correct"], row["grading_timeout"] = (
+            grade(evaluator, sample["question"], row["forced_answer"], str(sample["gold_answer"]))
+            if row["closed"]
+            else (False, False)
+        )
+    out.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    print(f"regraded {len(rows)} forced answers -> {out}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--run", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.55)
+    parser.add_argument(
+        "--regrade",
+        action="store_true",
+        help="Regrade the answers already in --out instead of generating them",
+    )
     args = parser.parse_args()
+
+    if args.regrade:
+        regrade(args.run, args.out)
+        return
 
     from vllm import LLM, SamplingParams
 
