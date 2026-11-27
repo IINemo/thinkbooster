@@ -222,6 +222,10 @@ ul.notes { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 7
     <span><span class="swatch" style="background: var(--b-end)"></span>End</span>
     <span style="color: var(--b-later)"><span class="swatch dash"></span><span style="color: var(--muted)">Later</span></span>
     <span><span class="swatch" style="background: var(--b-same)"></span>Same</span>
+    <span><span class="swatch" style="background: var(--fg)"></span>stop score</span>
+    <span><span class="swatch dash" style="color: var(--accent)"></span>stop threshold</span>
+    <span><span class="swatch" style="background: var(--muted); width: 2px; height: 14px"></span>model stops by itself</span>
+    <span><span class="swatch" style="background: var(--accent); width: 2px; height: 14px"></span>BELT stops</span>
     <span>● correct forced answer · ○ wrong</span>
     <span><span class="swatch" style="background: var(--grid); height: 10px; width: 14px"></span>after block 128: no decisions</span>
     <span>hover or use ← → on the chart</span>
@@ -460,7 +464,7 @@ function renderTimeline() {
   }
   svg.append(el("text", { x: L, y: fTop - 6, class: "band-title" }, "Forced answer at each decision"));
   svg.append(el("line", { x1: L, x2: W - R, y1: fTop + FS / 2, y2: fTop + FS / 2, class: "grid" }));
-  svg.append(el("text", { x: L, y: sTop - 6, class: "band-title" }, "Stop score (BELT-H policy)"));
+  svg.append(el("text", { x: L, y: sTop - 6, class: "band-title" }, "Stop score (black): BELT stops when it reaches the dashed threshold line"));
   svg.append(el("line", { x1: L, x2: W - R, y1: sTop, y2: sTop, class: "grid" }));
   svg.append(el("line", { x1: L, x2: W - R, y1: axisY, y2: axisY, class: "axis" }));
   for (let v = Math.ceil(zLo / zStep) * zStep; v <= zHi; v += zStep) {
