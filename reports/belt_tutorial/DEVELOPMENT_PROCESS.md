@@ -101,6 +101,12 @@ for the supervisor version. Changes:
   longest quarter of runs holds 65% of reasoning tokens and is right 70% of
   the time (96% below the median length). For a 30% saving the cap stops the
   longest 23% of runs and loses 26 problems; BELT-H stops 71% and loses 31.
+- The cap explanation now shows, per run-length group, where each method
+  stops at a 30% saving, and that BELT-H's peak stop score is typically -2.4
+  on the longest runs vs +7.0 on short ones. A first look at "BELT-H score
+  reaches the threshold or the run passes a cap": 86.4 / 84.6 / 82.8% at
+  20 / 30 / 40% saving, above both parts; its two settings were chosen on the
+  same runs, so it still needs a held-out check.
 - Automated checks: all 772 trajectories at five thresholds, both frontiers
   and all 17 prices show no overlapping labels and no runtime errors.
 
