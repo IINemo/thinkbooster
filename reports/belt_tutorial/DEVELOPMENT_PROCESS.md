@@ -52,6 +52,11 @@ All code is in `scripts/belt_tutorial/`, configs in
   beats it. The paper's ~41% OOD saving used 8 chains/question, integer-answer
   subsets and interpolated frontiers.
 - Minerva Math (272, natural 44.1%): small gains; Now alone is uninformative.
+- Live MATH-500 run, BELT-H at threshold 0 (new samples, real stops, free
+  answers): 86.4% (432/500) at 2,621 reasoning tokens (-17%), BELT stopped
+  307 of 500 (61%). The offline replay predicted 86.6% at 2,576 (-18%), 62%.
+  All output tokens: 3,014 vs 3,614 without stopping. Per problem: 419
+  correct in both runs, 25 only without stopping, 13 only with BELT.
 - vLLM backend: within bf16 noise of HF on fixed prefixes (closer to fp32 than
   HF on the long case); 99.2–99.5% identical decisions on 4,201 Minerva
   points; accuracy within one problem; 1.7x faster scoring per decision
@@ -87,13 +92,17 @@ for the supervisor version. Changes:
 - Problem text and answers render with KaTeX; long questions keep their start
   and end and are cut only outside $...$. The exporter no longer truncates
   questions at 600 characters (it cut off the asked Minerva subproblem).
+- Problem maths renders as MathML (KaTeX, output "mathml"): the artifact host
+  blocks third-party stylesheets, so KaTeX's CSS and fonts cannot load.
+- The page data JSON files were not in git (a repo-wide `*.json` ignore);
+  they are now force-added.
 - Automated checks: all 772 trajectories at five thresholds, both frontiers
   and all 17 prices show no overlapping labels and no runtime errors.
 
 ## Open items
 
-- MATH-500 online BELT run (threshold 0) and the three end-to-end backend
-  timing runs are in the queue; add their numbers to the page.
+- The three end-to-end backend timing runs (bench_hf_b64, bench_hf_b9,
+  bench_vllm_b9) are running; add their numbers to the backends table.
 - GPQA-Diamond, AIME 2025 and HumanEval+ runs follow in the queue.
 - Codex review is unavailable on the user's login (every model refused), so
   the branch has no Codex review yet; required before any PR.

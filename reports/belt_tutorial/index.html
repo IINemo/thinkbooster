@@ -3,7 +3,6 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
 <style>
@@ -175,6 +174,8 @@ table.cmp tbody th { font-weight: 500; color: var(--fg); font-size: 0.86rem; }
 table.cmp tr.grp th { padding-top: 16px; font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); }
 th.grp { text-align: center !important; border-bottom: 1px solid var(--line); color: var(--fg); }
 #fr-table thead tr + tr th:first-child { text-align: right; }
+.live { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 16px; }
+.live p { max-width: 80ch; }
 .cap { font-size: 0.8rem; color: var(--muted); max-width: 90ch; }
 @media (max-width: 680px) { table.cmp { font-size: 0.8rem; } table.cmp th, table.cmp td { padding: 6px 6px; } table.cmp th:first-child { width: auto; } table.cmp code { overflow-wrap: anywhere; word-break: break-all; } }
 
@@ -218,7 +219,7 @@ th.grp { text-align: center !important; border-bottom: 1px solid var(--line); co
     <div class="stat"><span class="n">0.85</span><span class="t">AUROC of the Now belief for "is the answer right if we stop here" on MATH-500</span></div>
     <div class="stat"><span class="n">1.7×</span><span class="t">faster belief scoring with the vLLM backend than with Hugging Face, same decisions 99.5% of the time</span></div>
   </div>
-  <p class="bottomline">Bottom line: on MATH-500, BELT at its fitted threshold keeps 86.6% of the model's 88.8% accuracy with 18% fewer reasoning tokens. Beyond about 30% savings, a plain token cap does as well in our one-sample-per-problem setup. On Minerva Math, outside the probe's training domain, the gains are small.</p>
+  <p class="bottomline">Bottom line: run live in ThinkBooster on all 500 MATH-500 problems at its fitted threshold, BELT scores 86.4% against the model's own 88.8% with 17% fewer reasoning tokens, stopping early on 61% of problems. Beyond about 30% savings, a plain token cap does as well in our one-sample-per-problem setup. On Minerva Math, outside the probe's training domain, the gains are small.</p>
 </header>
 
 <section class="prose" aria-labelledby="h-beliefs">
@@ -358,6 +359,19 @@ scorer:
   <div class="table-wrap"><table id="fr-table"></table></div>
   <p class="cap" id="fr-cap"></p>
   <p class="muted" id="fr-read"></p>
+  <div class="live">
+    <h3>Live check on MATH-500</h3>
+    <p>The curves are offline replays. To check them, we ran BELT-H at threshold 0 live in ThinkBooster on all 500 problems: new samples, real stops, and a freely generated answer instead of a forced one.</p>
+    <div class="table-wrap"><table class="live-t">
+      <thead><tr><th></th><th>Accuracy</th><th>Reasoning tokens per problem</th><th>Stopped early</th></tr></thead>
+      <tbody>
+        <tr><td>No early stopping</td><td>88.8%</td><td>3,148</td><td>–</td></tr>
+        <tr><td>Offline replay, threshold 0</td><td>86.6%</td><td>2,576 (−18%)</td><td>62%</td></tr>
+        <tr class="focus"><td>Live run, threshold 0</td><td><b>86.4%</b></td><td><b>2,621 (−17%)</b></td><td>61%</td></tr>
+      </tbody>
+    </table></div>
+    <p class="cap">The replay counts the 48-token forced answer; the live run's free answers bring all output tokens to 3,014 per problem against 3,614 without stopping (−17%). Of the 500 problems, 419 are correct in both runs, 25 only without stopping and 13 only with BELT; with different samples, part of that churn is sampling noise.</p>
+  </div>
 </div>
 
 <section class="prose" aria-labelledby="h-backends">
@@ -505,16 +519,17 @@ function storyFacts(t) {
     now0: t.p.length ? t.p[0][1].toFixed(2) : "–", nowMax: t.p.length ? Math.max(...t.p.map((p) => p[1])).toFixed(2) : "–", forced0: t.p.length ? t.p[0][7] : "" };
 }
 
+// MathML output: browsers draw it natively, so no KaTeX stylesheet or fonts are needed.
 // Answers are bare TeX (\frac{14}{3}); render them inline when KaTeX is there.
 const tex = (x) => {
   if (!x || !window.katex) return esc(x || "");
-  try { return katex.renderToString(String(x), { throwOnError: false }); } catch (e) { return esc(x); }
+  try { return katex.renderToString(String(x), { throwOnError: true, output: "mathml" }); } catch (e) { return esc(x); }
 };
 // Render LaTeX in problem statements when KaTeX loaded; plain text otherwise.
 function typeset(node) {
   if (!node || typeof renderMathInElement !== "function") return;
   try {
-    renderMathInElement(node, { throwOnError: false, delimiters: [
+    renderMathInElement(node, { throwOnError: true, output: "mathml", errorCallback: () => {}, delimiters: [
       { left: "$$", right: "$$", display: false }, { left: "\\[", right: "\\]", display: false },
       { left: "\\(", right: "\\)", display: false }, { left: "$", right: "$", display: false } ] });
   } catch (e) { /* keep the raw text */ }
