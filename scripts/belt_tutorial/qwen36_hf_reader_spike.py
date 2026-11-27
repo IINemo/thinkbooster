@@ -23,6 +23,11 @@ def main():
     parser.add_argument("--layers", type=int, default=24)
     parser.add_argument("--lengths", default="2048,8192,16384")
     parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument(
+        "--dequantize",
+        action="store_true",
+        help="load the FP8 weights as bf16 (no remote FP8 kernels needed)",
+    )
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args()
 
@@ -37,12 +42,25 @@ def main():
     report = {
         "model": MODEL,
         "layers": args.layers,
+        "dequantized": args.dequantize,
         "gpu": torch.cuda.get_device_name(0),
     }
 
     t0 = time.perf_counter()
+    extra = {}
+    if args.dequantize:
+        from transformers import FineGrainedFP8Config
+
+        extra = {
+            "quantization_config": FineGrainedFP8Config(dequantize=True),
+            "dtype": torch.bfloat16,
+        }
     model = AutoModelForCausalLM.from_pretrained(
-        MODEL, revision=REVISION, config=config, device_map="cuda:0", dtype="auto"
+        MODEL,
+        revision=REVISION,
+        config=config,
+        device_map="cuda:0",
+        **({"dtype": "auto"} | extra),
     ).eval()
     report["load_seconds"] = time.perf_counter() - t0
     report["model_class"] = type(model).__name__
