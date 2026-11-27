@@ -53,7 +53,11 @@ def main():
         head = tokenizer.apply_chat_template(
             chat, tokenize=False, add_generation_prompt=True, enable_thinking=True
         )
-        steps = [s if isinstance(s, str) else s.get("text", "") for s in sample["steps"]]
+        # raw_text keeps each block's trailing blank line; text strips it.
+        steps = [
+            s if isinstance(s, str) else (s.get("raw_text") or s.get("text") or "")
+            for s in sample["steps"]
+        ]
         for k, decision in enumerate((sample.get("metadata") or {}).get("decisions") or []):
             prefix = "".join(steps[: decision["step"]])
             jobs.append((sample["index"], k, head + prefix + FORCE_SUFFIX))
