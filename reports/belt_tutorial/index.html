@@ -106,7 +106,6 @@ svg.chart { width: 100%; height: auto; display: block; touch-action: pan-y; }
 .cite i { color: var(--fg); }
 .bottomline { font-size: 1rem; max-width: 78ch; border-left: 3px solid var(--accent); padding-left: 12px; }
 .defs { font-size: 0.85rem; color: var(--muted); max-width: 90ch; }
-.slider-ends { display: inline-flex; gap: 6px; align-items: center; font-size: 0.78rem; color: var(--muted); }
 .thr-sum { font-size: 0.9rem; max-width: none; }
 svg.chart text { font-family: var(--font-mono); font-size: 11px; fill: var(--muted); }
 svg.chart .lbl-strong { fill: var(--fg); font-weight: 500; }
@@ -297,6 +296,10 @@ scorer:
     <p class="sr-only" id="tl-live" aria-live="polite"></p>
   </div>
   <div class="legend" aria-hidden="true">
+    <span><span class="swatch" style="background: var(--b-now)"></span>Now</span>
+    <span><span class="swatch" style="background: var(--b-end)"></span>End</span>
+    <span style="color: var(--b-later)"><span class="swatch dash"></span><span style="color: var(--muted)">Later</span></span>
+    <span><span class="swatch" style="background: var(--b-same)"></span>Same</span>
     <span><span class="swatch" style="background: var(--fg)"></span>stop score (BELT-H)</span>
     <span><span class="swatch dash" style="color: var(--accent)"></span>stop threshold</span>
     <span><span class="swatch" style="background: var(--muted); width: 2px; height: 14px"></span>model stops by itself</span>
@@ -665,28 +668,15 @@ function renderTimeline() {
   svg.append(el("text", { x: W - R + 6, y: ty + 4, fill: "var(--accent)", style: "fill: var(--accent)" }, "threshold"));
 
   // belief lines
-  const ends = [];
   for (const b of BELIEFS) {
     if (!t.p.length) break;
     const d = t.p.map((p, k) => `${k ? "L" : "M"}${x(p[0]).toFixed(1)},${yb(p[b.k]).toFixed(1)}`).join("");
     svg.append(el("path", { d, fill: "none", stroke: b.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round", "stroke-dasharray": b.dash }));
-    ends.push({ name: b.name, y: yb(t.p[t.p.length - 1][b.k]), x: x(t.p[t.p.length - 1][0]) });
-  }
-  ends.sort((a, b) => a.y - b.y);
-  // Keep the labels inside the belief band: below the stop markers' row and
-  // above the forced-answer row's title.
-  const yTop = top + 12, yBot = top + BH - 6;
-  ends.forEach((e) => { e.y = Math.min(Math.max(e.y, yTop), yBot); });
-  for (let k = 1; k < ends.length; k++) if (ends[k].y - ends[k - 1].y < 13) ends[k].y = ends[k - 1].y + 13;
-  if (ends.length && ends[ends.length - 1].y > yBot) {
-    ends[ends.length - 1].y = yBot;
-    for (let k = ends.length - 2; k >= 0; k--) if (ends[k + 1].y - ends[k].y < 13) ends[k].y = ends[k + 1].y - 13;
   }
   // Few decision points: mark each one so the lines read as samples.
   if (t.p.length && t.p.length <= 12) {
     for (const b of BELIEFS) for (const p of t.p) svg.append(el("circle", { cx: x(p[0]), cy: yb(p[b.k]), r: 3, fill: b.color }));
   }
-  for (const e of ends) svg.append(el("text", { x: e.x + 6, y: e.y + 4, class: "lbl-strong" }, e.name));
 
   // stop score line
   if (t.p.length) {
