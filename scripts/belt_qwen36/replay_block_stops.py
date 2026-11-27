@@ -17,6 +17,7 @@ import re
 from types import SimpleNamespace
 
 BLANK = re.compile(r"\n[ \t]*\n")
+EOS_IDS = (248046, 248044)  # Qwen3.6 <|im_end|>, <|endoftext|> (qwen36_contract.EOS_TOKEN_IDS)
 
 
 def separators(text):
@@ -39,6 +40,10 @@ class ReplayEngine:
         full = self.completions[req.seed_key[0]]
         start = len(req.prompt_ids) - full["prompt_len"]
         ids = full["ids"]
+        if start >= len(ids):
+            # The generator asked past the recorded chain: the replay and the
+            # recording disagree, and asking again would loop forever.
+            raise RuntimeError(f"replay of {req.seed_key[0]} asked for tokens past the recorded end")
         taken = []
         for i in range(start, min(len(ids), start + req.max_tokens)):
             taken.append(ids[i])
@@ -48,6 +53,10 @@ class ReplayEngine:
                 end = min(hits)
                 return SimpleNamespace(token_ids=taken, text=text[:end], finish_reason="stop",
                                        stop_reason=None, hit_eos=False)
+            if i == len(ids) - 1 and ids[i] in EOS_IDS:
+                # vLLM ends the request on an end-of-sequence token.
+                return SimpleNamespace(token_ids=taken, text=text, finish_reason="stop",
+                                       stop_reason=ids[i], hit_eos=True)
         text = self.tok.decode(taken)
         return SimpleNamespace(token_ids=taken, text=text, finish_reason="length",
                                stop_reason=None, hit_eos=False)

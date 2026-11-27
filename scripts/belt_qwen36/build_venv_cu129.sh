@@ -7,7 +7,10 @@
 # flashinfer, triton, nvidia-*, cupy, flash-linear-attention.
 set -e
 source /mnt/data/users/vlad.smirnov/belt_qwen36/env.sh
-VENV=/mnt/data/users/vlad.smirnov/venvs/belt-qwen36
+FINAL=/mnt/data/users/vlad.smirnov/venvs/belt-qwen36
+# Build beside the live venv and swap at the end, so jobs still running on the
+# old one are never left without their files mid-run.
+VENV=$FINAL.build
 CU=https://download.pytorch.org/whl/cu129
 VLLM=https://github.com/vllm-project/vllm/releases/download/v0.31.0/vllm-0.31.0+cu129-cp38-abi3-manylinux_2_28_x86_64.whl
 rm -rf $VENV
@@ -27,4 +30,9 @@ print("torch", torch.__version__, "cuda", torch.version.cuda, "available", torch
       "vllm", vllm.__version__, "transformers", transformers.__version__)
 x = torch.ones(2, device="cuda"); print("gpu ok", float(x.sum()))
 EOF
+# A venv's scripts hard-code its path, so rebuild those after the move.
+if [ -d $FINAL ]; then mv $FINAL $FINAL.old.$(date +%s); fi
+mv $VENV $FINAL
+sed -i "s|$VENV|$FINAL|g" $FINAL/bin/* 2>/dev/null || true
+$FINAL/bin/python -c "import vllm, torch; print('swapped in', torch.__version__)"
 echo VENV_DONE

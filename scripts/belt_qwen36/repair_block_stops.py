@@ -97,7 +97,8 @@ def main():
                           "completion_ids": c["completion_ids"], "query_points": missing})
             targets.append(i)
 
-    summary = {"chains": len(chains), "chains_repaired": len(targets),
+    summary = {"block_stops": "v2", "block_stop_strings": len(rc.block_stop_strings()),
+               "chains": len(chains), "chains_repaired": len(targets),
                "probes_before": sum(len(c["probes"]) for c in chains),
                "probes_added": sum(len(it["query_points"]) for it in items),
                "replay_s": round(replay_s, 1), "source": str(Path(args.shard_dir).resolve())}

@@ -11,6 +11,7 @@ set -e
 mkdir -p $V/hf_cache
 HF_HOME=$V/hf_cache HF_HUB_DISABLE_TELEMETRY=1 flock $V/hf_cache/.qwen36-download.lock \
   $V/venvs/belt-qwen36/bin/hf download Qwen/Qwen3.6-35B-A3B-FP8 --revision $REV > /dev/null
+if [ ! -f $SNAP/config.json ]; then echo "no model snapshot at $SNAP"; exit 1; fi
 dangling=$(find $SNAP -xtype l | wc -l)
 if [ "$dangling" != 0 ]; then echo "model has $dangling dangling links"; exit 1; fi
 echo "model $(du -shL $SNAP | cut -f1) ready on $(hostname) $(date -Is)"
