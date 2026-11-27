@@ -213,7 +213,7 @@ svg.ln { width: 28px; height: 8px; flex: none; }
 <header>
   <div class="eyebrow">ThinkBooster tutorial · BELT, belief-based termination</div>
   <h1>Watching a reasoning model decide when it is done</h1>
-  <p class="cite">BELT: Ni, Abulkhanov, Smirnov, Leippold, Ash, Baldwin, Shelmanov and Sachan, <i>Same Beliefs, Different Policies: Learning Reusable Representations for Early Stopping in LLM Reasoning</i>, arXiv preprint, 2026 · code at <a href="https://github.com/EdisonNi-hku/BELT">github.com/EdisonNi-hku/BELT</a></p>
+  <p class="cite">BELT: Ni, Abulkhanov, Smirnov, Leippold, Ash, Baldwin, Shelmanov and Sachan, <i>Same Beliefs, Different Policies: Learning Reusable Representations for Early Stopping in LLM Reasoning</i>, arXiv preprint, 2026 · code at <a href="https://github.com/EdisonNi-hku/BELT">github.com/EdisonNi-hku/BELT</a><br>ThinkBooster: Smirnov et al., <i>ThinkBooster: A Unified Framework for Seamless Test-Time Scaling of LLM Reasoning</i>, <a href="https://arxiv.org/abs/2606.06915">arXiv:2606.06915</a> · code at <a href="https://github.com/IINemo/thinkbooster">github.com/IINemo/thinkbooster</a></p>
   <p class="lede">BELT reads a frozen model's hidden states at every reasoning boundary and keeps four beliefs about the answer: is it right now, will it be right at the end, will a right answer still come, and will the current answer survive. A small linear policy turns those beliefs into a stop decision. In ThinkBooster, BELT is one more test-time strategy: a config switch adds it to any benchmark run, with either a Hugging Face or a vLLM backend for reading the beliefs. Every curve below comes from real ThinkBooster runs.</p>
   <div class="chips">
     <span class="chip">Qwen3-1.7B, thinking mode</span>
