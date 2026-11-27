@@ -137,6 +137,10 @@ pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 
 ul.notes { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 78ch; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.82rem; color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+#timeline rect[tabindex]:focus { outline: none; }
+#timeline rect[tabindex]:focus-visible { stroke: var(--accent); stroke-width: 2; }
+.belief .q { color: var(--fg); }
 .err { color: var(--fg); border: 1px dashed var(--muted); border-radius: 8px; padding: 12px; }
 
 @media (max-width: 860px) {
@@ -190,27 +194,28 @@ ul.notes { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 7
   </div>
   <div class="controls" id="browse-controls">
     <label class="ctl" for="ds-select">Dataset
-      <select id="ds-select"><option value="math500">MATH-500</option><option value="minerva">Minerva Math</option></select>
+      <select autocomplete="off" id="ds-select"><option value="math500">MATH-500</option><option value="minerva">Minerva Math</option></select>
     </label>
     <label class="ctl" for="idx-input">Problem
-      <input id="idx-input" type="number" min="0" step="1" value="0">
+      <input autocomplete="off" id="idx-input" type="number" min="0" step="1" value="0">
     </label>
     <label class="ctl" for="filter-select">Show
-      <select id="filter-select"><option value="all">any</option><option value="ok">model ends correct</option><option value="bad">model ends wrong</option></select>
+      <select autocomplete="off" id="filter-select"><option value="all">any</option><option value="ok">model ends correct</option><option value="bad">model ends wrong</option></select>
     </label>
     <button class="plain" id="random-btn" type="button">Random problem</button>
   </div>
   <div class="story" id="story"></div>
   <div class="controls">
     <label class="ctl" for="thr">Stop threshold
-      <input id="thr" type="range" min="-12" max="10" step="0.25" value="0">
+      <input autocomplete="off" id="thr" type="range" min="-12" max="10" step="0.25" value="0">
     </label>
     <span class="value" id="thr-val">0.00</span>
     <span class="hint">BELT stops at the first decision whose stop score reaches the threshold. 0 is the fitted policy's own boundary (stop probability 0.5); lower stops sooner.</span>
   </div>
   <div class="timeline-grid">
-    <div class="chart-wrap"><svg class="chart" id="timeline" viewBox="0 0 760 456" role="img" aria-label="Belief timeline"></svg></div>
-    <aside class="readout" id="readout" aria-live="polite"></aside>
+    <div class="chart-wrap"><svg class="chart" id="timeline" viewBox="0 0 760 456" role="group" aria-label="Belief timeline"></svg></div>
+    <aside class="readout" id="readout"></aside>
+    <p class="sr-only" id="tl-live" aria-live="polite"></p>
   </div>
   <div class="legend" aria-hidden="true">
     <span><span class="swatch" style="background: var(--b-now)"></span>Now</span>
@@ -230,7 +235,7 @@ ul.notes { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 7
 <div class="panel">
   <div class="controls">
     <label class="ctl" for="price">Token price λ
-      <input id="price" type="range" min="0" max="16" step="1" value="7">
+      <input autocomplete="off" id="price" type="range" min="0" max="16" step="1" value="7">
     </label>
     <span class="value" id="price-val"></span>
   </div>
@@ -286,7 +291,8 @@ pip install --no-deps -e ../BELT</pre>
   </div>
   <div class="step">
     <div class="code-head"><h3>2 · Write a stopping policy from the paper's fit</h3><button class="plain copy" type="button" data-target="c2">Copy</button></div>
-<pre id="c2">git -C ../BELT show origin/main:examples/qwen3-1.7b-sample/policies/belt_h_r_seed0.json &gt; belt_h_r_seed0.json
+<pre id="c2">git -C ../BELT show 700948b5f93ad1f40ab46589c5d4399c21275e1a:examples/qwen3-1.7b-sample/policies/belt_h_r_seed0.json \
+  &gt; belt_h_r_seed0.json
 python scripts/belt_tutorial/make_policy.py \
   --sample-policy belt_h_r_seed0.json --lambda-index 7 --threshold 0 \
   --out belt-policy.json</pre>
@@ -328,19 +334,19 @@ print(len(signal.hidden))   # 768-d representation the H policy reads</pre>
 const STORIES = [
   { key: "early", label: "Knew early", ds: "math500", i: 289,
     title: "It had the answer, then kept thinking",
-    text: (t) => `The forced answer is correct from the first decision point and stays correct. Within a few decision points Now and Same climb to about 1: the current answer is right and will not change. ${t.stopText} The model itself kept going to ${fmt(t.T)} tokens.` },
+    text: (t) => `The forced answer is correct from the first decision point and stays correct. Within a few decision points Now and Same climb to about 1: the current answer is right and will not change. ${t.s >= 0 ? t.stopText : "At this threshold BELT never stops, so nothing is saved."} The model itself kept going to ${fmt(t.T)} tokens.` },
   { key: "working", label: "Still working", ds: "math500", i: 285,
     title: "Wrong for now, but on its way",
-    text: (t) => `Now stays low: the answer at hand is wrong. End and Later stay high: the model is expected to get there. BELT waits. The first correct forced answer appears at decision ${t.firstOk + 1}, and ${t.stopShort}` },
+    text: (t) => `Now stays low: the answer at hand is wrong. End and Later stay high: the model is expected to get there. The first correct forced answer appears at decision ${t.firstOk + 1}. ${t.s < 0 ? "At this threshold BELT never stops." : t.s < t.firstOk ? `At this threshold BELT stops too early, at decision ${t.s + 1}, with a wrong answer.` : `BELT waits and stops at decision ${t.s + 1} with ${t.stopOk ? "a correct" : "a wrong"} answer.`}` },
   { key: "kept", label: "Kept the answer", ds: "minerva", i: 169,
-    title: "Stopping early saved a correct answer",
-    text: (t) => `Correct from the first decision point, but the model's own final answer is wrong (${t.ans}; reference ${t.gold}). Now is ${t.now0} at the first check, so ${t.stopShort}` },
+    title: "Early stopping can save a correct answer",
+    text: (t) => `Correct from the first decision point, but the model's own final answer is wrong (${t.ans}; reference ${t.gold}). Now is ${t.now0} at the first check. ${t.s < 0 ? "At this threshold BELT never stops, and the run ends with the wrong answer." : `BELT stops at decision ${t.s + 1} and ${t.stopOk ? "keeps a correct answer" : "still answers wrong"}.`}` },
   { key: "lost", label: "Lost cause", ds: "math500", i: 9,
     title: "No correct answer was coming",
-    text: (t) => `No decision point ever has a correct answer, and the model runs out of budget at ${fmt(t.T)} tokens. Later falls low: no correct answer is expected. ${t.stopText} It is wrong either way, so the saving is free.` },
+    text: (t) => `No decision point ever has a correct answer, and the model runs out of budget at ${fmt(t.T)} tokens. Later falls low: no correct answer is expected. ${t.s < 0 ? "At this threshold BELT never stops and the run spends its whole budget." : `${t.stopText} The answer is wrong either way, so those tokens are saved at no cost.`}` },
   { key: "missed", label: "Missed it", ds: "math500", i: 332,
     title: "A case BELT gets wrong",
-    text: (t) => `The forced answer "${t.forced0}" is correct from the first decision point, yet Now stays near ${t.now0} and the stop score stays far below 0. BELT never stops; the model thinks for ${fmt(t.T)} tokens and ends with a wrong answer. The beliefs are calibrated on average, not on every trajectory.` },
+    text: (t) => `The forced answer "${t.forced0}" is correct from the first decision point, yet Now stays near ${t.now0} and the stop score peaks at ${t.maxZ.toFixed(1)}. ${t.s < 0 ? `At this threshold BELT never stops; the model thinks for ${fmt(t.T)} tokens and ends with a wrong answer.` : `Only at a threshold this low does BELT stop, at decision ${t.s + 1}${t.stopOk ? " with the correct answer" : ""}; at the policy's own threshold of 0 it would not.`} The beliefs are calibrated on average, not on every trajectory.` },
 ];
 const NS = "http://www.w3.org/2000/svg";
 const fmt = (n) => Math.round(n).toLocaleString("en-US");
@@ -383,7 +389,8 @@ function storyFacts(t) {
   const stopShort = s >= 0
     ? `BELT stops at decision ${s + 1} with ${stopOk ? "a correct" : "a wrong"} answer.`
     : "at this threshold BELT never stops.";
-  return { T: t.T, firstOk, stopText, stopShort, ans: t.ans || "none", gold: t.gold,
+  return { T: t.T, s, stopOk, maxZ: t.p.length ? Math.max(...t.p.map((p) => p[5])) : 0,
+    firstOk, stopText, stopShort, ans: t.ans || "none", gold: t.gold,
     now0: t.p.length ? t.p[0][1].toFixed(2) : "–", forced0: t.p.length ? t.p[0][7] : "" };
 }
 
@@ -398,7 +405,8 @@ function renderStory() {
   if (st) {
     box.innerHTML = `<h3>${esc(st.title)}</h3><p>${esc(st.text(facts))}</p><div class="problem">${outcome}<br>${question}</div>`;
   } else {
-    box.innerHTML = `<h3>${dsName} #${t.i}</h3><p>${esc(facts.stopText)}</p><div class="problem">${outcome}<br>${question}</div>`;
+    const lead = t.p.length ? facts.stopText : "The model finished before block 4, where BELT makes its first decision, so there was nothing to stop.";
+    box.innerHTML = `<h3>${dsName} #${t.i}</h3><p>${esc(lead)}</p><div class="problem">${outcome}<br>${question}</div>`;
   }
 }
 
@@ -410,31 +418,51 @@ function renderTimeline() {
   const BH = 200, gap = 22, FS = 30, SH = 90;
   const fTop = top + BH + gap, sTop = fTop + FS + gap, axisY = sTop + SH;
   const T = Math.max(t.T, t.p.length ? t.p[t.p.length - 1][0] : 1);
-  const x = (tok) => L + (tok / T) * (W - L - R);
-  const yb = (p) => top + (1 - p) * BH;
-  const zMin = -20, zMax = 16;
-  const ys = (z) => sTop + ((zMax - Math.max(zMin, Math.min(zMax, z))) / (zMax - zMin)) * SH;
+  // Token axis: start just before the first decision when it comes late
+  // (decisions begin at block 4), so short traces do not sit in empty space.
+  const first = t.p.length ? t.p[0][0] : 0;
+  const x0 = first > 0.2 * T ? Math.max(0, first - 0.06 * (T - first)) : 0;
+  const x = (tok) => L + ((tok - x0) / (T - x0)) * (W - L - R);
+  // Belief axis: tighten to the data in steps of 0.1, but never to less than
+  // half the probability range, so small wiggles cannot look dramatic.
+  const bv = t.p.flatMap((p) => [p[1], p[2], p[3], p[4]]);
+  let bLo = bv.length ? Math.floor((Math.min(...bv) - 0.05) * 10) / 10 : 0;
+  let bHi = bv.length ? Math.ceil((Math.max(...bv) + 0.05) * 10) / 10 : 1;
+  bLo = Math.max(0, Math.min(bLo, 0.5)); bHi = Math.min(1, Math.max(bHi, 0.5));
+  if (bHi - bLo < 0.5) { if (bHi >= 1) bLo = 0.5; else bHi = Math.min(1, bLo + 0.5); }
+  const yb = (p) => top + ((bHi - p) / (bHi - bLo)) * BH;
+  const fullBelief = bLo === 0 && bHi === 1;
+  // Stop-score axis fits this trajectory's scores and the threshold.
+  const zs = t.p.map((p) => p[5]).concat([state.thr]);
+  let zLo = Math.min(...zs), zHi = Math.max(...zs);
+  if (zHi - zLo < 6) { const c = (zHi + zLo) / 2; zLo = c - 3; zHi = c + 3; }
+  const zPad = 0.12 * (zHi - zLo); zLo -= zPad; zHi += zPad;
+  const ys = (z) => sTop + ((zHi - z) / (zHi - zLo)) * SH;
+  const zStep = [1, 2, 5, 10, 20, 50].find((v) => (zHi - zLo) / v <= 4) || 100;
 
   // bands: titles, grid
-  svg.append(el("text", { x: L, y: top - 20, class: "band-title" }, "Beliefs (probability)"));
-  for (const v of [0, 0.5, 1]) {
+  svg.append(el("text", { x: L, y: top - 20, class: "band-title" }, fullBelief ? "Beliefs (probability)" : `Beliefs (probability, axis ${bLo.toFixed(1)}–${bHi.toFixed(1)})`));
+  for (const v of [bLo, (bLo + bHi) / 2, bHi]) {
     svg.append(el("line", { x1: L, x2: W - R, y1: yb(v), y2: yb(v), class: "grid" }));
-    svg.append(el("text", { x: L - 8, y: yb(v) + 4, "text-anchor": "end" }, v.toFixed(1)));
+    svg.append(el("text", { x: L - 8, y: yb(v) + 4, "text-anchor": "end" }, v.toFixed(2).replace(/0$/, "")));
   }
   svg.append(el("text", { x: L, y: fTop - 6, class: "band-title" }, "Forced answer at each decision"));
   svg.append(el("line", { x1: L, x2: W - R, y1: fTop + FS / 2, y2: fTop + FS / 2, class: "grid" }));
   svg.append(el("text", { x: L, y: sTop - 6, class: "band-title" }, "Stop score (BELT-H policy)"));
   svg.append(el("line", { x1: L, x2: W - R, y1: sTop, y2: sTop, class: "grid" }));
   svg.append(el("line", { x1: L, x2: W - R, y1: axisY, y2: axisY, class: "axis" }));
-  for (const v of [10, 0, -10]) svg.append(el("text", { x: L - 8, y: ys(v) + 4, "text-anchor": "end" }, String(v)));
+  for (let v = Math.ceil(zLo / zStep) * zStep; v <= zHi; v += zStep) {
+    svg.append(el("text", { x: L - 8, y: ys(v) + 4, "text-anchor": "end" }, String(v)));
+  }
 
   // x axis
-  const step = niceStep(T);
-  for (let v = 0; v <= T; v += step) {
+  const step = niceStep(T - x0);
+  for (let v = Math.ceil(x0 / step) * step; v <= T; v += step) {
     svg.append(el("line", { x1: x(v), x2: x(v), y1: axisY, y2: axisY + 4, class: "axis" }));
     svg.append(el("text", { x: x(v), y: axisY + 17, "text-anchor": "middle" }, v >= 1000 ? (v / 1000) + "k" : String(v)));
   }
   svg.append(el("text", { x: W - R, y: axisY + 33, "text-anchor": "end", class: "lbl-strong" }, "reasoning tokens"));
+  if (x0 > 0) svg.append(el("text", { x: L, y: axisY + 33 }, `axis starts at ${fmt(x0)} tokens; first decision at ${fmt(first)}`));
 
   const s = stopIndex(t, state.thr);
   // saved region
@@ -445,6 +473,7 @@ function renderTimeline() {
   // checks stop after block 128
   if (t.p.length >= 32) {
     const xl = x(t.p[t.p.length - 1][0]);
+    if (x(T) - xl > 24) svg.append(el("rect", { x: xl + 8, y: top, width: x(T) - xl - 8, height: axisY - top, fill: "var(--grid)", "fill-opacity": 0.55 }));
     if (x(T) - xl > 190) svg.append(el("text", { x: x(T) - 6, y: fTop + FS / 2 + 4, "text-anchor": "end" }, "no decisions after block 128"));
   }
   // threshold line
@@ -461,7 +490,19 @@ function renderTimeline() {
     ends.push({ name: b.name, y: yb(t.p[t.p.length - 1][b.k]), x: x(t.p[t.p.length - 1][0]) });
   }
   ends.sort((a, b) => a.y - b.y);
+  // Keep the labels inside the belief band: below the stop markers' row and
+  // above the forced-answer row's title.
+  const yTop = top + 12, yBot = top + BH - 6;
+  ends.forEach((e) => { e.y = Math.min(Math.max(e.y, yTop), yBot); });
   for (let k = 1; k < ends.length; k++) if (ends[k].y - ends[k - 1].y < 13) ends[k].y = ends[k - 1].y + 13;
+  if (ends.length && ends[ends.length - 1].y > yBot) {
+    ends[ends.length - 1].y = yBot;
+    for (let k = ends.length - 2; k >= 0; k--) if (ends[k + 1].y - ends[k].y < 13) ends[k].y = ends[k + 1].y - 13;
+  }
+  // Few decision points: mark each one so the lines read as samples.
+  if (t.p.length && t.p.length <= 12) {
+    for (const b of BELIEFS) for (const p of t.p) svg.append(el("circle", { cx: x(p[0]), cy: yb(p[b.k]), r: 3, fill: b.color }));
+  }
   for (const e of ends) svg.append(el("text", { x: e.x + 6, y: e.y + 4, class: "lbl-strong" }, e.name));
 
   // stop score line
@@ -478,7 +519,8 @@ function renderTimeline() {
   // natural end
   const xe = x(t.T);
   svg.append(el("line", { x1: xe, x2: xe, y1: top, y2: axisY, stroke: "var(--muted)", "stroke-width": 1.5 }));
-  svg.append(el("text", { x: xe, y: top - 6, "text-anchor": "end" }, "model stops"));
+  const sx0 = s >= 0 ? x(t.p[s][0]) : null;
+  if (sx0 === null || Math.abs(xe - sx0) > 90) svg.append(el("text", { x: xe, y: top - 6, "text-anchor": "end" }, "model stops"));
   // BELT stop
   if (s >= 0) {
     const xs = x(t.p[s][0]);
@@ -494,13 +536,20 @@ function renderTimeline() {
     svg.append(el("line", { x1: hx, x2: hx, y1: top, y2: axisY, stroke: "var(--fg)", "stroke-width": 1, "stroke-opacity": 0.35 }));
     for (const b of BELIEFS) svg.append(el("circle", { cx: hx, cy: yb(t.p[hk][b.k]), r: 4.5, fill: b.color, stroke: "var(--surface)", "stroke-width": 2 }));
   }
-  const hit = el("rect", { x: L, y: top, width: W - L - R, height: axisY - top, fill: "transparent", tabindex: 0, "aria-label": "Decision points; use arrow keys" });
+  const cur = state.hover ?? (s >= 0 ? s : 0);
+  const hit = el("rect", { x: L, y: top, width: W - L - R, height: axisY - top, fill: "transparent", tabindex: 0,
+    role: "slider", "aria-label": "Decision point, use left and right arrow keys",
+    "aria-valuemin": 1, "aria-valuemax": Math.max(1, t.p.length), "aria-valuenow": Math.min(cur + 1, Math.max(1, t.p.length)),
+    "aria-valuetext": t.p.length ? `Decision ${cur + 1} of ${t.p.length}` : "No decision points" });
+  const refocus = () => document.querySelector("#timeline rect[tabindex]").focus({ preventScroll: true });
   const pick = (evt) => {
+    const hadFocus = document.activeElement === hit;
     const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
     const loc = pt.matrixTransform(svg.getScreenCTM().inverse());
     let best = 0, bd = Infinity;
     t.p.forEach((p, k) => { const dd = Math.abs(x(p[0]) - loc.x); if (dd < bd) { bd = dd; best = k; } });
     if (best !== state.hover) { state.hover = best; renderTimeline(); renderReadout(); }
+    if (hadFocus || evt.type === "pointerdown") refocus();
   };
   hit.addEventListener("pointermove", pick);
   hit.addEventListener("pointerdown", pick);
@@ -509,12 +558,18 @@ function renderTimeline() {
     e.preventDefault();
     const cur = state.hover ?? (s >= 0 ? s : 0);
     state.hover = Math.max(0, Math.min(t.p.length - 1, cur + (e.key === "ArrowRight" ? 1 : -1)));
-    renderTimeline(); renderReadout();
-    document.querySelector("#timeline rect[tabindex]").focus();
+    renderTimeline(); renderReadout(); announce();
+    refocus();
   });
   svg.append(hit);
 }
 
+function announce() {
+  const t = state.traj, live = document.getElementById("tl-live");
+  if (!t.p.length) { live.textContent = "No decision points in this trajectory."; return; }
+  const k = state.hover ?? Math.max(0, stopIndex(t, state.thr)), p = t.p[k];
+  live.textContent = `Decision ${k + 1} of ${t.p.length}: Now ${p[1].toFixed(2)}, End ${p[2].toFixed(2)}, Later ${p[3].toFixed(2)}, Same ${p[4].toFixed(2)}, forced answer ${p[6] === 1 ? "correct" : "wrong"}.`;
+}
 function renderReadout() {
   const t = state.traj;
   const box = document.getElementById("readout");
@@ -535,6 +590,8 @@ function renderReadout() {
 
 function setTraj(t, storyKey) {
   state.traj = t; state.story = storyKey; state.hover = null;
+  const idx = document.getElementById("idx-input");
+  idx.max = String(Math.max(...DATA.traj.filter((r) => r.ds === t.ds).map((r) => r.i)));
   document.querySelectorAll("#story-tabs .tab").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.key === storyKey)));
   document.getElementById("ds-select").value = t.ds;
   document.getElementById("idx-input").value = t.i;
@@ -565,7 +622,7 @@ function renderCoef() {
   const norm = Math.hypot(...row.w);
   const colors = ["var(--b-now)", "var(--b-end)", "var(--b-later)", "var(--b-same)", "var(--faint)"];
   const svg = document.getElementById("coef"); svg.replaceChildren();
-  const L = 70, R = 50, W = 460, rowH = 38, top = 26;
+  const L = 100, R = 50, W = 460, rowH = 38, top = 26;
   const x = (v) => L + ((v + 1) / 2) * (W - L - R);
   svg.append(el("line", { x1: x(0), x2: x(0), y1: top - 10, y2: top + rowH * 5, class: "axis" }));
   for (const v of [-1, 0, 1]) svg.append(el("text", { x: x(v), y: top + rowH * 5 + 16, "text-anchor": "middle" }, v.toFixed(0)));
@@ -576,8 +633,18 @@ function renderCoef() {
     const x0 = Math.min(x(0), x(v)), w = Math.abs(x(v) - x(0));
     svg.append(el("text", { x: L - 10, y: y + 13, "text-anchor": "end", class: "lbl-strong" }, name));
     svg.append(el("rect", { x: x0, y, width: Math.max(w, 1), height: 18, rx: 3, fill: colors[j] }));
-    svg.append(el("text", { x: v >= 0 ? x(v) + 6 : x(v) - 6, y: y + 13, "text-anchor": v >= 0 ? "start" : "end" }, v.toFixed(2)));
+    // Long negative bars put their value on the other side of the axis, clear of the name.
+    const right = v >= 0 || v < -0.5;
+    svg.append(el("text", { x: v >= 0 ? x(v) + 6 : right ? x(0) + 6 : x(v) - 6, y: y + 13, "text-anchor": right ? "start" : "end" }, v.toFixed(2)));
   });
+}
+function priceTrend() {
+  const P = DATA.polB, f = P.features;
+  const nw = (row, name) => { const n = Math.hypot(...row.w); return row.w[f.indexOf(name)] / n; };
+  const lo = P.rows[0], hi = P.rows[P.rows.length - 1];
+  const later = P.rows.map((r) => nw(r, "Later"));
+  const sg = (v) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(2);
+  return `Across the 17 fitted prices, prefix length carries the most weight when tokens are cheap (${sg(nw(lo, "Length"))} at the lowest price) and fades as they get expensive (${sg(nw(hi, "Length"))} at the highest). End takes over with a negative sign (${sg(nw(hi, "End"))} at the highest price): stop where finishing is not expected to improve the answer. Later stays positive at every price (${sg(Math.min(...later))} to ${sg(Math.max(...later))}). Same probe, same beliefs; only six numbers change.`;
 }
 function renderPriceText() {
   if (!DATA.polB || !state.traj) return;
@@ -588,10 +655,12 @@ function renderPriceText() {
   const norm = Math.hypot(...row.w);
   const share = DATA.polB.features.map((n, j) => [n, row.w[j] / norm]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
   const lead = share.slice(0, 2).map(([n, v]) => `${n} (${v >= 0 ? "+" : ""}${v.toFixed(2)})`).join(" and ");
-  const where = s >= 0
+  const where = !t.p.length
+    ? `The trajectory above ends before BELT's first decision point, so no policy can stop it.`
+    : s >= 0
     ? `On the trajectory above (${t.ds === "math500" ? "MATH-500" : "Minerva"} #${t.i}), this BELT-B policy stops at decision ${s + 1}, ${fmt(t.p[s][0])} tokens, with ${t.p[s][6] === 1 ? "a correct" : "a wrong"} forced answer.`
     : `On the trajectory above (${t.ds === "math500" ? "MATH-500" : "Minerva"} #${t.i}), this BELT-B policy never stops.`;
-  document.getElementById("price-text").innerHTML = `<p>At this price the policy leans most on <b>${lead}</b>.</p><p>${where}</p><p class="muted">Cheap tokens: prefix length carries most of the weight, so the policy waits for long traces. Expensive tokens: the weight moves onto End with a negative sign (stop where finishing is not expected to improve the answer), while Same and Now push toward stopping. Same probe, same beliefs; only six numbers change.</p>`;
+  document.getElementById("price-text").innerHTML = `<p>At this price the policy leans most on <b>${lead}</b>.</p><p>${where}</p><p class="muted">${priceTrend()}</p>`;
 }
 
 /* ---------- Frontier panel ---------- */
@@ -607,18 +676,28 @@ function readings(pts) {
   const acc = [0.2, 0.3, 0.4].map((s) => { const ok = pts.filter((p) => p[0] >= s - 1e-9); return ok.length ? Math.max(...ok.map((p) => p[1])) : NaN; });
   return { nat, sav, acc };
 }
-function currentBeltPoint(pts) {
-  // Outcome at threshold t equals the replay at the smallest fitted logit >= t.
-  const cands = pts.filter((p) => p[3] !== null && p[3] >= state.thr);
-  if (!cands.length) return pts.find((p) => p[3] === null);
-  return cands.reduce((a, b) => (b[3] < a[3] ? b : a));
+function currentBeltPoint(ds) {
+  // Exact replay of BELT-H at the current threshold over this dataset's
+  // never-stop trajectories: stop at the first decision whose score reaches the
+  // threshold and take the forced answer there (prefix + forced-answer tokens);
+  // otherwise the natural answer and reasoning length.
+  let correct = 0, cost = 0, stops = 0, natCost = 0, n = 0;
+  for (const t of DATA.traj) {
+    if (t.ds !== ds) continue;
+    n++; natCost += t.T;
+    const p = t.p.find((q) => q[5] >= state.thr && q[6] !== -1);
+    if (p) { stops++; correct += p[6]; cost += p[0] + (p[8] || 0); }
+    else { correct += t.ok; cost += t.T; }
+  }
+  return [1 - cost / natCost, correct / n, cost / n, state.thr, stops / n];
 }
 function renderFrontier() {
   const F = DATA.frontiers[state.frDs];
   const svg = document.getElementById("frontier"); svg.replaceChildren();
   const W = 760, H = 372, L = 52, R = 96, top = 18, B = 56;
   const nat = F["BELT-H"].find((p) => p[3] === null);
-  const xMax = nat[2] * 1.04, xMin = nat[2] * 0.3;
+  const cp = currentBeltPoint(state.frDs);
+  const xMax = nat[2] * 1.04, xMin = Math.min(nat[2] * 0.3, cp[2] * 0.97);
   const vis = (p) => p[2] >= xMin;
   const all = Object.values(F).flat().filter(vis);
   const yMin = Math.max(0, Math.floor((Math.min(...all.map((p) => p[1])) - 0.02) * 20) / 20);
@@ -648,8 +727,13 @@ function renderFrontier() {
     if (pts.length) labels.push({ name: m.name, x: x(pts[0][2]), y: y(pts[0][1]) });
   }
   // left-end direct labels for BELT-H and Fixed cap only
-  for (const lb of labels.filter((l) => l.name === "BELT-H" || l.name === "Fixed cap")) {
-    svg.append(el("text", { x: lb.x + 4, y: lb.y + (lb.name === "BELT-H" ? -8 : 16), class: "lbl-strong" }, lb.name));
+  const lbH = labels.find((l) => l.name === "BELT-H"), lbC = labels.find((l) => l.name === "Fixed cap");
+  if (lbH && lbC) {
+    // BELT-H above its curve's start, Fixed cap below its own; separate them if they still meet.
+    let yH = lbH.y - 8, yC = lbC.y + 16;
+    if (Math.abs(yH - yC) < 16 && Math.abs(lbH.x - lbC.x) < 80) { if (yH <= yC) yC = yH + 16; else yH = yC + 16; }
+    svg.append(el("text", { x: lbH.x + 4, y: yH, class: "lbl-strong" }, "BELT-H"));
+    svg.append(el("text", { x: lbC.x + 4, y: yC, class: "lbl-strong" }, "Fixed cap"));
   }
   // natural star
   const sx = x(nat[2]), sy = y(nat[1]);
@@ -658,7 +742,6 @@ function renderFrontier() {
   svg.append(el("polygon", { points: star.join(" "), fill: "var(--fg)", stroke: "var(--surface)", "stroke-width": 1.5 }));
   svg.append(el("text", { x: sx + 10, y: sy + 4, class: "lbl-strong" }, `natural ${pct(nat[1])}`));
   // current threshold point
-  const cp = currentBeltPoint(F["BELT-H"]);
   if (cp && vis(cp)) {
     const cx = x(cp[2]), cy = y(cp[1]);
     svg.append(el("polygon", { points: `${cx},${cy - 7} ${cx + 7},${cy} ${cx},${cy + 7} ${cx - 7},${cy}`, fill: "var(--accent)", stroke: "var(--surface)", "stroke-width": 2 }));
@@ -699,17 +782,27 @@ async function boot() {
     tabs.append(b);
   }
   const browse = (t) => t && setTraj(t, null);
-  document.getElementById("idx-input").addEventListener("change", (e) => browse(DATA.byKey.get(`${document.getElementById("ds-select").value}:${parseInt(e.target.value, 10)}`)));
+  const idx = document.getElementById("idx-input");
+  idx.addEventListener("change", () => {
+    const t = DATA.byKey.get(`${document.getElementById("ds-select").value}:${parseInt(idx.value, 10)}`);
+    if (t) browse(t); else idx.value = state.traj.i;  // out of range: keep the shown problem
+  });
   document.getElementById("ds-select").addEventListener("change", (e) => { const c = filtered(e.target.value); browse(c[0]); });
-  document.getElementById("filter-select").addEventListener("change", () => { const c = filtered(document.getElementById("ds-select").value); browse(c[Math.floor(Math.random() * c.length)]); });
+  document.getElementById("filter-select").addEventListener("change", () => {
+    const c = filtered(document.getElementById("ds-select").value);
+    if (!c.includes(state.traj) && c.length) browse(c[Math.floor(Math.random() * c.length)]);
+  });
   document.getElementById("random-btn").addEventListener("click", () => { const c = filtered(document.getElementById("ds-select").value); browse(c[Math.floor(Math.random() * c.length)]); });
   const thr = document.getElementById("thr");
+  state.thr = parseFloat(thr.value) || 0;
+  document.getElementById("thr-val").textContent = state.thr.toFixed(2);
   thr.addEventListener("input", () => {
     state.thr = parseFloat(thr.value);
     document.getElementById("thr-val").textContent = state.thr.toFixed(2);
-    state.hover = null; renderStory(); renderTimeline(); renderReadout(); renderFrontier();
+    state.hover = null; renderStory(); renderTimeline(); renderReadout(); renderFrontier(); announce();
   });
   const price = document.getElementById("price");
+  state.price = parseInt(price.value, 10) || 0;
   price.addEventListener("input", () => { state.price = parseInt(price.value, 10); renderCoef(); renderPriceText(); });
   const frTabs = document.getElementById("fr-tabs");
   for (const [k, label] of [["math500", "MATH-500"], ["minerva", "Minerva Math"]]) {
