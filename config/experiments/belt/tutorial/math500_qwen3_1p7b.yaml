@@ -1,0 +1,67 @@
+# @package _global_
+# BELT tutorial run (MATH-500): Qwen3-1.7B thinking, seed-0 ReProbe-initialized
+# BELT probe, paper protocol (stop decision every fourth blank-line block from
+# block 4, up to block 128; about 12k thinking tokens). Pass the stopping policy
+# with strategy.policy_path=...; a never-stop policy gives natural completion
+# with beliefs logged at every decision point.
+defaults:
+  - /config
+  - /model/vllm_qwen3
+  - /generation/default
+  - /system/default
+  - /strategy/belt
+  - /scorer/belt
+  - /evaluation/default
+  - _self_
+
+run_name: belt_tutorial_math500_seed${system.seed}_${now:%H-%M-%S}
+verbose: true
+report_to: null
+
+model:
+  type: vllm
+  model_path: Qwen/Qwen3-1.7B
+  model_short_name: qwen3_1p7b
+  revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+  gpu_memory_utilization: 0.80
+  tensor_parallel_size: 1
+  enable_prefix_caching: true
+  # Thinking stops when fewer than max_step_tokens + 512 tokens remain, so
+  # 14336 leaves about 12k thinking tokens after the prompt, as in the paper.
+  max_context_budget: 14336
+  disable_thinking_mode: false
+
+strategy:
+  min_steps: 4
+  query_stride: 4
+  max_blocks: 128
+
+scorer:
+  device: cuda:1
+
+generation:
+  max_new_tokens: 2048
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+  batch_size: 1
+  max_length: 14336
+  checkpoint_batch_size: 64
+
+evaluation:
+  evaluators: [exact_match]
+  batch_evaluators: []
+
+dataset:
+  dataset_path: HuggingFaceH4/MATH-500
+  dataset_config: null
+  dataset_split: test
+  subset: null
+  offset: 0
+  question_field: problem
+  answer_field: answer
+  answer_format: numeric
+  data_name: math500
+  system_prompt: ""
+  prompt_template: "Answer the following question. Reply with the answer only. Answer enclosed with \\boxed{{}}.\n<Question>: {question}"
+  prompt_file: null
