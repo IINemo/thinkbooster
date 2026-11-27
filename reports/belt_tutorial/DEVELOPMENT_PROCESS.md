@@ -107,6 +107,13 @@ for the supervisor version. Changes:
   reaches the threshold or the run passes a cap": 86.4 / 84.6 / 82.8% at
   20 / 30 / 40% saving, above both parts; its two settings were chosen on the
   same runs, so it still needs a held-out check.
+- Held-out check of the combined rule (`validate_hybrid.py`, 500 random half
+  splits, settings picked on one half and scored on the other;
+  `hybrid_validation.json`). Keeping BELT-H at its fitted threshold 0 and
+  tuning only a cap is as good as tuning both. MATH-500 held-out: 85.7 /
+  83.3 / 81.8% at 20 / 30 / 40% saving vs cap 84.5 / 82.5 / 79.5 and BELT-H
+  86.0 / 82.2 / 74.3. Minerva: ties the cap. The page shows these held-out
+  numbers instead of the in-sample ones.
 - Automated checks: all 772 trajectories at five thresholds, both frontiers
   and all 17 prices show no overlapping labels and no runtime errors.
 

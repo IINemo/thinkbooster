@@ -391,16 +391,20 @@ scorer:
       </tbody>
     </table></div>
     <p><b>BELT picks better moments, but rarely becomes confident on long, hard runs.</b> Within the long runs it loses 15 problems in 74 stops, against 26 in 112 for the cap. But its peak stop score is typically −2.4 on the longest runs and +7.0 on short ones: on hard problems the beliefs keep hoping a correct answer will still come. To save 30%, the threshold has to drop to about −5, far below the policy's fitted boundary of 0, and at that threshold BELT also stops 192 short runs early. They give only 15% of its saving and cost 11 problems. At its own threshold of 0, BELT-H is fine: 18% fewer tokens for 2.2 points of accuracy.</p>
-    <p><b>Combining the two works better than either, in a first look.</b> Stop when the BELT-H score reaches the threshold <i>or</i> the run passes a token cap:</p>
+    <p><b>Adding a cap to BELT fixes its weakness at large savings.</b> Keep BELT-H at its fitted threshold of 0 and also stop any run that passes a token cap: BELT handles the moments it is confident about, and the cap cuts the long runs where it never is. Like the cap alone, the rule has one setting, the cap. To keep the comparison fair, each method's setting is picked on a random half of the problems and scored on the other half, over 500 such splits:</p>
     <div class="table-wrap"><table class="why-t">
-      <thead><tr><th>Token saving</th><th>BELT-H + cap</th><th>Fixed token cap</th><th>BELT-H</th></tr></thead>
+      <thead><tr><th>Held-out accuracy at a target saving</th><th>BELT-H</th><th>Fixed token cap</th><th>BELT-H at 0 + cap</th></tr></thead>
       <tbody>
-        <tr><td>20%</td><td><b>86.4%</b></td><td>85.4%</td><td><b>86.4%</b></td></tr>
-        <tr><td>30%</td><td><b>84.6%</b></td><td>83.8%</td><td>82.8%</td></tr>
-        <tr><td>40%</td><td><b>82.8%</b></td><td>80.4%</td><td>76.0%</td></tr>
+        <tr><td>MATH-500, 20%</td><td><b>86.0%</b></td><td>84.5%</td><td>85.7%</td></tr>
+        <tr><td>MATH-500, 30%</td><td>82.2%</td><td>82.5%</td><td><b>83.3%</b></td></tr>
+        <tr><td>MATH-500, 40%</td><td>74.3%</td><td>79.5%</td><td><b>81.8%</b></td></tr>
+        <tr><td>Minerva Math, 20%</td><td><b>41.3%</b></td><td>40.4%</td><td>40.3%</td></tr>
+        <tr><td>Minerva Math, 30%</td><td>38.3%</td><td>39.5%</td><td><b>39.6%</b></td></tr>
+        <tr><td>Minerva Math, 40%</td><td>36.6%</td><td><b>38.8%</b></td><td>38.5%</td></tr>
       </tbody>
     </table></div>
-    <p class="cap">The combined rule's two settings (threshold −1, cap 8,500 / 5,600 / 4,200 tokens) were chosen on these same 500 runs, so its numbers are optimistic until checked on held-out problems. One problem is 0.2 points. On Minerva the longest quarter of runs (56% of tokens) is right only 15% of the time, so cutting it is nearly free for every method.</p>
+    <p>On MATH-500 the combined rule is 7.5 points above BELT-H at a 40% saving (ahead in 99% of splits) and 1 to 2 points above the cap (ahead in 64% to 91% of splits); at a 20% saving BELT-H alone is as good. On Minerva it ties the cap: there the longest quarter of runs (56% of tokens) is right only 15% of the time, so cutting it is nearly free for every method.</p>
+    <p class="cap">Means over 500 random half splits; the savings actually reached on the held-out halves are 1 to 3 points above the target on MATH-500 and up to 9 points above it on Minerva at the 20% target. A held-out half has 250 MATH-500 or 136 Minerva problems, so one problem is 0.4 or 0.7 points, and gaps under about 1 point are not reliable. Tuning BELT's threshold as well as the cap does no better than keeping it at 0. These are held-out problems, not new samples: a second sampled run per problem would be the stronger test. Script: <code>scripts/belt_tutorial/validate_hybrid.py</code>.</p>
   </div>
   <div class="live">
     <h3>Live check on MATH-500</h3>
