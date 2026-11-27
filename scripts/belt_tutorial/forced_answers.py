@@ -13,7 +13,11 @@ same trajectories.
 
 import argparse
 import json
+import os
 from pathlib import Path
+
+# The evaluator imports initialize CUDA; vLLM must then spawn its engine.
+os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
 
 from omegaconf import OmegaConf
 from transformers import AutoTokenizer
