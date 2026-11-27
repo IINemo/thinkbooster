@@ -141,8 +141,16 @@ for the supervisor version. Changes:
   trainer backbone, reader memory fixes), applied to BELT 700948b on Artem-3.
 - Pool built (7,100 questions, salt `qwen36-belt-2026-11-27-v1`), smoke test
   passed end to end; details and the memory fixes are in PLAN.md.
-- Full fit-split generation started 19:27 on both Artem-3 GPUs as 16
-  resumable shards (`run_fit_queue.sh`), about 30 h.
+- Full fit-split generation: 16 resumable shards (`run_fit_queue.sh`), 4 per
+  GPU on Artem-3 (CUDA 13 venv, since 19:27) and Artem-8 (since 20:31), about
+  3.7 h per shard, done around 11:30 on 2026-11-28. Artem-1 (user quota full),
+  Artem-2 and Artem-7 (taken by another user's jobs) dropped out.
+- Artem-8's driver supports CUDA 12.9 only, so it runs a cu129 build of the
+  same venv (`build_venv_cu129.sh`: torch 2.13.0+cu129, vLLM 0.31.0+cu129,
+  everything else pinned to Artem-3's versions, no torchcodec) and samples
+  with vLLM's own top-k/top-p kernels (`VLLM_USE_FLASHINFER_SAMPLER=0`; its
+  system nvcc is too old for FlashInfer). Same sampling distribution; record
+  the host per shard when merging.
 
 ## Open items
 
