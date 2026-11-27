@@ -1,9 +1,11 @@
 """Force an answer at every BELT decision point of a never-stop run.
 
 For each logged decision, the reasoning prefix up to that block is closed with
-``</think>\\n\\n\\boxed{`` and decoded until ``}`` (at most 32 tokens), as in the
-BELT paper's forced-answer protocol (appendix A.3). The answers are graded with
-ThinkBooster's exact-match evaluator. This gives, per trajectory, when a correct
+``</think>\\n\\n\\boxed{`` and decoded for at most 48 tokens, as in the BELT
+paper's forced-answer protocol (appendix A.3). The paper's answers are integers
+and it stops at the first ``}``; LaTeX answers nest braces (``\\frac{\\pi}{2}``),
+so the answer here is the text up to the brace that closes ``\\boxed{``.
+The answers are graded with ThinkBooster's exact-match evaluator. This gives, per trajectory, when a correct
 answer first became available, and lets any stopping threshold be read off the
 same trajectories.
 
@@ -25,6 +27,19 @@ from transformers import AutoTokenizer
 from thinkbooster.evaluation.exact_match import EvaluatorExactMatch
 
 FORCE_SUFFIX = "</think>\n\n\\boxed{"
+
+
+def boxed_content(text):
+    """Text up to the brace closing an already opened \\boxed{, or None."""
+    depth = 0
+    for i, char in enumerate(text):
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            if depth == 0:
+                return text[:i]
+            depth -= 1
+    return None
 
 
 def prompt_text(config, question):
@@ -75,8 +90,8 @@ def main():
         seed=int(config.system.seed),
     )
     params = SamplingParams(
-        temperature=0.6, top_p=0.95, top_k=20, max_tokens=32, stop=["}"],
-        include_stop_str_in_output=False, seed=int(config.system.seed),
+        temperature=0.6, top_p=0.95, top_k=20, max_tokens=48,
+        seed=int(config.system.seed),
     )
     outputs = llm.generate([j[2] for j in jobs], params)
 
@@ -84,8 +99,9 @@ def main():
     with args.out.open("w") as stream:
         for (index, k, _), output in zip(jobs, outputs):
             sample = by_index[index]
-            answer = output.outputs[0].text.strip()
-            closed = output.outputs[0].finish_reason == "stop"
+            content = boxed_content(output.outputs[0].text)
+            closed = content is not None
+            answer = (content or output.outputs[0].text).strip()
             correct = bool(
                 closed
                 and evaluator._score_single(
@@ -99,7 +115,13 @@ def main():
                         "decision": k,
                         "forced_answer": answer,
                         "closed": closed,
-                        "forced_tokens": len(output.outputs[0].token_ids),
+                        # Charged tokens end at the closing brace, as if decoding
+                        # had stopped there.
+                        "forced_tokens": (
+                            len(tokenizer.encode(content + "}", add_special_tokens=False))
+                            if closed
+                            else len(output.outputs[0].token_ids)
+                        ),
                         "correct": correct,
                     }
                 )
