@@ -4,7 +4,8 @@ Reads never-stop runs with forced answers and writes, into --out:
 
 * ``trajectories.json``: one record per trajectory with its decision points
   (prefix tokens, the four beliefs, the H policy logit, forced-answer
-  correctness and text), plus reasoning snippets for the featured stories.
+  correctness, text and token count), plus reasoning snippets for the
+  featured stories. The page replays any threshold exactly from these.
 * ``frontiers.json``: accuracy against reasoning tokens for BELT-H (threshold
   sweep), BELT-B, the Now belief alone and a fixed token cap, per dataset.
 * ``policies_b.json``: the 17 price-refitted BELT-B-R policies of seed 0.
@@ -97,7 +98,8 @@ def main():
                     [d["prefix_tokens"], round(b["q"], 4), round(b["v"], 4), round(b["r"], 4),
                      round(b["stability"], 4), round(d["policy_logit"], 3),
                      -1 if f is None else int(f["correct"]),
-                     "" if f is None else f["forced_answer"][:28]]
+                     "" if f is None else f["forced_answer"][:28],
+                     0 if f is None else int(f["forced_tokens"])]
                 )
             rec = {
                 "ds": ds,
