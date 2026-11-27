@@ -188,6 +188,7 @@ answer at every fourth block end up to block 128):
 |---|---|
 | Chain generation | **837 tokens/s**; mean chain 9,841 tokens, median 12,192; **43% of chains hit the 16k budget**; 50% correct |
 | Concurrency | 33.4 GiB of weights leave 6.8 GiB of cache: at most **14 chains** of 18k tokens in flight |
+| Chains in flight per shard | The 837 tokens/s holds only while the in-flight contexts fit in cache. A shard started uncapped (about 1,074 chains, 5M tokens of context) re-reads every chain each round and ran over 5.5 h; shards now cap at **32 chains** in flight (about 216k tokens) |
 | Forced answers | **0.106 s each**, 9.4 per chain (Qwen3.6 writes long blocks, about 260 tokens), so about 1 s per chain; prefixes are reused from cache |
 | Full-chain prefill in vLLM | 14,046 tokens/s |
 | Trainer backbone pass, Transformers, truncated, FP8 dequantized to bf16 | 16 layers: **13,700 tokens/s**, peak 31 GB; 24 layers: **9,000 tokens/s**, peak 43 GB |

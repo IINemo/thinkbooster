@@ -26,6 +26,10 @@ against the exact text it replaces, so a moved line fails loudly:
 7. Generation stops at indented blank lines too ("\\n" + spaces + "\\n"), which
    BELT's block separator already counts but its "\\n\\n" stop string missed;
    Qwen3.6 writes about 8% of its paragraph breaks that way.
+8. ``run_chain_batch`` can cap the chains in flight (``BELT_MAX_ACTIVE_CHAINS``)
+   and log progress (``BELT_LOG_EVERY_CHAINS``). Uncapped, a 1,074-chain shard
+   holds about 5M tokens of context against a 300k-token KV cache, so every
+   round re-reads every chain from scratch. Unset, BELT's schedule is unchanged.
 
     python scripts/belt_qwen36/apply_belt_patch.py /path/to/BELT
 
@@ -123,6 +127,100 @@ BATCH_EDITS = (
     ),
     ("req.stop != [BLOCK_STOP_STRING]", "req.stop != block_stop_strings()"),
 )
+
+CHAIN_BATCH_OLD = """                    block_cap: int = 0):
+    active = []
+    for spec in specs:
+        records: list = []
+
+        def observe(block, completion_ids, block_ends, _r=records):
+            _r.append((int(block), len(completion_ids)))
+            return {}
+
+        gen = draw_steps(prompt_ids=spec["prompt_ids"], policy=_always_continue,
+                         observe=observe, encode=encode,
+                         max_blocks=10 ** 9, max_total_tokens=budget,
+                         budget_left=budget, query_stride=query_stride,
+                         block_cap=block_cap, request_seed_base=spec["seed_key"])
+        item = {"spec": spec, "gen": gen, "query_points": records,
+                "pending": gen.send(None), "result": None}
+        active.append(item)
+
+    while any(a["result"] is None for a in active):
+        waiting = [a for a in active if a["result"] is None]
+        outs = engine.generate_batch([a["pending"] for a in waiting])
+        if len(outs) != len(waiting):
+            raise RuntimeError(f"engine returned {len(outs)} outputs for {len(waiting)} requests")
+        for a, out in zip(waiting, outs):
+            try:
+                a["pending"] = a["gen"].send(out)
+            except StopIteration as stop:
+                a["result"] = stop.value
+                a["pending"] = None
+    return active
+"""
+CHAIN_BATCH_NEW = """                    block_cap: int = 0, max_active: int = 0, log_every: int = 0):
+    # max_active > 0 keeps at most that many chains in flight and starts the
+    # next one as each finishes. Every request carries its own seed, so this
+    # changes the schedule, not the chains; it keeps the in-flight contexts
+    # inside vLLM's prefix cache instead of re-reading each one every round.
+    import json as _json
+    import time as _time
+
+    def start(spec):
+        records: list = []
+
+        def observe(block, completion_ids, block_ends, _r=records):
+            _r.append((int(block), len(completion_ids)))
+            return {}
+
+        gen = draw_steps(prompt_ids=spec["prompt_ids"], policy=_always_continue,
+                         observe=observe, encode=encode,
+                         max_blocks=10 ** 9, max_total_tokens=budget,
+                         budget_left=budget, query_stride=query_stride,
+                         block_cap=block_cap, request_seed_base=spec["seed_key"])
+        return {"spec": spec, "gen": gen, "query_points": records,
+                "pending": gen.send(None), "result": None}
+
+    limit = max_active if max_active > 0 else len(specs)
+    active = []
+    live = []
+    finished = 0
+    t0 = _time.time()
+    while len(active) < len(specs) and len(live) < limit:
+        active.append(start(specs[len(active)]))
+        live.append(active[-1])
+    while live:
+        outs = engine.generate_batch([a["pending"] for a in live])
+        if len(outs) != len(live):
+            raise RuntimeError(f"engine returned {len(outs)} outputs for {len(live)} requests")
+        still = []
+        for a, out in zip(live, outs):
+            try:
+                a["pending"] = a["gen"].send(out)
+                still.append(a)
+            except StopIteration as stop:
+                a["result"] = stop.value
+                a["pending"] = None
+                finished += 1
+                if log_every and (finished % log_every == 0 or finished == len(specs)):
+                    print(_json.dumps({"chains_finished": finished, "of": len(specs),
+                                       "elapsed_s": round(_time.time() - t0, 1)}), flush=True)
+        while len(active) < len(specs) and len(still) < limit:
+            active.append(start(specs[len(active)]))
+            still.append(active[-1])
+        live = still
+    return active
+"""
+PROBE_CALL_OLD = """        played = run_chain_batch(engine, specs, encode=encode, budget=args.budget,
+                                 query_stride=args.query_stride, block_cap=args.block_cap)
+"""
+PROBE_CALL_NEW = """        import os as _os
+        played = run_chain_batch(engine, specs, encode=encode, budget=args.budget,
+                                 query_stride=args.query_stride, block_cap=args.block_cap,
+                                 max_active=int(_os.environ.get("BELT_MAX_ACTIVE_CHAINS") or 0),
+                                 log_every=int(_os.environ.get("BELT_LOG_EVERY_CHAINS") or 0))
+"""
 
 LOAD_BACKEND_OLD = """    llm = LLM(model=(args.model_path or args.model),"""
 LOAD_BACKEND_NEW = """    from rl_controller.rollout_contract import active_prompt_contract as _contract
@@ -252,6 +350,9 @@ def main() -> int:
         probe = pkg / "scripts" / "single_cot_probe.py"
         if probe.exists():
             replace_once(probe, LOAD_BACKEND_OLD, LOAD_BACKEND_NEW)
+            replace_once(probe, PROBE_CALL_OLD, PROBE_CALL_NEW)
+        chain = pkg / "single_cot.py"
+        replace_once(chain, CHAIN_BATCH_OLD, CHAIN_BATCH_NEW)
         for old, new in RUNNER_EDITS:
             replace_once(pkg / "rollout_runner.py", old, new)
         for old, new in BATCH_EDITS:

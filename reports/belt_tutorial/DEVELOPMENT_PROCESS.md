@@ -164,6 +164,19 @@ for the supervisor version. Changes:
   block ends by replay and generates only the missing forced answers with
   BELT's own request builder, seed keys and grader (`fit/shard<N>_v2`). All
   other shards run on BELT_v2.
+- Throughput bug: `single_cot_probe` starts all of a shard's chains at once
+  (about 1,074). In flight they hold about 5M tokens of context against a
+  301k-token KV cache, so prefix caching misses and every round re-reads
+  each chain from scratch (about 600k prefill tokens per chain). Shards 0, 1,
+  6, 7 ran this way and took over 5.5 h without finishing, against the
+  3.7 h planned from the 837 tokens/s measured with chains that fit in
+  cache. Patch edit 8 caps the chains in flight (`BELT_MAX_ACTIVE_CHAINS=32`,
+  about 216k tokens in steady state) and starts the next as each finishes;
+  it logs progress every 32 chains. Every request carries its own seed key,
+  so the cap changes the schedule, not the chains: a CPU replay of the 32
+  smoke chains with caps 1, 5, 7 and 40 gives identical chains and request
+  seeds to the uncapped loop. The four running shards were left to finish;
+  queued shards use the cap.
 - Not a bug: forced answers parse less often deeper in a chain (92% to about
   70%); the failures stop at `}` after 5 to 8 tokens, i.e. symbolic guesses
   such as `\frac{1`, which BELT's strict integer Now label counts as wrong.
