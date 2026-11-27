@@ -39,15 +39,21 @@ import time
 NEVER = 1e9
 
 
+_EVALUATOR = None
+
+
 def grade(pred, gold):
+    """ThinkBooster's MATH-500 exact-match grader, as in the benchmark runner."""
+    global _EVALUATOR
     if pred is None:
         return False
-    try:
-        from math_verify import parse, verify
+    if _EVALUATOR is None:
+        from thinkbooster.evaluation.exact_match import EvaluatorExactMatch
 
-        return bool(verify(parse("$" + gold + "$"), parse("$" + pred + "$")))
-    except Exception:
-        return pred.strip() == gold.strip()
+        _EVALUATOR = EvaluatorExactMatch(
+            dataset_answer_format="numeric", data_name="math500"
+        )
+    return bool(_EVALUATOR._score_single(("", pred, gold), pre_extracted=True))
 
 
 def main():
