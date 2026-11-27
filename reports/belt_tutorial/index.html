@@ -216,7 +216,7 @@ table.why-t td:first-child { padding-right: 24px; }
   <div class="eyebrow">ThinkBooster tutorial · BELT, belief-based termination</div>
   <h1>Watching a reasoning model decide when it is done</h1>
   <p class="cite">BELT: Ni, Abulkhanov, Smirnov, Leippold, Ash, Baldwin, Shelmanov and Sachan, <i>Same Beliefs, Different Policies: Learning Reusable Representations for Early Stopping in LLM Reasoning</i>, arXiv preprint, 2026 · code at <a href="https://github.com/EdisonNi-hku/BELT">github.com/EdisonNi-hku/BELT</a><br>ThinkBooster: Smirnov et al., <i>ThinkBooster: A Unified Framework for Seamless Test-Time Scaling of LLM Reasoning</i>, <a href="https://arxiv.org/abs/2606.06915">arXiv:2606.06915</a> · code at <a href="https://github.com/IINemo/thinkbooster">github.com/IINemo/thinkbooster</a></p>
-  <p class="lede">BELT reads a frozen model's hidden states at every reasoning boundary and keeps four beliefs about the answer: is it right now, will it be right at the end, will a right answer still come, and will the current answer survive. A small linear policy turns those beliefs into a stop decision. In ThinkBooster, BELT is one more test-time strategy: a config switch adds it to any benchmark run, with either a Hugging Face or a vLLM backend for reading the beliefs. Every curve below comes from real ThinkBooster runs.</p>
+  <p class="lede">BELT reads a frozen model's hidden states at every reasoning boundary and keeps four beliefs about the answer: is it right now, will it be right at the end, will a right answer still come, and will the current answer survive. A small linear policy turns those beliefs into a stop decision. In ThinkBooster, BELT is one more test-time strategy: a config switch adds it to a benchmark run, and the same engine deploys on vLLM behind an OpenAI-compatible API, so the model really generates fewer reasoning tokens. Every curve below comes from real ThinkBooster runs.</p>
   <div class="chips">
     <span class="chip">Qwen3-1.7B, thinking mode</span>
     <span class="chip">released BELT probe, seed 0</span>
@@ -247,7 +247,7 @@ table.why-t td:first-child { padding-right: 24px; }
 
 <section class="prose" aria-labelledby="h-tb">
   <h2 id="h-tb">BELT inside ThinkBooster</h2>
-  <p>ThinkBooster runs test-time strategies (best-of-n, beam search, self-consistency and others) over one generation engine, one set of benchmarks and one evaluator. BELT plugs in as a strategy plus a scorer, so it is run, logged and graded exactly like the other strategies. One loop per problem:</p>
+  <p>ThinkBooster runs test-time strategies (best-of-n, beam search, self-consistency and others) over one generation engine, one set of benchmarks and one evaluator. BELT plugs in as a strategy plus a scorer, so it is run, logged and graded exactly like the other strategies, and served like them (see "Deploy it" below). One loop per problem:</p>
 </section>
 <div class="panel">
   <ol class="flow">
@@ -455,13 +455,14 @@ scorer:
 </div>
 
 <section class="prose" aria-labelledby="h-run">
-  <h2 id="h-run">Run it in ThinkBooster</h2>
-  <p>The adapter ships a scorer (<code>StepScorerBELT</code>), a stopping strategy (<code>StrategyBELT</code>) and Hydra configs. Probe checkpoints contain no stopping policy; the paper's seed-0 fits live in BELT's <code>examples/qwen3-1.7b-sample</code>.</p>
+  <h2 id="h-run">Deploy it: a vLLM model that thinks less</h2>
+  <p>In deployment BELT sits inside the generation loop. vLLM writes the reasoning block by block; every fourth block BELT reads the beliefs and the policy decides. A stop closes <code>&lt;/think&gt;</code> and the model writes its final answer, so the rest of the reasoning is never generated: the saving is real compute, not a post-hoc cut. <code>BeltEngine</code> loads the model, the probe and the policy once; ThinkBooster's OpenAI-compatible service exposes the same engine to any client.</p>
 </section>
 <div class="steps">
   <div class="step">
-    <div class="code-head"><h3>1 · Install the adapter and BELT's reader</h3><button class="plain copy" type="button" data-target="c1">Copy</button></div>
-<pre id="c1">pip install -e ".[belt]"
+    <div class="code-head"><h3>1 · Install ThinkBooster with BELT</h3><button class="plain copy" type="button" data-target="c1">Copy</button></div>
+<pre id="c1">git clone https://github.com/IINemo/thinkbooster.git &amp;&amp; cd thinkbooster
+pip install -e ".[belt]"
 git clone https://github.com/EdisonNi-hku/BELT.git ../BELT
 git -C ../BELT checkout 332eab8d00592793c991686fd6e958e0f3c0f8ea
 pip install --no-deps -e ../BELT</pre>
@@ -475,23 +476,43 @@ python scripts/belt_tutorial/make_policy.py \
   --out belt-policy.json</pre>
   </div>
   <div class="step">
-    <div class="code-head"><h3>3 · Run a benchmark with early stopping</h3><button class="plain copy" type="button" data-target="c3">Copy</button></div>
-<pre id="c3">python scripts/run_tts_eval.py \
-  --config-path "$PWD/config" \
-  --config-name experiments/belt/tutorial/math500_qwen3_1p7b \
-  strategy.policy_path="$PWD/belt-policy.json" \
-  scorer.backend=hf        # or vllm: one engine, cheaper scoring</pre>
+    <div class="code-head"><h3>3 · Deploy with vLLM in Python</h3><button class="plain copy" type="button" data-target="c3">Copy</button></div>
+<pre id="c3">from thinkbooster.belt.engine import BeltEngine
+
+# Qwen3-1.7B in vLLM + the BELT probe + the stopping policy, loaded once.
+engine = BeltEngine("belt-policy.json", backend="hf")   # or backend="vllm"
+
+for out in engine.generate(["Find the remainder when 2^100 is divided by 7."]):
+    print(out.answer)             # final \boxed{} answer
+    print(out.thinking_tokens)    # reasoning tokens actually generated
+    print(out.stopped_early, out.stop_decision)   # did BELT close &lt;/think&gt;, and where</pre>
   </div>
   <div class="step">
-    <div class="code-head"><h3>4 · Or read beliefs from Python</h3><button class="plain copy" type="button" data-target="c4">Copy</button></div>
-<pre id="c4">from thinkbooster.scorers import StepScorerBELT
+    <div class="code-head"><h3>4 · Or serve it behind an OpenAI-compatible API</h3><button class="plain copy" type="button" data-target="c4">Copy</button></div>
+<pre id="c4">PORT=8001 BELT_POLICY_PATH=$PWD/belt-policy.json python service_app/main.py
 
-scorer = StepScorerBELT(checkpoint_repo="JingweiNi/BELT-Qwen3-1.7B-ReProbeInit", seed=0)
-chat = [{"role": "user", "content": "What is 17 + 25?"}]
-signal = scorer.score_prefix(chat, ["17 + 20 = 37.\n\n", "37 + 5 = 42.\n\n"])
-print(signal.beliefs)       # {'q': Now, 'v': End, 'r': Later, 'stability': Same}
-print(len(signal.hidden))   # 768-d representation the H policy reads</pre>
+# any OpenAI client
+from openai import OpenAI
+client = OpenAI(base_url="http://localhost:8001/v1", api_key="unused")
+r = client.chat.completions.create(
+    model="Qwen/Qwen3-1.7B",
+    messages=[{"role": "user", "content": "Find the remainder when 2^100 is divided by 7."}],
+    extra_body={"tts_strategy": "belt"},          # optional: "tts_belt_threshold": -2
+)
+print(r.choices[0].message.content)                # the final answer
+print(r.choices[0].tts_metadata["belt"])           # thinking_tokens, stopped_early, stop_decision</pre>
   </div>
+  <div class="step">
+    <div class="code-head"><h3>5 · Measure the saving, or reproduce this page</h3><button class="plain copy" type="button" data-target="c5">Copy</button></div>
+<pre id="c5"># same problems with and without early stopping, on one engine
+python examples/belt_deploy_vllm.py --policy belt-policy.json --n 64
+
+# the benchmark runs behind the curves above
+python scripts/run_tts_eval.py --config-path "$PWD/config" \
+  --config-name experiments/belt/tutorial/math500_qwen3_1p7b \
+  strategy.policy_path="$PWD/belt-policy.json"</pre>
+  </div>
+  <p class="cap">Smoke test of steps 3 to 5 on one RTX 5880, first 8 MATH-500 problems, threshold 0: with the HF backend all 8 answers were correct with and without BELT, at 1,314 against 2,105 thinking tokens per problem (38% fewer; 94 s against 131 s). The vLLM backend gave 7 of 8 against 8 of 8 at 24% fewer tokens. Through the API, one question took 966 thinking tokens with BELT and 2,407 without, same answer. Eight problems show that the deployment works; the savings to expect are the 500-problem numbers above.</p>
 </div>
 
 <section class="prose" aria-labelledby="h-notes">
