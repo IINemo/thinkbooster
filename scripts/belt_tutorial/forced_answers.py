@@ -5,8 +5,9 @@ For each logged decision, the reasoning prefix up to that block is closed with
 paper's forced-answer protocol (appendix A.3). The paper's answers are integers
 and it stops at the first ``}``; LaTeX answers nest braces (``\\frac{\\pi}{2}``),
 so the answer here is the text up to the brace that closes ``\\boxed{``.
-The answers are graded with ThinkBooster's exact-match evaluator. This gives, per trajectory, when a correct
-answer first became available, and lets any stopping threshold be read off the
+The answers are graded with ThinkBooster's exact-match evaluator, as the
+evaluation runner grades extracted answers, in worker processes with a time
+limit. This gives, per trajectory, when a correct answer first became available, and lets any stopping threshold be read off the
 same trajectories.
 
     python scripts/belt_tutorial/forced_answers.py \
@@ -16,7 +17,6 @@ same trajectories.
 import argparse
 import json
 import os
-import signal
 from pathlib import Path
 
 # The evaluator imports initialize CUDA; vLLM must then spawn its engine.
@@ -30,25 +30,51 @@ from thinkbooster.evaluation.exact_match import EvaluatorExactMatch
 FORCE_SUFFIX = "</think>\n\n\\boxed{"
 
 
-def grade(evaluator, question, answer, gold, seconds=5):
-    """Exact-match grade with a time limit; symbolic comparison can hang.
+_EVALUATOR = None
 
-    Returns (correct, timed_out). On timeout, falls back to string equality.
+
+def _init_worker(answer_format, data_name):
+    global _EVALUATOR
+    _EVALUATOR = EvaluatorExactMatch(dataset_answer_format=answer_format, data_name=data_name)
+
+
+def _grade_one(pair):
+    answer, gold = pair
+    # Same call as the evaluation runner, which grades the extracted answer.
+    return bool(_EVALUATOR._score_single(("", answer, gold), pre_extracted=True))
+
+
+def grade_all(pairs, answer_format, data_name, seconds=10, workers=16):
+    """Grade (answer, gold) pairs in worker processes with a hard time limit.
+
+    Symbolic comparison can hang without returning, so a pair that exceeds the
+    limit is graded by string equality and flagged; its worker pool is replaced.
+    Returns {pair: (correct, timed_out)}.
     """
+    import multiprocessing as mp
 
-    def expire(*_):
-        raise TimeoutError
-
-    previous = signal.signal(signal.SIGALRM, expire)
-    signal.alarm(seconds)
-    try:
-        # Same call as the evaluation runner, which grades the extracted answer.
-        return bool(evaluator._score_single((question, answer, gold), pre_extracted=True)), False
-    except TimeoutError:
-        return answer.strip() == gold.strip(), True
-    finally:
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, previous)
+    todo = list(dict.fromkeys(pairs))
+    results = {}
+    ctx = mp.get_context("fork")
+    while todo:
+        pool = ctx.Pool(workers, initializer=_init_worker, initargs=(answer_format, data_name))
+        pending = [(pair, pool.apply_async(_grade_one, (pair,))) for pair in todo]
+        todo = []
+        broken = False
+        for pair, job in pending:
+            if broken:
+                todo.append(pair)
+                continue
+            try:
+                results[pair] = (job.get(timeout=seconds), False)
+            except mp.TimeoutError:
+                results[pair] = (pair[0].strip() == pair[1].strip(), True)
+                broken = True  # a worker may be stuck; restart for the rest
+        pool.terminate()
+        pool.join()
+        # Jobs that finished before the restart need not run again.
+        todo = [p for p in todo if p not in results]
+    return results
 
 
 def boxed_content(text):
@@ -72,20 +98,22 @@ def prompt_text(config, question):
 def regrade(run, out):
     config = OmegaConf.load(run / ".hydra" / "config.yaml")
     by_index = {s["index"]: s for s in json.loads((run / "results.json").read_text())}
-    evaluator = EvaluatorExactMatch(
-        dataset_answer_format=config.dataset.answer_format,
-        data_name=config.dataset.data_name,
-    )
     rows = [json.loads(line) for line in out.read_text().splitlines()]
-    for row in rows:
-        sample = by_index[row["index"]]
-        row["correct"], row["grading_timeout"] = (
-            grade(evaluator, sample["question"], row["forced_answer"], str(sample["gold_answer"]))
-            if row["closed"]
-            else (False, False)
-        )
-    out.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    write_graded(rows, by_index, config, out)
     print(f"regraded {len(rows)} forced answers -> {out}")
+
+
+def write_graded(rows, by_index, config, out):
+    pairs = [
+        (row["forced_answer"], str(by_index[row["index"]]["gold_answer"]))
+        for row in rows
+        if row["closed"]
+    ]
+    graded = grade_all(pairs, config.dataset.answer_format, config.dataset.data_name)
+    for row in rows:
+        pair = (row["forced_answer"], str(by_index[row["index"]]["gold_answer"]))
+        row["correct"], row["grading_timeout"] = graded[pair] if row["closed"] else (False, False)
+    out.write_text("".join(json.dumps(row) + "\n" for row in rows))
 
 
 def main():
@@ -111,11 +139,6 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(
         config.model.model_path, revision=config.model.get("revision")
     )
-    evaluator = EvaluatorExactMatch(
-        dataset_answer_format=config.dataset.answer_format,
-        data_name=config.dataset.data_name,
-    )
-
     jobs = []
     for sample in samples:
         chat = [{"role": "user", "content": prompt_text(config, sample["question"])}]
@@ -144,39 +167,34 @@ def main():
         seed=int(config.system.seed),
     )
     outputs = llm.generate([j[2] for j in jobs], params)
+    # Free the GPU before grading, which runs in forked CPU workers.
+    del llm
+    import gc
+
+    gc.collect()
 
     by_index = {s["index"]: s for s in samples}
-    with args.out.open("w") as stream:
-        for (index, k, _), output in zip(jobs, outputs):
-            sample = by_index[index]
-            content = boxed_content(output.outputs[0].text)
-            closed = content is not None
-            answer = (content or output.outputs[0].text).strip()
-            correct, timed_out = (
-                grade(evaluator, sample["question"], answer, str(sample["gold_answer"]))
-                if closed
-                else (False, False)
-            )
-            stream.write(
-                json.dumps(
-                    {
-                        "index": index,
-                        "decision": k,
-                        "forced_answer": answer,
-                        "closed": closed,
-                        # Charged tokens end at the closing brace, as if decoding
-                        # had stopped there.
-                        "forced_tokens": (
-                            len(tokenizer.encode(content + "}", add_special_tokens=False))
-                            if closed
-                            else len(output.outputs[0].token_ids)
-                        ),
-                        "correct": correct,
-                        "grading_timeout": timed_out,
-                    }
-                )
-                + "\n"
-            )
+    rows = []
+    for (index, k, _), output in zip(jobs, outputs):
+        content = boxed_content(output.outputs[0].text)
+        closed = content is not None
+        answer = (content or output.outputs[0].text).strip()
+        rows.append(
+            {
+                "index": index,
+                "decision": k,
+                "forced_answer": answer,
+                "closed": closed,
+                # Charged tokens end at the closing brace, as if decoding had
+                # stopped there.
+                "forced_tokens": (
+                    len(tokenizer.encode(content + "}", add_special_tokens=False))
+                    if closed
+                    else len(output.outputs[0].token_ids)
+                ),
+            }
+        )
+    write_graded(rows, by_index, config, args.out)
     print(f"{len(jobs)} forced answers -> {args.out}")
 
 
