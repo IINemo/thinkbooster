@@ -15,8 +15,11 @@ QUEUE=$2
 ROOT=${BELT_TUTORIAL_ROOT:-/mnt/data/users/vlad.smirnov/belt_tutorial}
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 
+# Conda activation hooks read unset variables (CFLAGS), so relax -u around them.
+set +u
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate "${BELT_ENV:-/mnt/data/users/vlad.smirnov/conda_envs/thinkbooster-belt}"
+set -u
 export HF_HOME=${HF_HOME:-/mnt/data/users/vlad.smirnov/hf_cache}
 export TOKENIZERS_PARALLELISM=false
 cd "$REPO"
