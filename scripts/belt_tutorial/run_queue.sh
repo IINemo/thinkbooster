@@ -6,7 +6,7 @@
 # Each queue line is "<dataset> <policy-tag> <seed> [extra hydra overrides...]".
 # <dataset> names config/experiments/belt/tutorial/<dataset>_qwen3_1p7b.yaml and
 # <policy-tag> names $BELT_TUTORIAL_ROOT/policies/<policy-tag>.json. Generation
-# and the BELT reader share the GPU. A finished run (results.json present) is
+# and the BELT reader share the GPU. A finished run (metrics.json present) is
 # skipped, so a queue can be restarted after a failure.
 set -uo pipefail
 
@@ -27,7 +27,8 @@ cd "$REPO"
 while read -r dataset tag seed extra; do
     [[ -z "${dataset:-}" || "$dataset" == \#* ]] && continue
     out="$ROOT/runs/$dataset/$tag/seed$seed"
-    if ls "$out"/*/results.json >/dev/null 2>&1 || [ -f "$out/results.json" ]; then
+    # results.json is rewritten after every chunk; metrics.json only at the end.
+    if [ -f "$out/metrics.json" ]; then
         echo "=== $(date +%F_%T) skip $dataset $tag seed$seed (done)"
         continue
     fi

@@ -128,6 +128,8 @@ def summarize(root):
     rows = []
     for results in sorted(Path(root).glob("runs/*/*/seed*/results.json")):
         seed_dir = results.parent
+        if not (seed_dir / "metrics.json").exists():
+            continue  # still running: results.json is a partial checkpoint
         tag_dir = seed_dir.parent
         dataset = tag_dir.parent.name
         samples = json.loads(results.read_text())
