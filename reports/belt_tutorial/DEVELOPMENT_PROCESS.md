@@ -117,10 +117,27 @@ for the supervisor version. Changes:
 - Automated checks: all 772 trajectories at five thresholds, both frontiers
   and all 17 prices show no overlapping labels and no runtime errors.
 
+## Deployment (2026-11-27)
+
+- `thinkbooster/belt/engine.py` (`BeltEngine`): Qwen3-1.7B in vLLM with the
+  BELT probe and a policy, loaded once; a stop closes `</think>` so the saved
+  reasoning is never generated. Both feature backends; per-call threshold.
+- `service_app`: `tts_strategy="belt"` (`BELT_POLICY_PATH`, optional
+  `tts_belt_threshold`); the reply is the final answer, `tts_metadata.belt`
+  reports thinking tokens and the stop decision.
+- `examples/belt_deploy_vllm.py`: same problems with and without early
+  stopping on one engine. Smoke test, 8 MATH-500 problems: HF backend 8/8
+  both ways at 1,314 vs 2,105 thinking tokens; vLLM backend 7/8 vs 8/8 at
+  -24%. API call: 966 vs 2,407 thinking tokens, same answer.
+- End-to-end backend timing, 64 MATH-500 problems: HF batch 64 8.4 min, HF
+  batch 9 12.6 min, vLLM batch 9 15.2 min (belief queries 7 ms each, but
+  eager-mode generation and the batch cap make the run slower).
+- Larger-model plan: `reports/belt_qwen36/PLAN.md` (Qwen3.6-35B-A3B).
+
 ## Open items
 
-- The three end-to-end backend timing runs (bench_hf_b64, bench_hf_b9,
-  bench_vllm_b9) are running; add their numbers to the backends table.
+- The vLLM backend needs CUDA graphs and a larger batch before it can speed
+  up whole runs.
 - GPQA-Diamond, AIME 2025 and HumanEval+ runs follow in the queue.
 - Codex review is unavailable on the user's login (every model refused), so
   the branch has no Codex review yet; required before any PR.
