@@ -57,6 +57,12 @@ def main():
     parser.add_argument("--n", type=int, default=32, help="MATH-500 problems")
     parser.add_argument("--threshold", type=float, default=None)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.6)
+    parser.add_argument(
+        "--max-context",
+        type=int,
+        default=14336,
+        help="vLLM context; 14,336 leaves BELT's ~12k-token thinking budget",
+    )
     parser.add_argument("--out", help="optional JSON with per-problem results")
     args = parser.parse_args()
 
@@ -73,6 +79,7 @@ def main():
         backend=args.backend,
         threshold=args.threshold,
         gpu_memory_utilization=args.gpu_memory_utilization,
+        max_context=args.max_context,
     )
     print(f"engine ready in {time.perf_counter() - t0:.0f} s ({args.backend} backend)")
 
