@@ -106,7 +106,15 @@ class ChatCompletionRequest(BaseModel):
     # Strategy selection
     tts_strategy: Optional[str] = Field(
         default="self_consistency",
-        description="TTS strategy: self_consistency, offline_bon, online_bon, beam_search",
+        description="TTS strategy: self_consistency, offline_bon, online_bon, "
+        "beam_search, belt",
+    )
+
+    # BELT early stopping
+    tts_belt_threshold: Optional[float] = Field(
+        default=None,
+        description="BELT stop threshold (policy log-odds); lower stops sooner. "
+        "Defaults to the fitted policy's own threshold.",
     )
 
     # Self-consistency specific parameters

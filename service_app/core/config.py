@@ -69,6 +69,15 @@ class Settings(BaseSettings):
     vllm_seed: int = 42
     vllm_quantization: Optional[str] = None  # e.g. "awq", "gptq", "squeezellm", etc.
 
+    # BELT early stopping (tts_strategy="belt"): Qwen3-1.7B in its own vLLM
+    # engine with the BELT probe. The policy comes from
+    # scripts/belt_tutorial/make_policy.py.
+    belt_policy_path: Optional[str] = None
+    belt_backend: str = "hf"  # hf (second Transformers copy) or vllm (shared engine)
+    belt_max_model_len: int = 14336
+    belt_gpu_memory_utilization: float = 0.6
+    belt_scorer_device: str = "cuda:0"
+
     # Default TTS params
     default_scorer: str = "entropy"
     default_temperature: float = 0.6

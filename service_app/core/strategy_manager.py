@@ -54,6 +54,7 @@ class StrategyManager:
         self._current_reasoning_effort: Optional[str] = (
             None  # Track current reasoning effort setting
         )
+        self._belt_engine = None  # BeltEngine, loaded on the first BELT request
 
     def _init_vllm_backend(
         self,
@@ -341,6 +342,12 @@ class StrategyManager:
             or strategy_config.get("tool_mode")
         )
 
+        if strategy_type == "belt":
+            strategy = self._create_belt_strategy(strategy_config)
+            if cancel_event is not None:
+                strategy.set_cancel_event(cancel_event)
+            return strategy
+
         if strategy_type in (
             "self_consistency",
             "offline_bon",
@@ -362,8 +369,36 @@ class StrategyManager:
         else:
             raise ValueError(
                 f"Unknown strategy type: {strategy_type}. "
-                f"Available strategies: self_consistency, offline_bon, online_bon, beam_search"
+                f"Available strategies: self_consistency, offline_bon, online_bon, "
+                f"beam_search, belt"
             )
+
+    def _create_belt_strategy(self, config: Dict[str, Any]):
+        """BELT early stopping on its own Qwen3-1.7B vLLM engine.
+
+        The engine (vLLM, probe, policy) is loaded once; a request may move the
+        stop threshold, which only rebuilds the light strategy object.
+        """
+        if self._belt_engine is None:
+            if not settings.belt_policy_path:
+                raise ValueError(
+                    "tts_strategy=belt needs BELT_POLICY_PATH (a fitted BELT policy)"
+                )
+            from thinkbooster.belt.engine import BeltEngine
+
+            log.info(
+                f"Loading BELT engine (backend={settings.belt_backend}, "
+                f"policy={settings.belt_policy_path})"
+            )
+            self._belt_engine = BeltEngine(
+                settings.belt_policy_path,
+                backend=settings.belt_backend,
+                max_context=settings.belt_max_model_len,
+                gpu_memory_utilization=settings.belt_gpu_memory_utilization,
+                scorer_device=settings.belt_scorer_device,
+            )
+        self._belt_engine.step_generator.seed = config.get("seed")
+        return self._belt_engine.strategy_at(config.get("belt_threshold"))
 
     def _create_vllm_strategy(self, strategy_type: str, config: Dict[str, Any]):
         """Create a vLLM-backed TTS strategy instance."""

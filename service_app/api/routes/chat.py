@@ -78,7 +78,11 @@ def _find_scorer_meta(scorer_id: str) -> Optional[Dict[str, Any]]:
 # ------------------------------------------------------------------
 # Map library strategy_type to the id used in SUPPORTED_STRATEGIES
 # ------------------------------------------------------------------
+# Strategies that run through generate_trajectories_batch on a local vLLM.
+_BATCH_STRATEGIES = ("offline_bon", "online_bon", "beam_search", "belt")
+
 _STRATEGY_TYPE_TO_ID = {
+    "belt": "belt",
     "self_consistency": "self_consistency",
     "offline_bon": "offline_best_of_n",
     "online_bon": "online_best_of_n",
@@ -221,7 +225,7 @@ def _handle_sync(request: ChatCompletionRequest) -> ChatCompletionResponse:
     messages = [msg.to_api_message() for msg in request.messages]
 
     strategy_type = request.tts_strategy or "self_consistency"
-    is_vllm_strategy = strategy_type in ("offline_bon", "online_bon", "beam_search")
+    is_vllm_strategy = strategy_type in _BATCH_STRATEGIES
 
     strategy_config = _build_strategy_config(request)
 
@@ -271,7 +275,7 @@ def _handle_streaming(request: ChatCompletionRequest) -> StreamingResponse:
 
     messages = [msg.to_api_message() for msg in request.messages]
     strategy_type = request.tts_strategy or "self_consistency"
-    is_vllm_strategy = strategy_type in ("offline_bon", "online_bon", "beam_search")
+    is_vllm_strategy = strategy_type in _BATCH_STRATEGIES
     strategy_config = _build_strategy_config(request)
 
     def _run() -> None:
@@ -424,7 +428,7 @@ def _completion_chunks(response: Dict[str, Any]):
 
 def _resolve_provider(request: ChatCompletionRequest) -> str:
     strategy_type = request.tts_strategy or "self_consistency"
-    is_vllm_strategy = strategy_type in ("offline_bon", "online_bon", "beam_search")
+    is_vllm_strategy = strategy_type in _BATCH_STRATEGIES
 
     # When an API key is provided the request goes through the API backend,
     # not local vLLM, so default to openrouter (not vllm). Tool fields alone
@@ -465,6 +469,7 @@ def _build_strategy_config(request: ChatCompletionRequest) -> Dict[str, Any]:
         "max_steps": request.tts_max_steps,
         "score_aggregation": request.tts_score_aggregation,
         "window_size": request.tts_window_size,
+        "belt_threshold": request.tts_belt_threshold,
     }
 
 
@@ -525,6 +530,23 @@ def _build_response(
                     result.get("all_scores", []),
                 )
             ]
+
+    if strategy_type == "belt":
+        # Reply with the final answer only; report what BELT saved.
+        from thinkbooster.belt.engine import BeltEngine
+
+        belt = BeltEngine._result(result)
+        trajectory = belt.text or trajectory
+        metadata["belt"] = {
+            "stopped_early": belt.stopped_early,
+            "stop_decision": belt.stop_decision,
+            "decisions": len(belt.decisions),
+            "thinking_tokens": belt.thinking_tokens,
+            "output_tokens": belt.output_tokens,
+            "threshold": request.tts_belt_threshold,
+        }
+        metadata["total_tokens"] = belt.output_tokens
+        metadata.pop("steps", None)
 
     # Verbose / debugger mode: include events + run structure
     if request.tts_verbose:
