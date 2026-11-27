@@ -223,6 +223,7 @@ ul.notes { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 7
     <span style="color: var(--b-later)"><span class="swatch dash"></span><span style="color: var(--muted)">Later</span></span>
     <span><span class="swatch" style="background: var(--b-same)"></span>Same</span>
     <span>● correct forced answer · ○ wrong</span>
+    <span><span class="swatch" style="background: var(--grid); height: 10px; width: 14px"></span>after block 128: no decisions</span>
     <span>hover or use ← → on the chart</span>
   </div>
 </div>
@@ -474,7 +475,12 @@ function renderTimeline() {
   if (t.p.length >= 32) {
     const xl = x(t.p[t.p.length - 1][0]);
     if (x(T) - xl > 24) svg.append(el("rect", { x: xl + 8, y: top, width: x(T) - xl - 8, height: axisY - top, fill: "var(--grid)", "fill-opacity": 0.55 }));
-    if (x(T) - xl > 190) svg.append(el("text", { x: x(T) - 6, y: fTop + FS / 2 + 4, "text-anchor": "end" }, "no decisions after block 128"));
+    if (x(T) - xl > 330) {
+      svg.append(el("text", { x: x(T) - 6, y: top + 16, "text-anchor": "end", class: "lbl-strong" }, "after block 128, BELT makes no decisions"));
+      svg.append(el("text", { x: x(T) - 6, y: top + 30, "text-anchor": "end" }, "the model keeps thinking unchecked"));
+    } else if (x(T) - xl > 200) {
+      svg.append(el("text", { x: x(T) - 6, y: top + 16, "text-anchor": "end", class: "lbl-strong" }, "no decisions after block 128"));
+    }
   }
   // threshold line
   const ty = ys(state.thr);
