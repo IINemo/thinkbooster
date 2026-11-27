@@ -853,7 +853,7 @@ def vllm_phase(args):
         "max_model_len": 8192,
         "max_num_seqs": args.max_num_seqs,
         "max_num_batched_tokens": args.max_num_batched_tokens,
-        "gpu_memory_utilization": 0.65,
+        "gpu_memory_utilization": args.gpu_memory_utilization,
         "enforce_eager": True,
         "enable_prefix_caching": not args.disable_prefix_caching,
         "enable_chunked_prefill": True,
@@ -1228,6 +1228,12 @@ def main(argv=None):
         type=int,
         default=8,
         help="Maximum concurrently scheduled vLLM sequences (default: 8)",
+    )
+    parser.add_argument(
+        "--gpu-memory-utilization",
+        type=float,
+        default=0.65,
+        help="vLLM GPU memory fraction for the vllm phase (default: 0.65)",
     )
     parser.add_argument(
         "--disable-prefix-caching",
