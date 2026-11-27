@@ -19,9 +19,6 @@ import json
 import os
 from pathlib import Path
 
-# The evaluator imports initialize CUDA; vLLM must then spawn its engine.
-os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
-
 from omegaconf import OmegaConf
 from transformers import AutoTokenizer
 
@@ -35,7 +32,9 @@ _EVALUATOR = None
 
 def _init_worker(answer_format, data_name):
     global _EVALUATOR
-    _EVALUATOR = EvaluatorExactMatch(dataset_answer_format=answer_format, data_name=data_name)
+    _EVALUATOR = EvaluatorExactMatch(
+        dataset_answer_format=answer_format, data_name=data_name
+    )
 
 
 def _grade_one(pair):
@@ -57,7 +56,9 @@ def grade_all(pairs, answer_format, data_name, seconds=10, workers=16):
     results = {}
     ctx = mp.get_context("fork")
     while todo:
-        pool = ctx.Pool(workers, initializer=_init_worker, initargs=(answer_format, data_name))
+        pool = ctx.Pool(
+            workers, initializer=_init_worker, initargs=(answer_format, data_name)
+        )
         pending = [(pair, pool.apply_async(_grade_one, (pair,))) for pair in todo]
         todo = []
         broken = False
@@ -112,7 +113,9 @@ def write_graded(rows, by_index, config, out):
     graded = grade_all(pairs, config.dataset.answer_format, config.dataset.data_name)
     for row in rows:
         pair = (row["forced_answer"], str(by_index[row["index"]]["gold_answer"]))
-        row["correct"], row["grading_timeout"] = graded[pair] if row["closed"] else (False, False)
+        row["correct"], row["grading_timeout"] = (
+            graded[pair] if row["closed"] else (False, False)
+        )
     out.write_text("".join(json.dumps(row) + "\n" for row in rows))
 
 
@@ -132,6 +135,9 @@ def main():
         regrade(args.run, args.out)
         return
 
+    # The evaluator imports initialize CUDA; vLLM must then spawn its engine.
+    # vLLM reads this when it starts the engine, so setting it here is in time.
+    os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
     from vllm import LLM, SamplingParams
 
     config = OmegaConf.load(args.run / ".hydra" / "config.yaml")
@@ -150,7 +156,9 @@ def main():
             s if isinstance(s, str) else (s.get("raw_text") or s.get("text") or "")
             for s in sample["steps"]
         ]
-        for k, decision in enumerate((sample.get("metadata") or {}).get("decisions") or []):
+        for k, decision in enumerate(
+            (sample.get("metadata") or {}).get("decisions") or []
+        ):
             prefix = "".join(steps[: decision["step"]])
             jobs.append((sample["index"], k, head + prefix + FORCE_SUFFIX))
 
@@ -163,7 +171,10 @@ def main():
         seed=int(config.system.seed),
     )
     params = SamplingParams(
-        temperature=0.6, top_p=0.95, top_k=20, max_tokens=48,
+        temperature=0.6,
+        top_p=0.95,
+        top_k=20,
+        max_tokens=48,
         seed=int(config.system.seed),
     )
     outputs = llm.generate([j[2] for j in jobs], params)

@@ -32,7 +32,8 @@ def b_logit(row, sample, d):
         x.append(math.log(p / (1 - p)))
     x.append(d["prefix_tokens"] / sample["length_scale"])
     return row["b"] + sum(
-        w * (xi - m) / s for w, xi, m, s in zip(row["w"], x, sample["mean"], sample["std"])
+        w * (xi - m) / s
+        for w, xi, m, s in zip(row["w"], x, sample["mean"], sample["std"])
     )
 
 
@@ -56,10 +57,19 @@ def curve(samples, forced, max_points=140):
             pareto.add(k)
             best = points[k]["accuracy"]
     step = max(1, len(points) // max_points)
-    keep = [p for k, p in enumerate(points) if k in pareto or k % step == 0 or k == len(points) - 1]
+    keep = [
+        p
+        for k, p in enumerate(points)
+        if k in pareto or k % step == 0 or k == len(points) - 1
+    ]
     return [
-        [round(p["token_saving"], 4), round(p["accuracy"], 4), round(p["mean_tokens"], 1),
-         None if math.isinf(p["threshold"]) else round(p["threshold"], 3), round(p["stop_rate"], 3)]
+        [
+            round(p["token_saving"], 4),
+            round(p["accuracy"], 4),
+            round(p["mean_tokens"], 1),
+            None if math.isinf(p["threshold"]) else round(p["threshold"], 3),
+            round(p["stop_rate"], 3),
+        ]
         for p in keep
     ]
 
@@ -80,7 +90,9 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
 
     stories = {(s.split(":")[0], int(s.split(":")[1])) for s in args.story}
-    sample_b = json.loads((args.root / "policies/sample/belt_b_r_seed0.json").read_text())
+    sample_b = json.loads(
+        (args.root / "policies/sample/belt_b_r_seed0.json").read_text()
+    )
     row7 = next(r for r in sample_b["rows"] if r["lambda_index"] == 7)
 
     records, frontiers = [], {}
@@ -95,11 +107,17 @@ def main():
                 b = d["beliefs"]
                 f = rows.get(k)
                 pts.append(
-                    [d["prefix_tokens"], round(b["q"], 4), round(b["v"], 4), round(b["r"], 4),
-                     round(b["stability"], 4), round(d["policy_logit"], 3),
-                     -1 if f is None else int(f["correct"]),
-                     "" if f is None else f["forced_answer"][:28],
-                     0 if f is None else int(f["forced_tokens"])]
+                    [
+                        d["prefix_tokens"],
+                        round(b["q"], 4),
+                        round(b["v"], 4),
+                        round(b["r"], 4),
+                        round(b["stability"], 4),
+                        round(d["policy_logit"], 3),
+                        -1 if f is None else int(f["correct"]),
+                        "" if f is None else f["forced_answer"][:28],
+                        0 if f is None else int(f["forced_tokens"]),
+                    ]
                 )
             rec = {
                 "ds": ds,
@@ -117,18 +135,29 @@ def main():
             records.append(rec)
         frontiers[ds] = {
             "BELT-H": curve(samples, forced),
-            "BELT-B": curve(rescored(samples, lambda d: b_logit(row7, sample_b, d)), forced),
+            "BELT-B": curve(
+                rescored(samples, lambda d: b_logit(row7, sample_b, d)), forced
+            ),
             "Now only": curve(
-                rescored(samples, lambda d: math.log(max(d["beliefs"]["q"], 1e-6) / max(1 - d["beliefs"]["q"], 1e-6))),
+                rescored(
+                    samples,
+                    lambda d: math.log(
+                        max(d["beliefs"]["q"], 1e-6) / max(1 - d["beliefs"]["q"], 1e-6)
+                    ),
+                ),
                 forced,
             ),
             "Fixed cap": curve(rescored(samples, lambda d: d["prefix_tokens"]), forced),
         }
 
     (args.out / "trajectories.json").write_text(
-        "[\n" + ",\n".join(json.dumps(r, separators=(",", ":")) for r in records) + "\n]\n"
+        "[\n"
+        + ",\n".join(json.dumps(r, separators=(",", ":")) for r in records)
+        + "\n]\n"
     )
-    (args.out / "frontiers.json").write_text(json.dumps(frontiers, separators=(",", ":")))
+    (args.out / "frontiers.json").write_text(
+        json.dumps(frontiers, separators=(",", ":"))
+    )
     (args.out / "policies_b.json").write_text(
         json.dumps(
             {
@@ -136,7 +165,10 @@ def main():
                 "mean": sample_b["mean"],
                 "std": sample_b["std"],
                 "length_scale": sample_b["length_scale"],
-                "rows": [{"lambda": r["lambda"], "w": r["w"], "b": r["b"]} for r in sample_b["rows"]],
+                "rows": [
+                    {"lambda": r["lambda"], "w": r["w"], "b": r["b"]}
+                    for r in sample_b["rows"]
+                ],
             },
             separators=(",", ":"),
         )

@@ -148,8 +148,12 @@ def replay(samples, forced, threshold):
             correct += row["correct"]
             cost += d["prefix_tokens"] + row["forced_tokens"]
     n = len(samples)
-    return {"threshold": threshold, "accuracy": correct / n, "mean_tokens": cost / n,
-            "stop_rate": stops / n}
+    return {
+        "threshold": threshold,
+        "accuracy": correct / n,
+        "mean_tokens": cost / n,
+        "stop_rate": stops / n,
+    }
 
 
 def frontier(samples, forced):
@@ -198,9 +202,7 @@ def summarize(root):
             **summarize_run(samples),
         }
         rows.append(row)
-    natural = {
-        (r["dataset"], r["seed"]): r for r in rows if r["policy"] == "natural"
-    }
+    natural = {(r["dataset"], r["seed"]): r for r in rows if r["policy"] == "natural"}
     for r in rows:
         base = natural.get((r["dataset"], r["seed"]))
         if base:
@@ -235,7 +237,9 @@ def main():
         samples = [s for s in samples if s["index"] in forced or not decisions(s)]
         result = {
             "n": len(samples),
-            "points": [replay(samples, forced, t) for t in [math.inf, *args.thresholds]],
+            "points": [
+                replay(samples, forced, t) for t in [math.inf, *args.thresholds]
+            ],
             "frontier": frontier(samples, forced),
         }
     else:

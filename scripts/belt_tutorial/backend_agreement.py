@@ -43,7 +43,9 @@ def quantiles(values, qs=(0.5, 0.9, 0.99, 1.0)):
     if not values:
         return {}
     return {
-        f"p{int(q * 100)}": values[min(len(values) - 1, int(math.ceil(q * len(values))) - 1)]
+        f"p{int(q * 100)}": values[
+            min(len(values) - 1, int(math.ceil(q * len(values))) - 1)
+        ]
         for q in qs
     }
 

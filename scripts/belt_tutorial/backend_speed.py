@@ -91,7 +91,9 @@ def main():
         "vllm": StepScorerBELT(
             feature_provider=backend,
             tokenizer=backend.get_tokenizer(),
-            base_config=AutoConfig.from_pretrained(BACKBONE, revision=BACKBONE_REVISION),
+            base_config=AutoConfig.from_pretrained(
+                BACKBONE, revision=BACKBONE_REVISION
+            ),
             device="cuda:0",
         ),
         "hf": StepScorerBELT(device="cuda:0"),
@@ -146,7 +148,9 @@ def main():
     args.out.with_suffix(".rows.jsonl").write_text(
         "".join(json.dumps(r) + "\n" for r in rows)
     )
-    print(json.dumps({k: report[k] for k in ("decision_points", "hf", "vllm")}, indent=2))
+    print(
+        json.dumps({k: report[k] for k in ("decision_points", "hf", "vllm")}, indent=2)
+    )
     for name, b in buckets.items():
         print(name, {k: round(v.get("mean_ms", 0), 1) for k, v in b.items()})
 
