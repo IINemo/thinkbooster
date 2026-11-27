@@ -422,8 +422,19 @@ function renderTimeline() {
   // Token axis: start just before the first decision when it comes late
   // (decisions begin at block 4), so short traces do not sit in empty space.
   const first = t.p.length ? t.p[0][0] : 0;
-  const x0 = first > 0.2 * T ? Math.max(0, first - 0.06 * (T - first)) : 0;
-  const x = (tok) => L + ((tok - x0) / (T - x0)) * (W - L - R);
+  const last = t.p.length ? t.p[t.p.length - 1][0] : T;
+  // Reasoning after the last decision (block 128) can be most of a long run.
+  // When it is, draw it as a narrow strip after an axis break instead of to scale.
+  const capped = t.p.length >= 32 && T - last > 0.3 * T;
+  const mEnd = capped ? last + 0.03 * (last - first) : T;
+  const x0 = first > 0.2 * mEnd ? Math.max(0, first - 0.06 * (mEnd - first)) : 0;
+  const plotW = W - L - R, split = L + 0.84 * plotW, tailStart = L + 0.88 * plotW;
+  const x = (tok) => !capped
+    ? L + ((tok - x0) / (T - x0)) * plotW
+    : tok <= mEnd
+      ? L + ((tok - x0) / (mEnd - x0)) * (split - L)
+      : tailStart + ((tok - mEnd) / (T - mEnd)) * (W - R - tailStart);
+  const kfmt = (v) => (v >= 1000 ? (v / 1000).toFixed(v % 1000 ? 1 : 0) + "k" : String(Math.round(v)));
   // Belief axis: tighten to the data in steps of 0.1, but never to less than
   // half the probability range, so small wiggles cannot look dramatic.
   const bv = t.p.flatMap((p) => [p[1], p[2], p[3], p[4]]);
@@ -457,10 +468,18 @@ function renderTimeline() {
   }
 
   // x axis
-  const step = niceStep(T - x0);
-  for (let v = Math.ceil(x0 / step) * step; v <= T; v += step) {
+  const step = niceStep(mEnd - x0);
+  for (let v = Math.ceil(x0 / step) * step; v <= mEnd; v += step) {
     svg.append(el("line", { x1: x(v), x2: x(v), y1: axisY, y2: axisY + 4, class: "axis" }));
-    svg.append(el("text", { x: x(v), y: axisY + 17, "text-anchor": "middle" }, v >= 1000 ? (v / 1000) + "k" : String(v)));
+    svg.append(el("text", { x: x(v), y: axisY + 17, "text-anchor": "middle" }, kfmt(v)));
+  }
+  if (capped) {
+    // Axis break, then the run's true end.
+    const bx = (split + tailStart) / 2;
+    svg.append(el("rect", { x: split + 2, y: axisY - 4, width: tailStart - split - 4, height: 8, fill: "var(--surface)" }));
+    for (const dx of [-3, 3]) svg.append(el("line", { x1: bx + dx - 3, x2: bx + dx + 3, y1: axisY + 5, y2: axisY - 5, class: "axis", "stroke-width": 1.5 }));
+    svg.append(el("line", { x1: x(T), x2: x(T), y1: axisY, y2: axisY + 4, class: "axis" }));
+    svg.append(el("text", { x: x(T), y: axisY + 17, "text-anchor": "middle" }, kfmt(T)));
   }
   svg.append(el("text", { x: W - R, y: axisY + 33, "text-anchor": "end", class: "lbl-strong" }, "reasoning tokens"));
   if (x0 > 0) svg.append(el("text", { x: L, y: axisY + 33 }, `axis starts at ${fmt(x0)} tokens; first decision at ${fmt(first)}`));
@@ -473,13 +492,13 @@ function renderTimeline() {
   }
   // checks stop after block 128
   if (t.p.length >= 32) {
-    const xl = x(t.p[t.p.length - 1][0]);
-    if (x(T) - xl > 24) svg.append(el("rect", { x: xl + 8, y: top, width: x(T) - xl - 8, height: axisY - top, fill: "var(--grid)", "fill-opacity": 0.55 }));
-    if (x(T) - xl > 330) {
-      svg.append(el("text", { x: x(T) - 6, y: top + 16, "text-anchor": "end", class: "lbl-strong" }, "after block 128, BELT makes no decisions"));
-      svg.append(el("text", { x: x(T) - 6, y: top + 30, "text-anchor": "end" }, "the model keeps thinking unchecked"));
-    } else if (x(T) - xl > 200) {
-      svg.append(el("text", { x: x(T) - 6, y: top + 16, "text-anchor": "end", class: "lbl-strong" }, "no decisions after block 128"));
+    const xl = capped ? split : x(last) + 8;
+    if (x(T) - xl > 10) svg.append(el("rect", { x: xl, y: top, width: x(T) - xl, height: axisY - top, fill: "var(--grid)", "fill-opacity": 0.55 }));
+    if (capped) {
+      // Vertical note inside the compressed strip.
+      const cx = (tailStart + x(T)) / 2;
+      svg.append(el("text", { x: cx, y: (top + axisY) / 2, "text-anchor": "middle", transform: `rotate(-90 ${cx} ${(top + axisY) / 2})` },
+        `no decisions after block 128 · ${fmt(T - last)} more tokens`));
     }
   }
   // threshold line
