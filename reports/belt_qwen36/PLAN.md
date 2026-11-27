@@ -88,6 +88,46 @@ recommended thinking sampler is temperature 1.0, top-p 0.95, top-k 20.
    vLLM backend for this architecture, check parity against the trainer's own
    scorer, then run MATH-500, Minerva and AIME and add the model to the page.
 
+## Reviewed recipe (BELT main 700948b, read 2026-11-27)
+
+Each setting below is taken from BELT's code or `docs/RECIPES.md`, with what
+changes for Qwen3.6 and why. Qwen3.6 has no ReProbe head, so it follows the
+OLMo path (self-contained reader, `olmo_code` generator and `olmo_belt`
+trainer snapshots), not the Qwen3-1.7B one.
+
+| Stage | BELT (OLMo-3-7B) | Qwen3.6-35B-A3B | Note |
+|---|---|---|---|
+| Question pool | `iclr_build_math_pool`: DAPO-Math-17k, NuminaMath-1.5 (olympiads, amc_aime, aops_forum), DeepScaleR; integer answers; questions ≤ 2,000 chars | same builder, new salt | Its prior-exclusion and spec-B files are not in the release: we pass our own (empty) and record them |
+| Decontamination | word n-gram overlap with MATH-500, AIME 2024/2025, OlympiadBench, Gaokao 2023, GPQA-Diamond | **add Minerva Math** (`test-time-compute/test_minerva_math`) | We evaluate on Minerva; BELT did not |
+| Splits | salted hash into fit / select / report (50 / 25 / 25%); the trainer takes 320 validation questions from fit; policies fit on 160, develop on 160 of those | same | Checkpoint selection reads validation loss only; select and report chains are scored after training and never steer it |
+| Prompt | native chat template; user turn "Answer the following question. Enclose your answer in &lt;answer&gt;&lt;/answer&gt;.\n&lt;Question&gt;: …", rewritten to "Reply with the answer only. Answer enclosed with \boxed{}." | same text, Qwen3.6 template (opens `<think>` in the prompt, like OLMo) | New prompt contract module, pinned to the checkpoint revision and template hash |
+| Sampler | T = 0.6, top-p 0.95 (top-k off for OLMo, 20 for Qwen); per-request seeds | T = 0.6, top-p 0.95, top-k 20 | BELT kept 0.6 for both models rather than each model's default; so do we, and the tutorial runs match |
+| Chains | 4 per question, 16,384-token budget, block cap 128 | same | 43% of chains hit 16k in the spike; the cap rate is reported, and capped chains keep End = wrong (BELT does not rescue them) |
+| Blocks and decisions | blocks split at blank lines (`\n[ \t]*\n`); a decision at every 4th block end | same | Qwen3.6 writes longer blocks (about 260 tokens), so about 9 decisions per chain instead of about 40 |
+| Forced answer | prefix + `</think>\n\n\boxed{`, at most 32 tokens, stop at `}`; strict integer grading | same | Model-agnostic |
+| Natural-answer fallback | `belt_natural_fallback`: elicit an answer only for a closed chain with no parseable answer; charge its tokens | same, with the new contract | Must run before labels |
+| Labels | Now = forced answer correct; End = final answer correct; Later = a later forced answer or the final answer correct; Same = forced answer equals the final answer (masked without a final answer) | same | `iclr/labels.py`, model-agnostic |
+| Reader | layer-18 states, RMS-normalized, 2-layer 8-head reader to 768-d, random init, 19.1M parameters | layer chosen by a sweep (16 to 28), same reader | Hidden size 2,048 instead of 4,096 |
+| Backbone pass in training | full bf16 model, `AutoModel`, no chunking (`chunk_size` 0), dropout off | text-only model **truncated to the feature layer**, FP8 weights **dequantized to bf16**, no chunking | The full model does not fit; truncation is exact because nothing after the layer is read. No chunking also avoids the hybrid-attention cache path |
+| Training | targets q, v, r, stability at 0.25 each; lr head 5e-5, readout 1e-3; 3 epochs, patience 3; 1 chain per step; select by validation log-loss | same | |
+| Policies | OLMo: 4 belief logits **without** prefix length, 17 directions × 13 thresholds; H from the 768-d representation | same as OLMo | |
+| Serving | — | ThinkBooster HF backend with the same truncated bf16 reader | Training reads bf16 states; vLLM's FP8 states would not match the probe, so the vLLM backend needs its own parity check first |
+
+### Checks before full generation
+
+1. Prompt contract: the rendered prompt equals the chat template's output and
+   round-trips through the tokenizer; the instruction rewrite finds exactly
+   one target string.
+2. A smoke bank of 16 fit questions × 2 chains: chains validate
+   (`validate_chain`), every forced answer sits at a recorded block end, the
+   fallback runs, and label rates are plausible (Now rises with depth; Same is
+   masked only without a final answer).
+3. Trainer on the smoke bank, one epoch: finite losses, the feature contract
+   records the truncated layer count and bf16, peak memory under 48 GB.
+4. Decontamination report: zero hits left against every evaluation set,
+   Minerva included.
+5. Layer sweep on the validation chains before the full training run.
+
 ## Engineering work
 
 | Piece | Work | Estimate |
@@ -146,8 +186,9 @@ seed adds about 20 GPU-hours. For comparison, the paper's OLMo probe took
    A 32k budget roughly doubles the data cost and halves concurrency again.
    Proposal: 16k as in the OLMo recipe, with a slightly easier pool (more
    DAPO and NuminaMath, less DeepScaleR), and report the cap rate.
-2. **Sampler.** The spike used BELT's T = 0.6; Qwen3.6 recommends T = 1.0
-   for thinking. The probe should be trained under the sampler we deploy.
+2. **Sampler.** Settled by the review: BELT used T = 0.6 for both its
+   models, not each model's default (Qwen3.6 recommends 1.0). We keep 0.6,
+   top-p 0.95, top-k 20, which the tutorial runs also use.
 3. **Feature layer.** Layer 24 (60% depth, like the paper's choices) fits
    with 43 GB peak; layer 16 is 50% faster and leaves headroom. A linear
    probe sweep over layers 12 to 28 on the validation chains decides.
