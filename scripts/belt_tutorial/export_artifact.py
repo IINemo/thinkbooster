@@ -46,9 +46,16 @@ def rescored(samples, fn):
 def curve(samples, forced, max_points=140):
     points = A.frontier(samples, forced)
     points.sort(key=lambda p: p["token_saving"])
-    # Keep the upper envelope's shape while bounding the size.
+    # Keep every Pareto point (no other point has more saving and at least the
+    # same accuracy), so readings from the page are exact, plus an even sample
+    # of the rest for the curve's shape.
+    pareto, best = set(), -1.0
+    for k in range(len(points) - 1, -1, -1):
+        if points[k]["accuracy"] > best + 1e-12:
+            pareto.add(k)
+            best = points[k]["accuracy"]
     step = max(1, len(points) // max_points)
-    keep = points[::step] + [points[-1]]
+    keep = [p for k, p in enumerate(points) if k in pareto or k % step == 0 or k == len(points) - 1]
     return [
         [round(p["token_saving"], 4), round(p["accuracy"], 4), round(p["mean_tokens"], 1),
          None if math.isinf(p["threshold"]) else round(p["threshold"], 3), round(p["stop_rate"], 3)]
