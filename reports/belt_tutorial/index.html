@@ -228,7 +228,7 @@ table.why-t td:first-child { padding-right: 24px; }
     <div class="stat"><span class="n">13%</span><span class="t">fewer reasoning tokens on MATH-500 for at most 1 point of accuracy lost (18% for 2 points)</span></div>
     <div class="stat"><span class="n">99.8%</span><span class="t">of stop decisions match the paper's own pipeline on its archived trajectories (491 of 492)</span></div>
     <div class="stat"><span class="n">0.85</span><span class="t">AUROC of the Now belief for "is the answer right if we stop here" on MATH-500</span></div>
-    <div class="stat"><span class="n">1.7×</span><span class="t">faster belief scoring with the vLLM backend than with Hugging Face, same decisions 99.5% of the time</span></div>
+    <div class="stat"><span class="n">1.7×</span><span class="t">faster belief scoring with the vLLM backend than with Hugging Face, same decisions 99.5% of the time; whole runs are not faster yet</span></div>
   </div>
   <p class="bottomline">Bottom line: run live in ThinkBooster on all 500 MATH-500 problems at its fitted threshold, BELT scores 86.4% against the model's own 88.8% with 17% fewer reasoning tokens, stopping early on 61% of problems. Beyond about 30% savings, a plain token cap does as well in our one-sample-per-problem setup. On Minerva Math, outside the probe's training domain, the gains are small.</p>
 </header>
@@ -444,9 +444,14 @@ scorer:
       <tr><th>1k to 4k tokens (480)</th><td class="num">97 ms</td><td class="num">58 ms · 1.7× faster</td></tr>
       <tr><th>4k to 8k tokens (130)</th><td class="num">204 ms</td><td class="num">94 ms · 2.2× faster</td></tr>
       <tr><th>All 776 decisions, mean</th><td class="num"><b>102 ms</b></td><td class="num"><b>60 ms · 1.7× faster</b></td></tr>
+      <tr class="grp"><th colspan="3">End to end: 64 MATH-500 problems, BELT-H at threshold 0, same GPU</th></tr>
+      <tr><th>Belief queries during the run</th><td class="num">re-read the prefix each time</td><td class="num">531 in 3.8 s · 7 ms each</td></tr>
+      <tr><th>Whole run, at most 9 problems at a time</th><td class="num">12.6 min</td><td class="num">15.2 min · slower</td></tr>
+      <tr><th>Whole run, 64 problems at a time</th><td class="num"><b>8.4 min</b></td><td class="num">not supported</td></tr>
+      <tr><th>Accuracy on the 64 problems</th><td class="num">85.9% · 85.9%</td><td class="num">87.5%</td></tr>
     </tbody>
   </table></div>
-  <p class="cap">The HF cost grows with prefix length because it re-reads the whole prefix each time; vLLM's stays flatter. vLLM was timed in a separate engine that had not generated these prefixes, so every query paid a prefill; in a live run the states are captured during generation, so these vLLM times are an upper bound. Belief differences between the backends: median 0.005, 99th percentile 0.041. End-to-end run times for both backends are being measured.</p>
+  <p class="cap">The HF cost grows with prefix length because it re-reads the whole prefix each time; vLLM's stays flatter. vLLM was timed in a separate engine that had not generated these prefixes, so every query paid a prefill; in a live run the states are captured during generation, so these vLLM times are an upper bound. Belief differences between the backends: median 0.005, 99th percentile 0.041. In a live run the vLLM backend's queries are almost free (the states were captured while generating), yet the whole run is not faster yet: it generates in eager mode, without CUDA graphs (820 s against about 700 s of generation for HF), and takes at most 9 problems at a time. For a 1.7B model scoring is a small share of the time, so today the HF backend with a large batch is the fastest setup. The vLLM backend pays off where re-reading the prefix dominates: longer prefixes, larger models, more frequent decisions. Wall times include model loading; the 64-problem accuracies differ by one problem.</p>
 </div>
 
 <section class="prose" aria-labelledby="h-run">
@@ -475,7 +480,7 @@ python scripts/belt_tutorial/make_policy.py \
   --config-path "$PWD/config" \
   --config-name experiments/belt/tutorial/math500_qwen3_1p7b \
   strategy.policy_path="$PWD/belt-policy.json" \
-  scorer.backend=hf        # or vllm: one engine, 1.7× faster scoring</pre>
+  scorer.backend=hf        # or vllm: one engine, cheaper scoring</pre>
   </div>
   <div class="step">
     <div class="code-head"><h3>4 · Or read beliefs from Python</h3><button class="plain copy" type="button" data-target="c4">Copy</button></div>
