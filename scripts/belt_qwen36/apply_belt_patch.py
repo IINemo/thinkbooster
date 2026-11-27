@@ -5,7 +5,7 @@ and OLMo-3 recipes as code snapshots. Qwen3.6 has no ReProbe head, so it
 follows the OLMo path: ``scripts/source_variants/olmo_code`` generates and
 labels chains, ``scripts/source_variants/olmo_belt`` trains the self-contained
 reader, and the root package builds the question pool and runs the
-natural-answer fallback. This script makes four kinds of edit, each asserted
+natural-answer fallback. This script makes these edits, each asserted
 against the exact text it replaces, so a moved line fails loudly:
 
 1. ``rl_controller/qwen36_contract.py`` is copied into all three packages, and
@@ -19,7 +19,10 @@ against the exact text it replaces, so a moved line fails loudly:
 5. The ``olmo_belt`` trainer loads this backbone text-only, truncated to the
    deepest feature layer, with the FP8 weights dequantized to bf16. Layers
    after the feature layer are never read, so truncation does not change the
-   features.
+   features. ``QWEN36_BACKBONE_DEVICE`` can put the backbone on a second GPU.
+6. For this contract the reader's causal encoder turns off PyTorch's
+   MultiheadAttention fast path and drops an all-False key-padding mask; both
+   would otherwise build a [heads, T, T] mask, 8 GiB per 16k-token chain.
 
     python scripts/belt_qwen36/apply_belt_patch.py /path/to/BELT
 
@@ -126,7 +129,13 @@ RUNTIME_NEW = """    attention = configure_attention(attention_mode(getattr(args
     if backbone["model"] == "Qwen/Qwen3.6-35B-A3B-FP8":
         # Text-only, truncated to the deepest feature layer, FP8 dequantized to
         # bf16. Nothing after that layer is read, so the features are unchanged.
+        # QWEN36_BACKBONE_DEVICE puts the backbone on its own GPU: 24 bf16 layers
+        # take ~40 GB of a 48 GB card, and the reader's causal encoder needs
+        # ~6.5 GB more for one 14k-token chain. Features reach the head through
+        # the CPU (MultilayerHiddenStateProvider), so the split changes nothing.
+        import os as _os
         from transformers import AutoConfig, AutoModelForCausalLM, FineGrainedFP8Config
+        backbone_device = torch.device(_os.environ.get("QWEN36_BACKBONE_DEVICE") or device)
         layers = tuple(saved_config["layers"]) if saved_config is not None else tuple(args.uhead_layers)
         keep = max(layers)
         hf_config = AutoConfig.from_pretrained(model_ref, revision=None if args.model_path else revision,
@@ -139,15 +148,38 @@ RUNTIME_NEW = """    attention = configure_attention(attention_mode(getattr(args
             text.layer_types = list(text.layer_types[:keep])
         model = AutoModelForCausalLM.from_pretrained(
             model_ref, revision=None if args.model_path else revision, config=hf_config,
-            cache_dir=args.hf_cache, dtype=dtype, device_map={"": device},
+            cache_dir=args.hf_cache, dtype=dtype, device_map={"": backbone_device},
             quantization_config=FineGrainedFP8Config(dequantize=True), **attention)
         print(json.dumps({"qwen36_backbone": {"layers_loaded": keep, "fp8_dequantized": True,
-                                              "dtype": str(dtype), "class": type(model).__name__}}),
+                                              "dtype": str(dtype), "class": type(model).__name__,
+                                              "backbone_device": str(backbone_device),
+                                              "head_device": str(device)}}),
               flush=True)
     else:
         model = AutoModel.from_pretrained(model_ref, revision=None if args.model_path else revision,
                                          cache_dir=args.hf_cache, torch_dtype=dtype,
                                          **attention).to(device)"""
+
+
+HEAD_OLD = """    def _encode(self, seq, padding, seq_len):
+        mask = self._build_causal_step_mask(seq_len, seq.device)
+"""
+HEAD_NEW = """    def _encode(self, seq, padding, seq_len):
+        mask = self._build_causal_step_mask(seq_len, seq.device)
+        from rl_controller.rollout_contract import active_prompt_contract as _contract
+        if _contract() == "qwen3.6-35b-a3b-fp8-native-thinking-v1":
+            # Qwen3.6 chains reach 16k tokens; two paths in nn.MultiheadAttention
+            # would build a per-head [B*H, T, T] mask (8 GiB at T = 16k):
+            # - the eval/no-grad "fast path" (the frozen copy and scoring) always
+            #   merges the masks, so it is switched off;
+            # - an all-False key-padding mask is merged in too, so it is dropped.
+            # What remains is the causal mask alone, run by SDPA without
+            # materializing attention. Outputs move by fp32 rounding (3.6e-5 on
+            # a 4k-token chain).
+            torch.backends.mha.set_fastpath_enabled(False)
+            if padding is not None and not bool(padding.any()):
+                padding = None
+"""
 
 
 def replace_once(path: Path, old: str, new: str) -> None:
@@ -197,6 +229,11 @@ def main() -> int:
         root / "scripts/source_variants/olmo_belt/rl_controller/multilayer_runtime.py",
         RUNTIME_OLD,
         RUNTIME_NEW,
+    )
+    replace_once(
+        root / "scripts/source_variants/olmo_belt/rl_controller/multilayer_uhead.py",
+        HEAD_OLD,
+        HEAD_NEW,
     )
 
     diff = subprocess.run(

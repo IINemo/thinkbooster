@@ -1,0 +1,16 @@
+#!/bin/bash
+# One fit-split shard of the Qwen3.6 BELT generation: ./run_fit_shard.sh <gpu> <shard> <count>
+source /mnt/data/users/vlad.smirnov/belt_qwen36/env.sh
+export U4R_NATIVE_ROOT=$B/BELT/vendor/uncertainty4reasoning-native-thinking
+export RL_PROMPT_CONTRACT=qwen3.6-35b-a3b-fp8-native-thinking-v1
+export CUDA_VISIBLE_DEVICES=$1
+SNAP=/mnt/data/users/vlad.smirnov/hf_cache/hub/models--Qwen--Qwen3.6-35B-A3B-FP8/snapshots/c653bba46dfa06e9658dcc0b0dc87fe4685f14a2
+cd $B/BELT/scripts/source_variants/olmo_code
+PYTHONPATH="$PWD:$B/BELT" $PY -m rl_controller.scripts.single_cot_probe \
+  --manifest $B/pool/manifest.jsonl --split fit --split-salt qwen36-belt-2026-11-27-v1 \
+  --model Qwen/Qwen3.6-35B-A3B-FP8 --revision c653bba46dfa06e9658dcc0b0dc87fe4685f14a2 \
+  --model-path $SNAP --prompt-contract qwen3.6-35b-a3b-fp8-native-thinking-v1 \
+  --chains 4 --max-chains-per-question 4 --budget 16384 --block-cap 128 \
+  --query-stride 4 --max-forced-tokens 32 --max-model-len 20480 --gpu-mem-util 0.92 \
+  --work-shard-index $2 --work-shard-count $3 --seed 0 --out-dir $B/full/fit/shard$2
+echo EXIT=$?

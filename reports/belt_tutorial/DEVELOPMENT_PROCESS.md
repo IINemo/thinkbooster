@@ -134,6 +134,16 @@ for the supervisor version. Changes:
   eager-mode generation and the batch cap make the run slower).
 - Larger-model plan: `reports/belt_qwen36/PLAN.md` (Qwen3.6-35B-A3B).
 
+## Qwen3.6-35B-A3B probe (2026-11-27)
+
+- BELT changes live as a patch, `scripts/belt_qwen36/apply_belt_patch.py`
+  (contract, text-only vLLM, fallback, Minerva screening, truncated bf16
+  trainer backbone, reader memory fixes), applied to BELT 700948b on Artem-3.
+- Pool built (7,100 questions, salt `qwen36-belt-2026-11-27-v1`), smoke test
+  passed end to end; details and the memory fixes are in PLAN.md.
+- Full fit-split generation started 19:27 on both Artem-3 GPUs as 16
+  resumable shards (`run_fit_queue.sh`), about 30 h.
+
 ## Open items
 
 - The vLLM backend needs CUDA graphs and a larger batch before it can speed

@@ -107,11 +107,11 @@ trainer snapshots), not the Qwen3-1.7B one.
 | Forced answer | prefix + `</think>\n\n\boxed{`, at most 32 tokens, stop at `}`; strict integer grading | same | Model-agnostic |
 | Natural-answer fallback | `belt_natural_fallback`: elicit an answer only for a closed chain with no parseable answer; charge its tokens | same, with the new contract | Must run before labels |
 | Labels | Now = forced answer correct; End = final answer correct; Later = a later forced answer or the final answer correct; Same = forced answer equals the final answer (masked without a final answer) | same | `iclr/labels.py`, model-agnostic |
-| Reader | layer-18 states, RMS-normalized, 2-layer 8-head reader to 768-d, random init, 19.1M parameters | layer chosen by a sweep (16 to 28), same reader | Hidden size 2,048 instead of 4,096 |
+| Reader | layer-18 states, RMS-normalized, 2-layer 8-head reader to 768-d, random init, 19.1M parameters | layer chosen by a sweep (16 to 24 on one card), same reader | Hidden size 2,048 instead of 4,096 |
 | Backbone pass in training | full bf16 model, `AutoModel`, no chunking (`chunk_size` 0), dropout off | text-only model **truncated to the feature layer**, FP8 weights **dequantized to bf16**, no chunking | The full model does not fit; truncation is exact because nothing after the layer is read. No chunking also avoids the hybrid-attention cache path |
 | Training | targets q, v, r, stability at 0.25 each; lr head 5e-5, readout 1e-3; 3 epochs, patience 3; 1 chain per step; select by validation log-loss | same | |
 | Policies | OLMo: 4 belief logits **without** prefix length, 17 directions × 13 thresholds; H from the 768-d representation | same as OLMo | |
-| Serving | — | ThinkBooster HF backend with the same truncated bf16 reader | Training reads bf16 states; vLLM's FP8 states would not match the probe, so the vLLM backend needs its own parity check first |
+| Serving | — | ThinkBooster HF backend with the same truncated bf16 reader: vLLM on one card, backbone (about 40 GB at layer 24) and reader (about 2 GB at 16k tokens, no gradients) on a second | Training reads bf16 states; vLLM's FP8 states would not match the probe, so the vLLM backend needs its own parity check first |
 
 ### Checks before full generation
 
@@ -127,6 +127,41 @@ trainer snapshots), not the Qwen3-1.7B one.
 4. Decontamination report: zero hits left against every evaluation set,
    Minerva included.
 5. Layer sweep on the validation chains before the full training run.
+
+### Smoke test (2026-11-27, Artem-3): passed
+
+Pool: 7,100 questions (fit 4,295 / select 1,031 / report 1,774); 760
+candidates overlapped an evaluation set (AIME 24/25, OlympiadBench, MATH-500,
+Gaokao) and none is in the manifest. Minerva had no overlap; GPQA is gated
+and unscreened.
+
+Smoke bank: 16 fit and 8 select questions, 2 chains each, full 16k budget.
+
+| Step | Result |
+|---|---|
+| Generation | 48 chains; mean 9,450 thinking tokens on fit, 14 of 48 hit 16k; about 7.5 forced answers per chain |
+| Answers | Chains stop at `</think>`; an answer is read only from a `\boxed{}` inside the thinking, so 13 of 34 closed chains had none. The fallback (`</think>\n\n\boxed{`, stop at `}`) recovered 9, 8 correct |
+| Labels | Now base rate 14% at forced answers; End and Same well formed (AP 0.92 and 0.99 on 8 validation chains) |
+| Trainer, one epoch at layer 24 | Ran after two memory fixes below; 5.3 s per training chain (backbone about 1.4 s of it, the fp32 reader the rest); checkpoint, validation and select scoring written |
+
+Memory, found by the smoke test and fixed in `apply_belt_patch.py`:
+
+- 24 bf16 layers take about 40 GB of a 48 GB card, too little room for the
+  reader. `QWEN36_BACKBONE_DEVICE=cuda:1` puts the backbone on the second
+  GPU; features reach the reader through the CPU, so nothing else changes.
+  **Training therefore uses both GPUs.**
+- BELT's reader is an `nn.TransformerEncoder` with an explicit causal mask.
+  PyTorch's eval/no-grad "fast path" (used for the frozen copy each step and
+  for scoring) and an all-False padding mask each build a [heads, T, T] mask:
+  8 GiB at 16k tokens. For this contract the patch turns the fast path off
+  and drops an empty padding mask; the reader then needs 1.9 GiB at 16,440
+  tokens, and its outputs move by fp32 rounding (at most 3.6e-5).
+- `flash-linear-attention` 0.4.1 is installed so the 3-in-4 linear-attention
+  layers use fused kernels, not Transformers' reference code.
+
+The deepest feature layer that fits one 48 GB card in bf16 is about 25
+(28 layers would need about 49 GB). A deeper sweep point needs the backbone
+split across two GPUs.
 
 ## Engineering work
 
@@ -170,7 +205,7 @@ selection chains: **about 20,700 chains of 9,800 tokens, 204M tokens.**
 |---|---|---|
 | Chains (204M tokens at 837 tokens/s) | 68 h | 34 h |
 | Forced answers (194k at 0.106 s) | 6 h | 3 h |
-| Probe training, layer 24, 3 epochs (156M tokens per epoch at 9,000 tokens/s, plus about 30% trainer overhead and validation) | 20 h per seed | 20 h (one seed per GPU) |
+| Probe training, layer 24, 3 epochs. Measured in the smoke test: 5.3 s per training chain, about 15,900 chains, so about 23 h per epoch; it needs both cards (backbone and reader on separate GPUs) | — | about 3 days per seed |
 | Policy fitting | minutes (CPU) | minutes |
 | Evaluation in ThinkBooster (MATH-500, Minerva, AIME: never-stop runs, forced answers, live runs) | about 8 h | about 4 h |
 | **Total for one seed** | **about 4.2 GPU-days** | **about 2.6 days wall** |
@@ -189,10 +224,15 @@ seed adds about 20 GPU-hours. For comparison, the paper's OLMo probe took
 2. **Sampler.** Settled by the review: BELT used T = 0.6 for both its
    models, not each model's default (Qwen3.6 recommends 1.0). We keep 0.6,
    top-p 0.95, top-k 20, which the tutorial runs also use.
-3. **Feature layer.** Layer 24 (60% depth, like the paper's choices) fits
-   with 43 GB peak; layer 16 is 50% faster and leaves headroom. A linear
-   probe sweep over layers 12 to 28 on the validation chains decides.
-4. **GPUs.** Two cards halve the calendar. An 80 GB or GH200 card (the
+3. **Feature layer.** Layer 24 (60% depth, like the paper's choices) is the
+   deepest that fits one card with the reader on the other. Layer 16 is 50%
+   faster. A linear probe sweep over layers 12 to 24 on the validation chains
+   decides; going deeper needs the backbone split across two cards.
+4. **Probe training time.** About 3 days per seed (smoke test), against the
+   20 h first estimated; the fp32 reader over 16k-token chains dominates.
+   Running the reader under bf16 autocast would cut it, at the cost of a
+   numerical difference from BELT's recipe.
+5. **GPUs.** Two cards halve the calendar. An 80 GB or GH200 card (the
    paper used CSCS GH200s) would raise generation throughput several times.
 
 ## Hardware and storage (checked 2026-11-27)
