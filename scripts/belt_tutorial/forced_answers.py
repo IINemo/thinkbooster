@@ -16,6 +16,7 @@ same trajectories.
 import argparse
 import json
 import os
+import signal
 from pathlib import Path
 
 # The evaluator imports initialize CUDA; vLLM must then spawn its engine.
@@ -27,6 +28,26 @@ from transformers import AutoTokenizer
 from thinkbooster.evaluation.exact_match import EvaluatorExactMatch
 
 FORCE_SUFFIX = "</think>\n\n\\boxed{"
+
+
+def grade(evaluator, question, answer, gold, seconds=5):
+    """Exact-match grade with a time limit; symbolic comparison can hang.
+
+    Returns (correct, timed_out). On timeout, falls back to string equality.
+    """
+
+    def expire(*_):
+        raise TimeoutError
+
+    previous = signal.signal(signal.SIGALRM, expire)
+    signal.alarm(seconds)
+    try:
+        return bool(evaluator._score_single((question, "\\boxed{" + answer + "}", gold))), False
+    except TimeoutError:
+        return answer.strip() == gold.strip(), True
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 def boxed_content(text):
@@ -102,11 +123,10 @@ def main():
             content = boxed_content(output.outputs[0].text)
             closed = content is not None
             answer = (content or output.outputs[0].text).strip()
-            correct = bool(
-                closed
-                and evaluator._score_single(
-                    (sample["question"], "\\boxed{" + answer + "}", str(sample["gold_answer"]))
-                )
+            correct, timed_out = (
+                grade(evaluator, sample["question"], answer, str(sample["gold_answer"]))
+                if closed
+                else (False, False)
             )
             stream.write(
                 json.dumps(
@@ -123,6 +143,7 @@ def main():
                             else len(output.outputs[0].token_ids)
                         ),
                         "correct": correct,
+                        "grading_timeout": timed_out,
                     }
                 )
                 + "\n"
