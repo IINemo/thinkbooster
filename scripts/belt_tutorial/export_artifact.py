@@ -122,7 +122,7 @@ def main():
             rec = {
                 "ds": ds,
                 "i": s["index"],
-                "q": s["question"][:600],
+                "q": s["question"],
                 "gold": str(s["gold_answer"])[:60],
                 "ok": int(A.is_correct(s)),
                 "ans": str(s.get("extracted_answer") or "")[:60],

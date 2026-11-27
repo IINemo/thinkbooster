@@ -57,6 +57,39 @@ All code is in `scripts/belt_tutorial/`, configs in
   points; accuracy within one problem; 1.7x faster scoring per decision
   (2.2x at 4k–8k tokens), measured with cold prefills.
 
+## Page review (2026-11-27)
+
+An independent UX pass (desktop and phone, light and dark) and a content pass
+for the supervisor version. Changes:
+
+- Header: paper citation, a results-at-a-glance row and a one-paragraph bottom
+  line that states where a plain token cap does as well.
+- New "BELT inside ThinkBooster" section: the per-problem loop
+  (VLLMStepGenerator, StepScorerBELT, BeltStoppingPolicy, StrategyBELT) and
+  the Hydra config that wires it.
+- New "Two backends" section: an HF vs vLLM table (mechanism, memory,
+  requirements, fp32 error, decision agreement, Minerva replay at threshold 0,
+  per-decision speed by prefix length). The Minerva replay with vLLM stop
+  scores: 41.2% at 3,024 tokens vs HF 41.5% at 3,028 (one problem apart).
+- The timeline now says its stop score is BELT-H (reads the probe's 768-d
+  state), not a function of the four plotted beliefs; BELT-B and BELT-H are
+  defined before the chart. Block, decision point, y_i, a_i and T are defined.
+- The threshold slider shows its whole-dataset effect under the chart, and a
+  synced copy sits on the accuracy chart.
+- Accuracy table: grouped two-row header, consistent method names, a
+  one-problem noise scale, saving guides at 20/30/40% on the chart, direct
+  labels for all four curves. Result text names the columns where Now-only or
+  the fixed cap win.
+- Token price explained as accuracy points per 1,000 tokens (BELT's utility
+  is accuracy minus lambda x tokens).
+- Checks section moved before the results. Light-mode belief colours darkened
+  to reach 3:1 on the surface; hint text uses the muted colour.
+- Problem text and answers render with KaTeX; long questions keep their start
+  and end and are cut only outside $...$. The exporter no longer truncates
+  questions at 600 characters (it cut off the asked Minerva subproblem).
+- Automated checks: all 772 trajectories at five thresholds, both frontiers
+  and all 17 prices show no overlapping labels and no runtime errors.
+
 ## Open items
 
 - MATH-500 online BELT run (threshold 0) and the three end-to-end backend

@@ -3,6 +3,9 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
 <style>
 /* Layout: one reading column with wide "instrument" panels; each panel is a live
    readout over real ThinkBooster runs (Qwen3-1.7B, seed-0 BELT probe). */
@@ -17,9 +20,9 @@
   --accent: #6250d6;
   --accent-soft: rgba(98, 80, 214, 0.10);
   --b-now: #2a78d6;
-  --b-end: #eb6834;
-  --b-later: #1baf7a;
-  --b-same: #eda100;
+  --b-end: #d4541f;
+  --b-later: #13895f;
+  --b-same: #b57a00;
   --code-bg: #eef0ec;
   --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
   --font-body: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -84,7 +87,7 @@ header { display: grid; gap: 18px; }
 label.ctl { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--muted); }
 select, input[type="number"] { font: inherit; font-size: 0.9rem; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
 input[type="number"] { width: 6.5em; }
-input[type="range"] { accent-color: var(--accent); width: 200px; max-width: 46vw; }
+input[type="range"] { accent-color: var(--accent); width: 200px; max-width: 46vw; height: 28px; margin: 0; }
 button.plain { font: inherit; font-size: 0.85rem; border: 1px solid var(--line); background: transparent; color: var(--fg); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
 .value { font-family: var(--font-mono); font-size: 0.85rem; color: var(--fg); min-width: 5ch; font-variant-numeric: tabular-nums; }
 
@@ -97,6 +100,15 @@ button.plain { font: inherit; font-size: 0.85rem; border: 1px solid var(--line);
 .timeline-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 18px; align-items: start; }
 .chart-wrap { min-width: 0; overflow-x: auto; }
 svg.chart { width: 100%; height: auto; display: block; touch-action: pan-y; }
+#timeline { cursor: crosshair; }
+#frontier { touch-action: auto; }
+.swipe { display: none; font-size: 0.8rem; color: var(--muted); }
+.cite { font-size: 0.88rem; color: var(--muted); }
+.cite i { color: var(--fg); }
+.bottomline { font-size: 1rem; max-width: 78ch; border-left: 3px solid var(--accent); padding-left: 12px; }
+.defs { font-size: 0.85rem; color: var(--muted); max-width: 90ch; }
+.slider-ends { display: inline-flex; gap: 6px; align-items: center; font-size: 0.78rem; color: var(--muted); }
+.thr-sum { font-size: 0.9rem; max-width: none; }
 svg.chart text { font-family: var(--font-mono); font-size: 11px; fill: var(--muted); }
 svg.chart .lbl-strong { fill: var(--fg); font-weight: 500; }
 svg.chart .grid { stroke: var(--grid); stroke-width: 1; }
@@ -114,7 +126,9 @@ svg.chart .band-title { font-family: var(--font-body); font-size: 11.5px; fill: 
 .mark-ok { font-family: var(--font-mono); font-size: 0.75rem; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--fg); }
 .mark-ok.no { border-style: dashed; color: var(--muted); border-color: var(--muted); }
 .snippet { font-family: var(--font-mono); font-size: 0.74rem; line-height: 1.5; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 9.5em; overflow: auto; border-top: 1px solid var(--line); padding-top: 8px; }
-.hint { font-size: 0.8rem; color: var(--faint); }
+.hint { font-size: 0.8rem; color: var(--muted); }
+.readline { font-size: 0.92rem; max-width: none; }
+.readline .dia { color: var(--accent); }
 
 .two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
@@ -143,13 +157,39 @@ ul.notes { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 7
 .belief .q { color: var(--fg); }
 .err { color: var(--fg); border: 1px dashed var(--muted); border-radius: 8px; padding: 12px; }
 
+/* ThinkBooster loop */
+.flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px; counter-reset: none; }
+.flow li { position: relative; display: grid; gap: 4px; align-content: start; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--bg); font-size: 0.88rem; }
+.flow li .k { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.flow li b { font-family: var(--font-mono); font-size: 0.86rem; font-weight: 500; color: var(--accent); }
+.flow li:not(:last-child)::after { content: "→"; position: absolute; right: -21px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 1rem; }
+pre.cfg { font-size: 0.78rem; }
+.glance .n { color: var(--accent); }
+
+/* Backends */
+table.cmp th, table.cmp td { white-space: normal; text-align: left; vertical-align: top; }
+table.cmp td:not(:first-child) { font-variant-numeric: tabular-nums; }
+table.cmp th:first-child { width: 30%; }
+table.cmp td.num { font-family: var(--font-mono); font-size: 0.84rem; }
+table.cmp tbody th { font-weight: 500; color: var(--fg); font-size: 0.86rem; }
+table.cmp tr.grp th { padding-top: 16px; font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); }
+th.grp { text-align: center !important; border-bottom: 1px solid var(--line); color: var(--fg); }
+#fr-table thead tr + tr th:first-child { text-align: right; }
+.cap { font-size: 0.8rem; color: var(--muted); max-width: 90ch; }
+@media (max-width: 680px) { table.cmp { font-size: 0.8rem; } table.cmp th, table.cmp td { padding: 6px 6px; } table.cmp th:first-child { width: auto; } table.cmp code { overflow-wrap: anywhere; word-break: break-all; } }
+
 @media (max-width: 860px) {
+  .flow { grid-template-columns: minmax(0, 1fr); gap: 22px; }
+  .flow li:not(:last-child)::after { content: "↓"; right: auto; left: 50%; top: auto; bottom: -21px; transform: translateX(-50%); }
   .beliefs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .timeline-grid, .two-col { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 680px) {
   /* Keep chart labels legible on phones; the chart scrolls inside its panel. */
   svg#timeline, svg#frontier { min-width: 640px; }
+  svg#timeline { touch-action: pan-x pan-y; }
+  svg#coef { min-width: 440px; }
+  .swipe { display: block; }
 }
 @media (max-width: 460px) {
   .beliefs { grid-template-columns: minmax(0, 1fr); }
@@ -163,13 +203,22 @@ ul.notes { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 7
 <header>
   <div class="eyebrow">ThinkBooster tutorial · BELT, belief-based termination</div>
   <h1>Watching a reasoning model decide when it is done</h1>
-  <p class="lede">BELT reads a frozen model's hidden states at every reasoning boundary and keeps four beliefs about the answer: is it right now, will it be right at the end, will a right answer still come, and will the current answer survive. A small linear policy turns those beliefs into a stop decision. Below, every curve comes from real ThinkBooster runs.</p>
+  <p class="cite">BELT: Ni, Abulkhanov, Smirnov, Leippold, Ash, Baldwin, Shelmanov and Sachan, <i>Same Beliefs, Different Policies: Learning Reusable Representations for Early Stopping in LLM Reasoning</i>, arXiv preprint, 2026 · code at <a href="https://github.com/EdisonNi-hku/BELT">github.com/EdisonNi-hku/BELT</a></p>
+  <p class="lede">BELT reads a frozen model's hidden states at every reasoning boundary and keeps four beliefs about the answer: is it right now, will it be right at the end, will a right answer still come, and will the current answer survive. A small linear policy turns those beliefs into a stop decision. In ThinkBooster, BELT is one more test-time strategy: a config switch adds it to any benchmark run, with either a Hugging Face or a vLLM backend for reading the beliefs. Every curve below comes from real ThinkBooster runs.</p>
   <div class="chips">
     <span class="chip">Qwen3-1.7B, thinking mode</span>
-    <span class="chip">BELT probe: ReProbe init, seed 0</span>
+    <span class="chip">released BELT probe, seed 0</span>
     <span class="chip">MATH-500 · Minerva Math</span>
-    <span class="chip">decision every 4th block, ≈12k thinking tokens</span>
+    <span class="chip">stop check every 4th reasoning block</span>
+    <span class="chip">12k-token thinking budget</span>
   </div>
+  <div class="stats glance" aria-label="Results at a glance">
+    <div class="stat"><span class="n">13%</span><span class="t">fewer reasoning tokens on MATH-500 for at most 1 point of accuracy lost (18% for 2 points)</span></div>
+    <div class="stat"><span class="n">99.8%</span><span class="t">of stop decisions match the paper's own pipeline on its archived trajectories (491 of 492)</span></div>
+    <div class="stat"><span class="n">0.85</span><span class="t">AUROC of the Now belief for "is the answer right if we stop here" on MATH-500</span></div>
+    <div class="stat"><span class="n">1.7×</span><span class="t">faster belief scoring with the vLLM backend than with Hugging Face, same decisions 99.5% of the time</span></div>
+  </div>
+  <p class="bottomline">Bottom line: on MATH-500, BELT at its fitted threshold keeps 86.6% of the model's 88.8% accuracy with 18% fewer reasoning tokens. Beyond about 30% savings, a plain token cap does as well in our one-sample-per-problem setup. On Minerva Math, outside the probe's training domain, the gains are small.</p>
 </header>
 
 <section class="prose" aria-labelledby="h-beliefs">
@@ -181,11 +230,37 @@ ul.notes { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 7
     <div class="belief" style="color: var(--b-later)"><div class="name"><span class="swatch dash"></span><span style="color: var(--fg)">Later</span></div><div class="q">Will a correct answer appear at some later boundary?</div><div class="def">Y<sub>i</sub><sup>later</sup> = 1{∃ j&gt;i : y<sub>j</sub> = 1}</div></div>
     <div class="belief" style="color: var(--b-same)"><div class="name"><span class="swatch" style="background: var(--b-same)"></span><span style="color: var(--fg)">Same</span></div><div class="q">Is the current answer the one it will end with?</div><div class="def">Y<sub>i</sub><sup>same</sup> = 1{a<sub>i</sub> = a<sub>T</sub>}</div></div>
   </div>
+  <p class="defs">A <b>block</b> is one reasoning step: text up to a blank line. At block <i>i</i>, a<sub>i</sub> is the answer the model gives if forced to answer there, y<sub>i</sub> = 1 if that answer is correct, and T is the block where the model stops by itself.</p>
 </section>
+
+<section class="prose" aria-labelledby="h-tb">
+  <h2 id="h-tb">BELT inside ThinkBooster</h2>
+  <p>ThinkBooster runs test-time strategies (best-of-n, beam search, self-consistency and others) over one generation engine, one set of benchmarks and one evaluator. BELT plugs in as a strategy plus a scorer, so it is run, logged and graded exactly like the other strategies. One loop per problem:</p>
+</section>
+<div class="panel">
+  <ol class="flow">
+    <li><span class="k">1 · Generate a block</span><b>VLLMStepGenerator</b><span>vLLM writes reasoning until the next blank line (one BELT block).</span></li>
+    <li><span class="k">2 · Read the beliefs</span><b>StepScorerBELT</b><span>Every 4th block (4 to 128): layer-16 states of the prefix go through the probe, giving Now, End, Later, Same and a 768-d representation. Backend: <code>hf</code> or <code>vllm</code>.</span></li>
+    <li><span class="k">3 · Decide</span><b>BeltStoppingPolicy</b><span>A linear stop score from the beliefs (BELT-B) or the representation (BELT-H). Below the threshold: back to step 1.</span></li>
+    <li><span class="k">4 · Answer and grade</span><b>StrategyBELT</b><span>Close thinking with <code>&lt;/think&gt;</code>, generate the answer, grade it with ThinkBooster's evaluator. Every decision's beliefs and score are saved with the result.</span></li>
+  </ol>
+<pre class="cfg"># config/experiments/belt/tutorial/math500_qwen3_1p7b.yaml (excerpt)
+defaults:
+  - /model/vllm_qwen3
+  - /strategy/belt        # StrategyBELT: block loop, stop decisions
+  - /scorer/belt          # StepScorerBELT: probe from JingweiNi/BELT-Qwen3-1.7B-ReProbeInit
+strategy:
+  min_steps: 4            # first decision at block 4
+  query_stride: 4         # then every 4th block
+  max_blocks: 128         # no decisions after block 128
+scorer:
+  backend: hf             # or vllm: read states from the generating engine</pre>
+</div>
 
 <section class="prose" aria-labelledby="h-timeline">
   <h2 id="h-timeline">Belief timeline</h2>
-  <p>Each dot is a decision point: every fourth reasoning block, BELT reads the beliefs and the policy computes a stop score. To check the beliefs against reality, we also forced an answer at every decision point (close thinking, ask for <code>\boxed{…}</code>) and graded it. Filled dots are correct forced answers.</p>
+  <p>A <b>decision point</b> is every fourth block end, from block 4 to block 128. There BELT reads the four beliefs and a stopping policy computes a <b>stop score</b>, its log-odds of stopping; BELT stops at the first decision point where the score reaches the threshold. The paper fits two kinds of policy: <b>BELT-B</b> reads only the four beliefs and the prefix length, and <b>BELT-H</b> reads the probe's full 768-d state, from which the beliefs are computed. The stop score drawn here is BELT-H, the stronger of the two; BELT-B is in the next section.</p>
+  <p>To check the beliefs against reality, we also forced an answer at every decision point (close thinking, ask for <code>\boxed{…}</code>) and graded it. Filled dots are correct forced answers.</p>
 </section>
 
 <div class="panel" id="timeline-panel">
@@ -206,35 +281,34 @@ ul.notes { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 7
   </div>
   <div class="story" id="story"></div>
   <div class="controls">
-    <label class="ctl" for="thr">Stop threshold
+    <label class="ctl" for="thr">BELT-H stop threshold
       <input autocomplete="off" id="thr" type="range" min="-12" max="10" step="0.25" value="0">
     </label>
     <span class="value" id="thr-val">0.00</span>
-    <span class="hint">BELT stops at the first decision whose stop score reaches the threshold. 0 is the fitted policy's own boundary (stop probability 0.5); lower stops sooner.</span>
+    <span class="hint">0 is the fitted policy's own boundary (stop probability 0.5). Lower stops sooner, higher stops later.</span>
   </div>
+  <p class="thr-sum" id="thr-sum" aria-live="polite"></p>
+  <p class="hint">Point at a decision, tap it, or focus the chart with Tab and use ← → to read its beliefs, forced answer and reasoning on the right.</p>
+  <p class="swipe">Swipe the chart sideways to see all of it.</p>
   <div class="timeline-grid">
     <div class="chart-wrap"><svg class="chart" id="timeline" viewBox="0 0 760 456" role="group" aria-label="Belief timeline"></svg></div>
     <aside class="readout" id="readout"></aside>
     <p class="sr-only" id="tl-live" aria-live="polite"></p>
   </div>
   <div class="legend" aria-hidden="true">
-    <span><span class="swatch" style="background: var(--b-now)"></span>Now</span>
-    <span><span class="swatch" style="background: var(--b-end)"></span>End</span>
-    <span style="color: var(--b-later)"><span class="swatch dash"></span><span style="color: var(--muted)">Later</span></span>
-    <span><span class="swatch" style="background: var(--b-same)"></span>Same</span>
-    <span><span class="swatch" style="background: var(--fg)"></span>stop score</span>
+    <span><span class="swatch" style="background: var(--fg)"></span>stop score (BELT-H)</span>
     <span><span class="swatch dash" style="color: var(--accent)"></span>stop threshold</span>
     <span><span class="swatch" style="background: var(--muted); width: 2px; height: 14px"></span>model stops by itself</span>
     <span><span class="swatch" style="background: var(--accent); width: 2px; height: 14px"></span>BELT stops</span>
+    <span><span class="swatch" style="background: var(--accent-soft); height: 10px; width: 14px"></span>tokens BELT saves</span>
     <span>● correct forced answer · ○ wrong</span>
     <span><span class="swatch" style="background: var(--grid); height: 10px; width: 14px"></span>after block 128: no decisions</span>
-    <span>hover or use ← → on the chart</span>
   </div>
 </div>
 
 <section class="prose" aria-labelledby="h-policy">
   <h2 id="h-policy">Same beliefs, different policies</h2>
-  <p>The beliefs do not depend on how much a token costs. The price lives only in the policy, a logistic layer refit on CPU in seconds. Slide the price to see how the paper's 17 fitted BELT-B policies (four beliefs plus prefix length) reweight the same inputs.</p>
+  <p>The beliefs do not depend on how much a token costs. The price lives only in the policy, a logistic layer refit on CPU in seconds. The paper fits each policy to maximize accuracy minus λ × tokens, so λ says how many points of accuracy a token is worth. Slide it to see how the paper's 17 fitted BELT-B policies (four beliefs plus prefix length) reweight the same inputs.</p>
 </section>
 
 <div class="panel">
@@ -245,21 +319,34 @@ ul.notes { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 7
     <span class="value" id="price-val"></span>
   </div>
   <div class="two-col">
-    <div class="chart-wrap"><svg class="chart" id="coef" viewBox="0 0 460 250" role="img" aria-label="Policy coefficients"></svg></div>
+    <div class="chart-wrap"><svg class="chart" id="coef" viewBox="0 0 460 266" role="img" aria-label="Policy coefficients"></svg></div>
     <div class="prose" id="price-text"></div>
   </div>
 </div>
 
+<section class="prose" aria-labelledby="h-trust">
+  <h2 id="h-trust">Checks before the results</h2>
+  <p>Two checks before reading the curves below as BELT's behavior: does ThinkBooster reproduce the paper's probe, and do the beliefs track correctness?</p>
+</section>
+<div class="stats">
+  <div class="stat"><span class="n">99.8%</span><span class="t">of the paper's archived decision points, 491 of 492, get the same stop decision from ThinkBooster's reader on the paper's own token IDs. Median belief difference 0.0015, largest 0.025.</span></div>
+  <div class="stat"><span class="n">0.85</span><span class="t">AUROC of the Now belief for forced-answer correctness on MATH-500. 0.75 on Minerva Math, college science outside the probe's competition-math training.</span></div>
+</div>
+
 <section class="prose" aria-labelledby="h-frontier">
   <h2 id="h-frontier">What it buys: accuracy against tokens</h2>
-  <p>Each curve replays a stopping rule over the same 500 (or 272) never-stopped trajectories, using the forced answers above. BELT-H is the probe's 768-d representation with one fitted direction; moving the threshold traces the curve. A fixed token cap is the simplest baseline.</p>
+  <p>Each curve replays one stopping rule over the same full-length runs (500 MATH-500 or 272 Minerva problems, never stopped early), taking the graded forced answer wherever the rule stops. Each point is one threshold; moving the threshold traces the curve. "Now belief only" stops when Now alone is high enough, and a fixed token cap stops every run at the same length: the simplest baselines. Up and to the left is better.</p>
 </section>
 
 <div class="panel">
   <div class="controls">
     <div class="tabs" role="group" aria-label="Dataset" id="fr-tabs"></div>
-    <span class="hint" id="fr-point"></span>
+    <label class="ctl" for="thr2">BELT-H stop threshold
+      <input autocomplete="off" id="thr2" type="range" min="-12" max="10" step="0.25" value="0">
+    </label>
+    <span class="value" id="thr2-val">0.00</span>
   </div>
+  <p class="readline" id="fr-point" aria-live="polite"></p>
   <div class="chart-wrap"><svg class="chart" id="frontier" viewBox="0 0 760 372" role="img" aria-label="Accuracy against reasoning tokens"></svg></div>
   <div class="legend" aria-hidden="true">
     <span><span class="swatch" style="background: var(--accent); height: 3px"></span>BELT-H</span>
@@ -269,17 +356,36 @@ ul.notes { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 7
     <span>★ natural completion · ◆ current threshold</span>
   </div>
   <div class="table-wrap"><table id="fr-table"></table></div>
+  <p class="cap" id="fr-cap"></p>
   <p class="muted" id="fr-read"></p>
 </div>
 
-<section class="prose" aria-labelledby="h-trust">
-  <h2 id="h-trust">Is the integration faithful?</h2>
-  <p>Before reading the curves as BELT's behavior, three checks.</p>
+<section class="prose" aria-labelledby="h-backends">
+  <h2 id="h-backends">Two backends: Hugging Face and vLLM</h2>
+  <p>The probe needs the model's layer-16 hidden states for the whole prefix at every decision. ThinkBooster can get them two ways. The Hugging Face backend is the default and the one behind every number above; the vLLM backend reads the states from the engine that is already generating the text. Same probe, same policy, same decisions to within bf16 noise.</p>
 </section>
-<div class="stats">
-  <div class="stat"><span class="n">99.8%</span><span class="t">of the paper's 492 archived decision points get the same stop decision from ThinkBooster's reader on the paper's own token IDs (median belief difference 0.0015).</span></div>
-  <div class="stat"><span class="n">0.85</span><span class="t">AUROC of the Now belief for forced-answer correctness on MATH-500 (0.75 on Minerva Math, college science outside the probe's math training).</span></div>
-  <div class="stat"><span class="n">1.7×</span><span class="t">faster scoring per decision with the opt-in vLLM feature backend than the HF default (2.2× at 4k–8k tokens); same accuracy and savings within one problem.</span></div>
+<div class="panel">
+  <div class="table-wrap"><table class="cmp">
+    <thead><tr><th></th><th>Hugging Face backend</th><th>vLLM backend</th></tr></thead>
+    <tbody>
+      <tr class="grp"><th colspan="3">How it works</th></tr>
+      <tr><th>Config</th><td><code>scorer.backend=hf</code> (default)</td><td><code>scorer.backend=vllm</code> (opt-in)</td></tr>
+      <tr><th>Where layer-16 states come from</th><td>A second Transformers copy of Qwen3-1.7B re-reads the whole prompt and reasoning prefix at every decision</td><td>Captured by the vLLM engine while it generates; a short prefill fills any tokens not yet captured</td></tr>
+      <tr><th>Extra GPU memory</th><td>A second copy of the 1.7B model, about 3.4 GB in bf16</td><td>None beyond the generation engine</td></tr>
+      <tr><th>Requirements</th><td>None beyond ThinkBooster's</td><td>vLLM 0.12, eager mode; at most 9 sequences per batch at this 14k-token context</td></tr>
+      <tr class="grp"><th colspan="3">Same answers?</th></tr>
+      <tr><th>Largest belief error vs an fp32 reference, long-prefix test case</th><td class="num">0.0128</td><td class="num">0.0106</td></tr>
+      <tr><th>Stop decisions identical to HF, 4,201 Minerva decision points at threshold 0</th><td class="num">reference</td><td class="num">99.5%</td></tr>
+      <tr><th>Problems whose first stop is the same, 267 Minerva problems</th><td class="num">reference</td><td class="num">97.0% (8 differ)</td></tr>
+      <tr><th>Minerva Math replay at threshold 0: accuracy, mean tokens</th><td class="num">41.5% · 3,028</td><td class="num">41.2% · 3,024</td></tr>
+      <tr class="grp"><th colspan="3">Speed: scoring time per decision, same prefixes, one RTX 5880</th></tr>
+      <tr><th>Prefix under 1k tokens (166 decisions)</th><td class="num">36 ms</td><td class="num">39 ms · slightly slower</td></tr>
+      <tr><th>1k to 4k tokens (480)</th><td class="num">97 ms</td><td class="num">58 ms · 1.7× faster</td></tr>
+      <tr><th>4k to 8k tokens (130)</th><td class="num">204 ms</td><td class="num">94 ms · 2.2× faster</td></tr>
+      <tr><th>All 776 decisions, mean</th><td class="num"><b>102 ms</b></td><td class="num"><b>60 ms · 1.7× faster</b></td></tr>
+    </tbody>
+  </table></div>
+  <p class="cap">The HF cost grows with prefix length because it re-reads the whole prefix each time; vLLM's stays flatter. vLLM was timed in a separate engine that had not generated these prefixes, so every query paid a prefill; in a live run the states are captured during generation, so these vLLM times are an upper bound. Belief differences between the backends: median 0.005, 99th percentile 0.041. End-to-end run times for both backends are being measured.</p>
 </div>
 
 <section class="prose" aria-labelledby="h-run">
@@ -351,7 +457,7 @@ const STORIES = [
     text: (t) => `No decision point ever has a correct answer, and the model runs out of budget at ${fmt(t.T)} tokens. Later falls low: no correct answer is expected. ${t.s < 0 ? "At this threshold BELT never stops and the run spends its whole budget." : `${t.stopText} The answer is wrong either way, so those tokens are saved at no cost.`}` },
   { key: "missed", label: "Missed it", ds: "math500", i: 332,
     title: "A case BELT gets wrong",
-    text: (t) => `The forced answer "${t.forced0}" is correct from the first decision point, yet Now stays near ${t.now0} and the stop score peaks at ${t.maxZ.toFixed(1)}. ${t.s < 0 ? `At this threshold BELT never stops; the model thinks for ${fmt(t.T)} tokens and ends with a wrong answer.` : `Only at a threshold this low does BELT stop, at decision ${t.s + 1}${t.stopOk ? " with the correct answer" : ""}; at the policy's own threshold of 0 it would not.`} The beliefs are calibrated on average, not on every trajectory.` },
+    text: (t) => `The forced answer "${t.forced0}" is correct from the first decision point, yet Now starts at ${t.now0} and never exceeds ${t.nowMax} and the stop score peaks at ${t.maxZ.toFixed(1)}. ${t.s < 0 ? `At this threshold BELT never stops; the model thinks for ${fmt(t.T)} tokens and ends with a wrong answer.` : `Only at a threshold this low does BELT stop, at decision ${t.s + 1}${t.stopOk ? " with the correct answer" : ""}; at the policy's own threshold of 0 it would not.`} The beliefs are calibrated on average, not on every trajectory.` },
 ];
 const NS = "http://www.w3.org/2000/svg";
 const fmt = (n) => Math.round(n).toLocaleString("en-US");
@@ -396,23 +502,56 @@ function storyFacts(t) {
     : "at this threshold BELT never stops.";
   return { T: t.T, s, stopOk, maxZ: t.p.length ? Math.max(...t.p.map((p) => p[5])) : 0,
     firstOk, stopText, stopShort, ans: t.ans || "none", gold: t.gold,
-    now0: t.p.length ? t.p[0][1].toFixed(2) : "–", forced0: t.p.length ? t.p[0][7] : "" };
+    now0: t.p.length ? t.p[0][1].toFixed(2) : "–", nowMax: t.p.length ? Math.max(...t.p.map((p) => p[1])).toFixed(2) : "–", forced0: t.p.length ? t.p[0][7] : "" };
 }
 
+// Answers are bare TeX (\frac{14}{3}); render them inline when KaTeX is there.
+const tex = (x) => {
+  if (!x || !window.katex) return esc(x || "");
+  try { return katex.renderToString(String(x), { throwOnError: false }); } catch (e) { return esc(x); }
+};
+// Render LaTeX in problem statements when KaTeX loaded; plain text otherwise.
+function typeset(node) {
+  if (!node || typeof renderMathInElement !== "function") return;
+  try {
+    renderMathInElement(node, { throwOnError: false, delimiters: [
+      { left: "$$", right: "$$", display: false }, { left: "\\[", right: "\\]", display: false },
+      { left: "\\(", right: "\\)", display: false }, { left: "$", right: "$", display: false } ] });
+  } catch (e) { /* keep the raw text */ }
+}
+function renderThrSum() {
+  const ds = state.traj.ds, cp = currentBeltPoint(ds);
+  const nat = DATA.frontiers[ds]["BELT-H"].find((p) => p[3] === null);
+  const n = DATA.traj.filter((r) => r.ds === ds).length;
+  const d = 100 * (cp[1] - nat[1]);
+  document.getElementById("thr-sum").innerHTML = `Across all ${n} ${ds === "math500" ? "MATH-500" : "Minerva Math"} problems at this threshold: <b>${pct(cp[1])}</b> accuracy (${d >= 0 ? "+" : "−"}${Math.abs(d).toFixed(1)} points against ${pct(nat[1])} without early stopping), <b>${pct(cp[0], 0)} fewer</b> reasoning tokens, early stop on ${pct(cp[4], 0)} of problems.`;
+}
 function renderStory() {
   const t = state.traj;
+  renderThrSum();
   const box = document.getElementById("story");
   const st = STORIES.find((s) => s.key === state.story && s.ds === t.ds && s.i === t.i);
   const facts = storyFacts(t);
   const dsName = t.ds === "math500" ? "MATH-500" : "Minerva Math";
-  const outcome = `${dsName} #${t.i} · reference <b>${esc(t.gold)}</b> · model's own answer <b>${esc(t.ans || "none")}</b> (${t.ok ? "correct" : "wrong"}) · ${fmt(t.T)} reasoning tokens${t.why === "context_limit" ? ", hit the budget" : ""}`;
-  const question = esc(t.q.length > 420 ? t.q.slice(0, 420) + "…" : t.q);
+  const outcome = `${dsName} #${t.i} · reference <b>${tex(t.gold)}</b> · model's own answer <b>${t.ans ? tex(t.ans) : "none"}</b> (${t.ok ? "correct" : "wrong"}) · ${fmt(t.T)} reasoning tokens${t.why === "context_limit" ? ", hit the budget" : ""}`;
+  // Long prompts keep their start and their final question.
+  // Cut only outside $…$ math, so the renderer never sees half a formula.
+  const dollars = (x) => (x.match(/(?<!\\)\$/g) || []).length;
+  let qs = t.q;
+  if (t.q.length > 480) {
+    let head = t.q.slice(0, 160), tail = t.q.slice(-300);
+    if (dollars(head) % 2) head = head.slice(0, head.lastIndexOf("$"));
+    if (dollars(tail) % 2) tail = tail.slice(tail.indexOf("$") + 1);
+    qs = head + " … " + tail;
+  }
+  const question = esc(qs);
   if (st) {
     box.innerHTML = `<h3>${esc(st.title)}</h3><p>${esc(st.text(facts))}</p><div class="problem">${outcome}<br>${question}</div>`;
   } else {
     const lead = t.p.length ? facts.stopText : "The model finished before block 4, where BELT makes its first decision, so there was nothing to stop.";
     box.innerHTML = `<h3>${dsName} #${t.i}</h3><p>${esc(lead)}</p><div class="problem">${outcome}<br>${question}</div>`;
   }
+  typeset(box.querySelector(".problem"));
 }
 
 function renderTimeline() {
@@ -438,7 +577,7 @@ function renderTimeline() {
     : tok <= mEnd
       ? L + ((tok - x0) / (mEnd - x0)) * (split - L)
       : tailStart + ((tok - mEnd) / (T - mEnd)) * (W - R - tailStart);
-  const kfmt = (v) => (v >= 1000 ? (v / 1000).toFixed(v % 1000 ? 1 : 0) + "k" : String(Math.round(v)));
+  const kfmt = (v) => (v >= 1000 ? String(+(v / 1000).toFixed(2)) + "k" : String(Math.round(v)));
   // Belief axis: tighten to the data in steps of 0.1, but never to less than
   // half the probability range, so small wiggles cannot look dramatic.
   const bv = t.p.flatMap((p) => [p[1], p[2], p[3], p[4]]);
@@ -464,7 +603,7 @@ function renderTimeline() {
   }
   svg.append(el("text", { x: L, y: fTop - 6, class: "band-title" }, "Forced answer at each decision"));
   svg.append(el("line", { x1: L, x2: W - R, y1: fTop + FS / 2, y2: fTop + FS / 2, class: "grid" }));
-  svg.append(el("text", { x: L, y: sTop - 6, class: "band-title" }, "Stop score (black): BELT stops when it reaches the dashed threshold line"));
+  svg.append(el("text", { x: L, y: sTop - 6, class: "band-title" }, "Stop score (BELT-H log-odds of stopping): BELT stops when it reaches the dashed threshold"));
   svg.append(el("line", { x1: L, x2: W - R, y1: sTop, y2: sTop, class: "grid" }));
   svg.append(el("line", { x1: L, x2: W - R, y1: axisY, y2: axisY, class: "axis" }));
   for (let v = Math.ceil(zLo / zStep) * zStep; v <= zHi; v += zStep) {
@@ -607,13 +746,14 @@ function renderReadout() {
   const k = state.hover ?? (s >= 0 ? s : 0);
   const p = t.p[k];
   const rows = BELIEFS.map((b) => `<span><span class="swatch" style="background:${b.color};display:inline-block;vertical-align:middle"></span> ${b.name}</span><div class="bar"><i style="width:${(100 * p[b.k]).toFixed(1)}%;background:${b.color}"></i></div><span class="v">${p[b.k].toFixed(2)}</span>`).join("");
-  const snip = t.x ? `<div class="snippet">…${esc(t.x[k])}</div>` : "";
+  const snip = t.x ? `<div class="snippet"><span class="hint" style="font-family:var(--font-body)">Reasoning just before this decision:</span><br>…${esc(t.x[k])}</div>` : "";
   box.innerHTML = `
-    <div class="head"><b>Decision ${k + 1} of ${t.p.length}</b><span class="mono muted">${fmt(p[0])} tok</span></div>
+    <div class="head"><b>Decision ${k + 1} of ${t.p.length}</b><span class="mono muted">${fmt(p[0])} tokens</span></div>
     <div class="kv">${rows}</div>
     <div class="kv"><span>Stop score</span><span></span><span class="v">${p[5].toFixed(2)}</span></div>
-    <div class="forced"><span class="muted">Forced answer</span><b class="mono">${esc(p[7] || "—")}</b><span class="mark-ok ${p[6] === 1 ? "" : "no"}">${p[6] === 1 ? "correct" : "wrong"}</span></div>
-    ${k === s ? `<div class="hint" style="color:var(--accent)">BELT stops here at threshold ${state.thr.toFixed(2)}.</div>` : ""}
+    <div class="hint">${p[5] >= state.thr ? "At or above" : "Below"} the threshold ${state.thr.toFixed(2)}: ${p[5] >= state.thr ? "stop" : "keep thinking"}.</div>
+    <div class="forced"><span class="muted">Forced answer</span><b>${p[7] ? tex(p[7]) : "—"}</b><span class="mark-ok ${p[6] === 1 ? "" : "no"}">${p[6] === 1 ? "correct" : "wrong"}</span></div>
+    ${k === s ? `<div class="hint" style="color:var(--accent)">This is BELT's first stop at this threshold.</div>` : ""}
     ${snip}`;
 }
 
@@ -647,7 +787,8 @@ function lambdaText(l) {
 }
 function renderCoef() {
   const P = DATA.polB, row = P.rows[state.price];
-  document.getElementById("price-val").textContent = lambdaText(row.lambda) + " per token";
+  const pts1k = row.lambda * 1000 * 100;
+  document.getElementById("price-val").textContent = `${lambdaText(row.lambda)} per token: 1,000 tokens cost ${pts1k < 1 ? pts1k.toFixed(2) : pts1k.toFixed(1)} points of accuracy`;
   const norm = Math.hypot(...row.w);
   const colors = ["var(--b-now)", "var(--b-end)", "var(--b-later)", "var(--b-same)", "var(--faint)"];
   const svg = document.getElementById("coef"); svg.replaceChildren();
@@ -655,6 +796,7 @@ function renderCoef() {
   const x = (v) => L + ((v + 1) / 2) * (W - L - R);
   svg.append(el("line", { x1: x(0), x2: x(0), y1: top - 10, y2: top + rowH * 5, class: "axis" }));
   for (const v of [-1, 0, 1]) svg.append(el("text", { x: x(v), y: top + rowH * 5 + 16, "text-anchor": "middle" }, v.toFixed(0)));
+  svg.append(el("text", { x: x(0), y: top + rowH * 5 + 32, "text-anchor": "middle" }, "weight ÷ length of the weight vector (standardized inputs)"));
   svg.append(el("text", { x: x(-1), y: top - 12 }, "← lowers stop probability"));
   svg.append(el("text", { x: x(1), y: top - 12, "text-anchor": "end" }, "raises it →"));
   P.features.forEach((name, j) => {
@@ -673,7 +815,7 @@ function priceTrend() {
   const lo = P.rows[0], hi = P.rows[P.rows.length - 1];
   const later = P.rows.map((r) => nw(r, "Later"));
   const sg = (v) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(2);
-  return `Across the 17 fitted prices, prefix length carries the most weight when tokens are cheap (${sg(nw(lo, "Length"))} at the lowest price) and fades as they get expensive (${sg(nw(hi, "Length"))} at the highest). End takes over with a negative sign (${sg(nw(hi, "End"))} at the highest price): stop where finishing is not expected to improve the answer. Later stays positive at every price (${sg(Math.min(...later))} to ${sg(Math.max(...later))}). Same probe, same beliefs; only six numbers change.`;
+  return `Across the 17 fitted prices, prefix length carries the most weight when tokens are cheap (${sg(nw(lo, "Length"))} at the lowest price) and fades as they get expensive (${sg(nw(hi, "Length"))} at the highest). End takes over with a negative sign (${sg(nw(hi, "End"))} at the highest price): stop where finishing is not expected to improve the answer. Later stays positive at every price (${sg(Math.min(...later))} to ${sg(Math.max(...later))}). Same probe, same beliefs; only five weights and a bias change. The beliefs are correlated, so read the signs together, not one at a time.`;
 }
 function renderPriceText() {
   if (!DATA.polB || !state.traj) return;
@@ -689,15 +831,15 @@ function renderPriceText() {
     : s >= 0
     ? `On the trajectory above (${t.ds === "math500" ? "MATH-500" : "Minerva"} #${t.i}), this BELT-B policy stops at decision ${s + 1}, ${fmt(t.p[s][0])} tokens, with ${t.p[s][6] === 1 ? "a correct" : "a wrong"} forced answer.`
     : `On the trajectory above (${t.ds === "math500" ? "MATH-500" : "Minerva"} #${t.i}), this BELT-B policy never stops.`;
-  document.getElementById("price-text").innerHTML = `<p>At this price the policy leans most on <b>${lead}</b>.</p><p>${where}</p><p class="muted">${priceTrend()}</p>`;
+  document.getElementById("price-text").innerHTML = `<p>At this price the policy leans most on <b>${lead}</b>.</p><p>${where}</p><p class="muted">The timeline above uses BELT-H, fitted at λ = 1.15 × 10⁻⁵ (the default here), with an adjustable threshold. BELT-B is a different, simpler policy, so it can stop elsewhere; its fitted scores are so steep (thousands in log-odds) that it is shown at its own threshold of 0 only.</p><p class="muted">${priceTrend()}</p>`;
 }
 
 /* ---------- Frontier panel ---------- */
 const METHODS = [
-  { name: "BELT-H", stroke: "var(--accent)", w: 2.5, dash: null },
-  { name: "BELT-B", stroke: "var(--muted)", w: 1.75, dash: null },
-  { name: "Now only", stroke: "var(--faint)", w: 1.5, dash: null },
-  { name: "Fixed cap", stroke: "var(--fg)", w: 1.5, dash: "6 4" },
+  { name: "BELT-H", label: "BELT-H", stroke: "var(--accent)", w: 2.5, dash: null },
+  { name: "BELT-B", label: "BELT-B", stroke: "var(--muted)", w: 1.75, dash: "1.5 3" },
+  { name: "Now only", label: "Now belief only", stroke: "var(--muted)", w: 1.5, dash: "8 3 2 3" },
+  { name: "Fixed cap", label: "Fixed token cap", stroke: "var(--fg)", w: 1.5, dash: "6 4" },
 ];
 function readings(pts) {
   const nat = pts.find((p) => p[3] === null) || pts[0];
@@ -729,7 +871,7 @@ function renderFrontier() {
   const xMax = nat[2] * 1.04, xMin = Math.min(nat[2] * 0.3, cp[2] * 0.97);
   const vis = (p) => p[2] >= xMin;
   const all = Object.values(F).flat().filter(vis);
-  const yMin = Math.max(0, Math.floor((Math.min(...all.map((p) => p[1])) - 0.02) * 20) / 20);
+  const yMin = Math.max(0, Math.floor((Math.min(...all.map((p) => p[1])) - 0.001) * 20) / 20);
   const yMax = Math.min(1, Math.ceil((nat[1] + 0.02) * 20) / 20);
   const x = (v) => L + ((v - xMin) / (xMax - xMin)) * (W - L - R);
   const y = (v) => top + ((yMax - v) / (yMax - yMin)) * (H - top - B);
@@ -744,6 +886,13 @@ function renderFrontier() {
   }
   svg.append(el("line", { x1: L, x2: W - R, y1: H - B, y2: H - B, class: "axis" }));
   svg.append(el("text", { x: W - R, y: H - 6, "text-anchor": "end", class: "lbl-strong" }, "mean reasoning tokens per problem"));
+  // Guides at the table's 20/30/40% savings, so its columns can be found on the chart.
+  for (const sv of [0.2, 0.3, 0.4]) {
+    const gx = x(nat[2] * (1 - sv));
+    if (gx < L) continue;
+    svg.append(el("line", { x1: gx, x2: gx, y1: top, y2: H - B, stroke: "var(--line)", "stroke-width": 1, "stroke-dasharray": "2 3" }));
+    svg.append(el("text", { x: gx, y: top + 10, "text-anchor": "middle" }, `−${Math.round(sv * 100)}%`));
+  }
   svg.append(el("text", { x: L, y: top - 4, class: "lbl-strong" }, "accuracy"));
   const labels = [];
   for (const m of METHODS) {
@@ -753,16 +902,14 @@ function renderFrontier() {
     for (const p of sorted) if (p[1] > bestAcc + 1e-12) { pts.push(p); bestAcc = p[1]; }
     const d = pts.map((p, k) => (k ? `H${x(p[2]).toFixed(1)}V${y(p[1]).toFixed(1)}` : `M${x(p[2]).toFixed(1)},${y(p[1]).toFixed(1)}`)).join("");
     svg.append(el("path", { d, fill: "none", stroke: m.stroke, "stroke-width": m.w, "stroke-dasharray": m.dash, "stroke-linejoin": "round" }));
-    if (pts.length) labels.push({ name: m.name, x: x(pts[0][2]), y: y(pts[0][1]) });
+    if (pts.length) labels.push({ name: m.label, x: x(pts[0][2]), y: y(pts[0][1]) });
   }
-  // left-end direct labels for BELT-H and Fixed cap only
-  const lbH = labels.find((l) => l.name === "BELT-H"), lbC = labels.find((l) => l.name === "Fixed cap");
-  if (lbH && lbC) {
-    // BELT-H above its curve's start, Fixed cap below its own; separate them if they still meet.
-    let yH = lbH.y - 8, yC = lbC.y + 16;
-    if (Math.abs(yH - yC) < 16 && Math.abs(lbH.x - lbC.x) < 80) { if (yH <= yC) yC = yH + 16; else yH = yC + 16; }
-    svg.append(el("text", { x: lbH.x + 4, y: yH, class: "lbl-strong" }, "BELT-H"));
-    svg.append(el("text", { x: lbC.x + 4, y: yC, class: "lbl-strong" }, "Fixed cap"));
+  // Direct labels at each curve's left end, stacked so they never overlap.
+  labels.sort((a, b) => a.y - b.y);
+  let prev = -Infinity;
+  for (const l of labels) {
+    const ly = Math.max(l.y + 4, prev + 14); prev = ly;
+    svg.append(el("text", { x: Math.max(L, l.x) + 6, y: ly, class: "lbl-strong" }, l.name));
   }
   // natural star
   const sx = x(nat[2]), sy = y(nat[1]);
@@ -775,8 +922,8 @@ function renderFrontier() {
     const cx = x(cp[2]), cy = y(cp[1]);
     svg.append(el("polygon", { points: `${cx},${cy - 7} ${cx + 7},${cy} ${cx},${cy + 7} ${cx - 7},${cy}`, fill: "var(--accent)", stroke: "var(--surface)", "stroke-width": 2 }));
   }
-  document.getElementById("fr-point").textContent = cp
-    ? `BELT-H at threshold ${state.thr.toFixed(2)}: ${pct(cp[1])} accuracy, ${fmt(cp[2])} tokens (${pct(cp[0], 0)} fewer), stops early on ${pct(cp[4], 0)} of problems`
+  document.getElementById("fr-point").innerHTML = cp
+    ? `<span class="dia">◆</span> At threshold ${state.thr.toFixed(2)}, BELT-H gets <b>${pct(cp[1])}</b> accuracy (natural ${pct(nat[1])}) with <b>${pct(cp[0], 0)} fewer</b> reasoning tokens (${fmt(cp[2])} per problem), stopping early on ${pct(cp[4], 0)} of problems.`
     : "";
   // table
   const tb = document.getElementById("fr-table");
@@ -784,13 +931,14 @@ function renderFrontier() {
   const best = (fn) => Math.max(...METHODS.map((m) => fn(R0[m.name])));
   const cell = (v, b) => `<td class="${Math.abs(v - b) < 1e-9 ? "best" : ""}">${isNaN(v) ? "–" : pct(v)}</td>`;
   const bs = [0, 1, 2].map((j) => best((r) => r.sav[j])), ba = [0, 1, 2].map((j) => best((r) => r.acc[j]));
-  tb.innerHTML = `<thead><tr><th>Method</th><th>saving at 0 pt loss</th><th>at 1 pt</th><th>at 2 pt</th><th>accuracy at 20% saving</th><th>at 30%</th><th>at 40%</th></tr></thead><tbody>` +
-    METHODS.map((m) => { const r = R0[m.name]; return `<tr class="${m.name === "BELT-H" ? "focus" : ""}"><td>${m.name}</td>${r.sav.map((v, j) => cell(v, bs[j])).join("")}${r.acc.map((v, j) => cell(v, ba[j])).join("")}</tr>`; }).join("") +
+  tb.innerHTML = `<thead><tr><th rowspan="2">Stopping rule</th><th class="grp" colspan="3">Tokens saved, losing at most</th><th class="grp" colspan="3">Accuracy, saving at least</th></tr><tr><th>0 points</th><th>1 point</th><th>2 points</th><th>20%</th><th>30%</th><th>40%</th></tr></thead><tbody>` +
+    METHODS.map((m) => { const r = R0[m.name]; return `<tr class="${m.name === "BELT-H" ? "focus" : ""}"><td>${m.label}</td>${r.sav.map((v, j) => cell(v, bs[j])).join("")}${r.acc.map((v, j) => cell(v, ba[j])).join("")}</tr>`; }).join("") +
     `</tbody>`;
+  document.getElementById("fr-cap").textContent = `Natural completion: ${pct(R0["BELT-H"].nat[1])} accuracy at ${fmt(R0["BELT-H"].nat[2])} reasoning tokens per problem. Savings are relative to it; a point is one percentage point of accuracy. Bold: best in the column. One sample per problem and one seed: one problem is ${(100 / DATA.traj.filter((r) => r.ds === state.frDs).length).toFixed(2)} points here, so differences under about one point are one or two problems.`;
   const n = state.frDs === "math500" ? "500 MATH-500 problems" : "272 Minerva Math problems";
   document.getElementById("fr-read").textContent = state.frDs === "math500"
-    ? `On ${n} (natural ${pct(R0["BELT-H"].nat[1])} at ${fmt(R0["BELT-H"].nat[2])} tokens), BELT-H gives the most saving at a 1–2 point loss and the best accuracy at a 20% saving. From about 30% saving on, a fixed token cap matches or beats it in this one-chain-per-problem setup: on MATH-500 most problems are solved early, so cutting long traces costs little.`
-    : `On ${n} (natural ${pct(R0["BELT-H"].nat[1])} at ${fmt(R0["BELT-H"].nat[2])} tokens), the gains are small. The probe was trained only on competition math, and Minerva's numeric science answers are a real domain shift: the Now belief alone is close to useless here, while the policies that also use End, Later and Same stay ahead of it.`;
+    ? `On ${n}: with no accuracy loss at all, only the Now belief saves much (5.5%). At a 1–2 point loss BELT-H saves the most (13.3% and 17.8%) and it has the best accuracy at a 20% saving. From 30% saving on, the fixed token cap and BELT-B do as well or better: on MATH-500 most problems are solved early, so cutting long traces costs little.`
+    : `On ${n} the gains are small. BELT-H saves the most with no loss (8.0%) and at a 2 point loss (22.5%), but a fixed token cap is close to the best policy in every column and the best at a 40% saving. The probe was trained only on competition math, and Minerva's numeric science answers are a real domain shift: the Now belief alone is close to useless here, while the policies that also use End, Later and Same stay ahead of it.`;
 }
 
 /* ---------- boot ---------- */
@@ -822,14 +970,24 @@ async function boot() {
     if (!c.includes(state.traj) && c.length) browse(c[Math.floor(Math.random() * c.length)]);
   });
   document.getElementById("random-btn").addEventListener("click", () => { const c = filtered(document.getElementById("ds-select").value); browse(c[Math.floor(Math.random() * c.length)]); });
-  const thr = document.getElementById("thr");
-  state.thr = parseFloat(thr.value) || 0;
-  document.getElementById("thr-val").textContent = state.thr.toFixed(2);
-  thr.addEventListener("input", () => {
-    state.thr = parseFloat(thr.value);
-    document.getElementById("thr-val").textContent = state.thr.toFixed(2);
-    state.hover = null; renderStory(); renderTimeline(); renderReadout(); renderFrontier(); announce();
-  });
+  // Two sliders, one threshold: the timeline's and the accuracy chart's stay in sync.
+  const sliders = [["thr", "thr-val"], ["thr2", "thr2-val"]];
+  const setThr = (v, from) => {
+    state.thr = v;
+    for (const [id, out] of sliders) {
+      if (id !== from) document.getElementById(id).value = String(v);
+      document.getElementById(out).textContent = v.toFixed(2);
+    }
+    state.hover = null; renderStory(); renderTimeline(); renderReadout(); renderFrontier();
+    if (from === "thr") announce();
+  };
+  state.thr = parseFloat(document.getElementById("thr").value) || 0;
+  for (const [id, out] of sliders) {
+    const input = document.getElementById(id);
+    input.value = String(state.thr);
+    document.getElementById(out).textContent = state.thr.toFixed(2);
+    input.addEventListener("input", () => setThr(parseFloat(input.value), id));
+  }
   const price = document.getElementById("price");
   state.price = parseInt(price.value, 10) || 0;
   price.addEventListener("input", () => { state.price = parseInt(price.value, 10); renderCoef(); renderPriceText(); });
@@ -844,6 +1002,10 @@ async function boot() {
   renderCoef();
   setTraj(DATA.byKey.get("math500:289"), "early");
   renderFrontier();
+  const fw = document.getElementById("frontier").parentElement;
+  fw.scrollLeft = fw.scrollWidth;
+  // KaTeX loads deferred; typeset the story once it is there.
+  window.addEventListener("load", () => { renderStory(); renderReadout(); });
 }
 document.querySelectorAll("button.copy").forEach((b) => b.addEventListener("click", async () => {
   const text = document.getElementById(b.dataset.target).textContent;
