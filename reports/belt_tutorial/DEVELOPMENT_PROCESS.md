@@ -96,6 +96,11 @@ for the supervisor version. Changes:
   blocks third-party stylesheets, so KaTeX's CSS and fonts cannot load.
 - The page data JSON files were not in git (a repo-wide `*.json` ignore);
   they are now force-added.
+- Each accuracy curve is now described on the page (what score is swept),
+  with a measured explanation of why a token cap keeps up on MATH-500: the
+  longest quarter of runs holds 65% of reasoning tokens and is right 70% of
+  the time (96% below the median length). For a 30% saving the cap stops the
+  longest 23% of runs and loses 26 problems; BELT-H stops 71% and loses 31.
 - Automated checks: all 772 trajectories at five thresholds, both frontiers
   and all 17 prices show no overlapping labels and no runtime errors.
 

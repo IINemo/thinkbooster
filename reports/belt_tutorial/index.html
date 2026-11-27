@@ -173,6 +173,16 @@ table.cmp tbody th { font-weight: 500; color: var(--fg); font-size: 0.86rem; }
 table.cmp tr.grp th { padding-top: 16px; font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); }
 th.grp { text-align: center !important; border-bottom: 1px solid var(--line); color: var(--fg); }
 #fr-table thead tr + tr th:first-child { text-align: right; }
+.lines { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.line-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--bg); display: grid; gap: 6px; align-content: start; }
+.line-card p { font-size: 0.86rem; color: var(--muted); }
+.lh { display: flex; align-items: center; gap: 8px; }
+.lh b { font-family: var(--font-display); font-weight: 600; }
+svg.ln { width: 28px; height: 8px; flex: none; }
+.why { display: grid; gap: 8px; border-left: 3px solid var(--line); padding-left: 14px; }
+.why p { font-size: 0.92rem; max-width: 80ch; }
+@media (max-width: 860px) { .lines { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 460px) { .lines { grid-template-columns: minmax(0, 1fr); } }
 .live { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 16px; }
 .live p { max-width: 80ch; }
 .cap { font-size: 0.8rem; color: var(--muted); max-width: 90ch; }
@@ -353,15 +363,22 @@ scorer:
   <p class="readline" id="fr-point" aria-live="polite"></p>
   <div class="chart-wrap"><svg class="chart" id="frontier" viewBox="0 0 760 372" role="img" aria-label="Accuracy against reasoning tokens"></svg></div>
   <div class="legend" aria-hidden="true">
-    <span><span class="swatch" style="background: var(--accent); height: 3px"></span>BELT-H</span>
-    <span><span class="swatch" style="background: var(--muted)"></span>BELT-B</span>
-    <span><span class="swatch" style="background: var(--faint)"></span>Now belief only</span>
-    <span style="color: var(--fg)"><span class="swatch dash"></span><span style="color: var(--muted)">Fixed token cap</span></span>
-    <span>★ natural completion · ◆ current threshold</span>
+    <span>★ no early stopping · ◆ BELT-H at the current threshold · line styles are explained below</span>
+  </div>
+  <div class="lines">
+    <div class="line-card"><div class="lh"><svg class="ln" viewBox="0 0 28 8" aria-hidden="true"><line x1="1" y1="4" x2="27" y2="4" stroke="var(--accent)" stroke-width="2.5"/></svg><b>BELT-H</b></div><p>The paper's policy on the probe's full 768-d state, fitted at λ = 1.15 × 10⁻⁵ (1,000 tokens worth 1.15 accuracy points). Stop at the first decision point whose score reaches a threshold; each point on the line is one threshold. The slider moves the ◆ along this line.</p></div>
+    <div class="line-card"><div class="lh"><svg class="ln" viewBox="0 0 28 8" aria-hidden="true"><line x1="1" y1="4" x2="27" y2="4" stroke="var(--muted)" stroke-width="2" stroke-dasharray="1.5 3"/></svg><b>BELT-B</b></div><p>The same recipe with the simpler policy that reads only the four beliefs and the prefix length, at the same λ. It is the policy shown in the price section above.</p></div>
+    <div class="line-card"><div class="lh"><svg class="ln" viewBox="0 0 28 8" aria-hidden="true"><line x1="1" y1="4" x2="27" y2="4" stroke="var(--muted)" stroke-width="2" stroke-dasharray="8 3 2 3"/></svg><b>Now belief only</b></div><p>Ignore End, Later and Same: stop at the first decision point where Now, the chance that the current answer is right, reaches a cutoff. Each point is one cutoff. The gap to BELT shows what the forward-looking beliefs add.</p></div>
+    <div class="line-card"><div class="lh"><svg class="ln" viewBox="0 0 28 8" aria-hidden="true"><line x1="1" y1="4" x2="27" y2="4" stroke="var(--fg)" stroke-width="2" stroke-dasharray="6 4"/></svg><b>Fixed token cap</b></div><p>No probe at all: stop every run at the first decision point past N reasoning tokens and force an answer there. Runs that finish before N are untouched. Each point is one N. The simplest possible baseline.</p></div>
   </div>
   <div class="table-wrap"><table id="fr-table"></table></div>
   <p class="cap" id="fr-cap"></p>
   <p class="muted" id="fr-read"></p>
+  <div class="why">
+    <h3>Why a plain token cap keeps up on MATH-500</h3>
+    <p>Most of the token bill comes from a few long runs, and those are the runs the model often gets wrong anyway. On MATH-500 the longest quarter of runs uses 65% of all reasoning tokens and is right 70% of the time; runs shorter than the median (1,599 tokens) are right 96% of the time. A cap cuts exactly the long ones: to save 30% of tokens it stops only the longest 23% of runs and loses 26 problems.</p>
+    <p>BELT-H decides run by run from its beliefs, not from length. To save the same 30% it stops 71% of runs early, many of them short runs where a stop saves few tokens, and each stop risks a wrong forced answer: it loses 31 problems. At small savings BELT's choice of where to stop pays off (86.4% against 85.4% at a 20% saving); at large savings, "cut the longest runs" is already close to the best possible rule on this dataset. On Minerva the longest quarter (56% of tokens) is right only 15% of the time, so cutting it is nearly free for every method.</p>
+  </div>
   <div class="live">
     <h3>Live check on MATH-500</h3>
     <p>The curves are offline replays. To check them, we ran BELT-H at threshold 0 live in ThinkBooster on all 500 problems: new samples, real stops, and a freely generated answer instead of a forced one.</p>
@@ -942,7 +959,7 @@ function renderFrontier() {
   document.getElementById("fr-cap").textContent = `Natural completion: ${pct(R0["BELT-H"].nat[1])} accuracy at ${fmt(R0["BELT-H"].nat[2])} reasoning tokens per problem. Savings are relative to it; a point is one percentage point of accuracy. Bold: best in the column. One sample per problem and one seed: one problem is ${(100 / DATA.traj.filter((r) => r.ds === state.frDs).length).toFixed(2)} points here, so differences under about one point are one or two problems.`;
   const n = state.frDs === "math500" ? "500 MATH-500 problems" : "272 Minerva Math problems";
   document.getElementById("fr-read").textContent = state.frDs === "math500"
-    ? `On ${n}: with no accuracy loss at all, only the Now belief saves much (5.5%). At a 1–2 point loss BELT-H saves the most (13.3% and 17.8%) and it has the best accuracy at a 20% saving. From 30% saving on, the fixed token cap and BELT-B do as well or better: on MATH-500 most problems are solved early, so cutting long traces costs little.`
+    ? `On ${n}: with no accuracy loss at all, only the Now belief saves much (5.5%). At a 1–2 point loss BELT-H saves the most (13.3% and 17.8%) and it has the best accuracy at a 20% saving. From 30% saving on, the fixed token cap and BELT-B do as well or better; the next paragraphs explain why.`
     : `On ${n} the gains are small. BELT-H saves the most with no loss (8.0%) and at a 2 point loss (22.5%), but a fixed token cap is close to the best policy in every column and the best at a 40% saving. The probe was trained only on competition math, and Minerva's numeric science answers are a real domain shift: the Now belief alone is close to useless here, while the policies that also use End, Later and Same stay ahead of it.`;
 }
 
