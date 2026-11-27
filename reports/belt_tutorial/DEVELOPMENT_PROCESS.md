@@ -151,6 +151,34 @@ for the supervisor version. Changes:
   with vLLM's own top-k/top-p kernels (`VLLM_USE_FLASHINFER_SAMPLER=0`; its
   system nvcc is too old for FlashInfer). Same sampling distribution; record
   the host per shard when merging.
+- Data audit (`audit_chains.py`) on the smoke chains found that Qwen3.6
+  writes about 8% of its paragraph breaks as indented blank lines
+  (`"\n    \n"`). BELT's block separator counts them, but its vLLM stop string
+  `"\n\n"` never stopped on them, so those block ends and their probes were
+  lost (one 16k chain: 3 of 56 block ends recorded, no probes). BELT_v2 adds
+  the indented forms as stop strings. Replaying the 32 smoke chains through
+  the generator with a recorded-token engine (`replay_block_stops.py`)
+  reproduces v1's block ends exactly and gives v2 block ends that match the
+  text in 32 of 32 chains; probes go from 241 to 262.
+- Shards 0, 1, 6, 7 started on v1; `repair_block_stops.py` recomputes their
+  block ends by replay and generates only the missing forced answers with
+  BELT's own request builder, seed keys and grader (`fit/shard<N>_v2`). All
+  other shards run on BELT_v2.
+- Not a bug: forced answers parse less often deeper in a chain (92% to about
+  70%); the failures stop at `}` after 5 to 8 tokens, i.e. symbolic guesses
+  such as `\frac{1`, which BELT's strict integer Now label counts as wrong.
+  Length-capped chains are not repetition loops (repeated 20-grams in the
+  last 3k tokens: median 1.5%, none above 50%).
+
+## Frontier chart redrawn (2026-11-27)
+
+A colleague could not read the accuracy-against-tokens chart: absolute tokens
+on x put "no early stopping" at the far right, and the −20/30/40% guides had
+no stated reference. It now plots the share of reasoning tokens saved (0% at
+the left) against accuracy change in points (0 at the top), so higher is
+better at every saving; x runs to 40% (the table's last column) unless the
+threshold point is further out. A hover or tap readout lists all four rules
+at one saving and bolds the best; a "How to read it" paragraph sits above.
 
 ## Open items
 

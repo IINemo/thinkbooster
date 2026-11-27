@@ -1,12 +1,15 @@
 #!/bin/bash
 # One fit-split shard of the Qwen3.6 BELT generation: ./run_fit_shard.sh <gpu> <shard> <count>
 source /mnt/data/users/vlad.smirnov/belt_qwen36/env.sh
-export U4R_NATIVE_ROOT=$B/BELT/vendor/uncertainty4reasoning-native-thinking
+# BELT_v2: the patch with the indented-blank-line block stops (shards from
+# 2026-11-27 22:10 on). Shards 0, 1, 6, 7 ran on BELT (v1) and are repaired.
+BELT_DIR=${BELT_DIR:-$B/BELT_v2}
+export U4R_NATIVE_ROOT=$BELT_DIR/vendor/uncertainty4reasoning-native-thinking
 export RL_PROMPT_CONTRACT=qwen3.6-35b-a3b-fp8-native-thinking-v1
 export CUDA_VISIBLE_DEVICES=$1
 SNAP=/mnt/data/users/vlad.smirnov/hf_cache/hub/models--Qwen--Qwen3.6-35B-A3B-FP8/snapshots/c653bba46dfa06e9658dcc0b0dc87fe4685f14a2
-cd $B/BELT/scripts/source_variants/olmo_code
-PYTHONPATH="$PWD:$B/BELT" $PY -m rl_controller.scripts.single_cot_probe \
+cd $BELT_DIR/scripts/source_variants/olmo_code
+PYTHONPATH="$PWD:$BELT_DIR" $PY -m rl_controller.scripts.single_cot_probe \
   --manifest $B/pool/manifest.jsonl --split fit --split-salt qwen36-belt-2026-11-27-v1 \
   --model Qwen/Qwen3.6-35B-A3B-FP8 --revision c653bba46dfa06e9658dcc0b0dc87fe4685f14a2 \
   --model-path $SNAP --prompt-contract qwen3.6-35b-a3b-fp8-native-thinking-v1 \

@@ -23,6 +23,9 @@ against the exact text it replaces, so a moved line fails loudly:
 6. For this contract the reader's causal encoder turns off PyTorch's
    MultiheadAttention fast path and drops an all-False key-padding mask; both
    would otherwise build a [heads, T, T] mask, 8 GiB per 16k-token chain.
+7. Generation stops at indented blank lines too ("\\n" + spaces + "\\n"), which
+   BELT's block separator already counts but its "\\n\\n" stop string missed;
+   Qwen3.6 writes about 8% of its paragraph breaks that way.
 
     python scripts/belt_qwen36/apply_belt_patch.py /path/to/BELT
 
@@ -88,7 +91,38 @@ def sampling_config(*, contract: str | None = None) -> dict:
             "eos_token_id": list(cfg["eos_token_id"]),
         }
     return _belt_sampling_config(contract=contract)
+
+
+# Qwen3.6 often separates paragraphs with an indented blank line ("\\n    \\n").
+# BLOCK_SEPARATOR already counts it as a block end, but the vLLM stop string
+# "\\n\\n" never stops on it, so those block ends (and their probes) were lost.
+_QWEN36_BLOCK_STOPS = ["\\n\\n"] + ["\\n" + " " * k + "\\n" for k in range(1, 17)] + ["\\n\\t\\n"]
+
+
+def block_stop_strings() -> list:
+    if active_prompt_contract() == QWEN36_CONTRACT:
+        return list(_QWEN36_BLOCK_STOPS)
+    return [BLOCK_STOP_STRING]
 """
+
+RUNNER_EDITS = (
+    (
+        "from rl_controller.budget_episode import ABANDON, ANSWER, CONTINUE, INNER_ACTIONS\n",
+        "from rl_controller.budget_episode import ABANDON, ANSWER, CONTINUE, INNER_ACTIONS\n"
+        "import rl_controller.rollout_contract as _rc\n",
+    ),
+    (
+        "            stop=[BLOCK_STOP_STRING], include_stop_str_in_output=True,",
+        "            stop=_rc.block_stop_strings(), include_stop_str_in_output=True,",
+    ),
+)
+BATCH_EDITS = (
+    (
+        "from rl_controller.rollout_contract import block_count, classify_stop, BLOCK_STOP_STRING\n",
+        "from rl_controller.rollout_contract import block_count, classify_stop, block_stop_strings\n",
+    ),
+    ("req.stop != [BLOCK_STOP_STRING]", "req.stop != block_stop_strings()"),
+)
 
 LOAD_BACKEND_OLD = """    llm = LLM(model=(args.model_path or args.model),"""
 LOAD_BACKEND_NEW = """    from rl_controller.rollout_contract import active_prompt_contract as _contract
@@ -218,6 +252,10 @@ def main() -> int:
         probe = pkg / "scripts" / "single_cot_probe.py"
         if probe.exists():
             replace_once(probe, LOAD_BACKEND_OLD, LOAD_BACKEND_NEW)
+        for old, new in RUNNER_EDITS:
+            replace_once(pkg / "rollout_runner.py", old, new)
+        for old, new in BATCH_EDITS:
+            replace_once(pkg / "rollout_batch.py", old, new)
 
     fallback = root / "rl_controller/scripts/belt_natural_fallback.py"
     for old, new in FALLBACK_EDITS:
