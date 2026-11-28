@@ -1,0 +1,29 @@
+{
+  "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+  "layers": 16,
+  "dequantized": true,
+  "gpu": "NVIDIA RTX 6000 Ada Generation",
+  "load_seconds": 5.85964912106283,
+  "model_class": "Qwen3_5MoeForCausalLM",
+  "weights_gb": 26.960902214050293,
+  "forward": [
+    {
+      "tokens": 2048,
+      "seconds": 0.15970304305665195,
+      "tokens_per_second": 12823.800729166485,
+      "peak_gb": 27.441649436950684
+    },
+    {
+      "tokens": 8192,
+      "seconds": 0.5819655440282077,
+      "tokens_per_second": 14076.434737522772,
+      "peak_gb": 28.85421657562256
+    },
+    {
+      "tokens": 16384,
+      "seconds": 1.1996491260360926,
+      "tokens_per_second": 13657.326666953342,
+      "peak_gb": 30.73763942718506
+    }
+  ]
+}

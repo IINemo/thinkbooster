@@ -1,0 +1,520 @@
+{
+  "splits": 500,
+  "seed": 0,
+  "held_out": {
+    "math500": {
+      "0.2": {
+        "BELT-H": {
+          "test_accuracy": 0.859696,
+          "test_saving": 0.21725065179389963,
+          "splits": 500
+        },
+        "cap": {
+          "test_accuracy": 0.8447039999999999,
+          "test_saving": 0.2276735393325998,
+          "splits": 500
+        },
+        "BELT-H(0) + cap": {
+          "test_accuracy": 0.8566560000000002,
+          "test_saving": 0.21784216640192527,
+          "splits": 500
+        },
+        "BELT-H + cap": {
+          "test_accuracy": 0.852744,
+          "test_saving": 0.221942525985419,
+          "splits": 500
+        },
+        "BELT-H + cap minus BELT-H": {
+          "mean_points": -0.6952000000000004,
+          "p05_points": -2.820000000000001,
+          "p95_points": 0.8000000000000007,
+          "share_ahead": 0.142,
+          "share_tied": 0.254
+        },
+        "BELT-H + cap minus cap": {
+          "mean_points": 0.8040000000000004,
+          "p05_points": -1.200000000000001,
+          "p95_points": 2.8000000000000025,
+          "share_ahead": 0.654,
+          "share_tied": 0.168
+        },
+        "BELT-H(0) + cap minus BELT-H": {
+          "mean_points": -0.3040000000000002,
+          "p05_points": -2.0000000000000018,
+          "p95_points": 1.200000000000001,
+          "share_ahead": 0.284,
+          "share_tied": 0.21
+        },
+        "BELT-H(0) + cap minus cap": {
+          "mean_points": 1.1952000000000007,
+          "p05_points": -1.1999999999999904,
+          "p95_points": 3.599999999999992,
+          "share_ahead": 0.776,
+          "share_tied": 0.072
+        }
+      },
+      "0.3": {
+        "BELT-H": {
+          "test_accuracy": 0.8224960000000001,
+          "test_saving": 0.3107978731917036,
+          "splits": 500
+        },
+        "cap": {
+          "test_accuracy": 0.824608,
+          "test_saving": 0.3185723842844379,
+          "splits": 500
+        },
+        "BELT-H(0) + cap": {
+          "test_accuracy": 0.8325040000000001,
+          "test_saving": 0.3316599129147332,
+          "splits": 500
+        },
+        "BELT-H + cap": {
+          "test_accuracy": 0.83276,
+          "test_saving": 0.31645574544406274,
+          "splits": 500
+        },
+        "BELT-H + cap minus BELT-H": {
+          "mean_points": 1.0263999999999984,
+          "p05_points": -2.400000000000002,
+          "p95_points": 4.799999999999994,
+          "share_ahead": 0.648,
+          "share_tied": 0.066
+        },
+        "BELT-H + cap minus cap": {
+          "mean_points": 0.8151999999999987,
+          "p05_points": -1.200000000000001,
+          "p95_points": 2.8199999999999834,
+          "share_ahead": 0.664,
+          "share_tied": 0.106
+        },
+        "BELT-H(0) + cap minus BELT-H": {
+          "mean_points": 1.000799999999999,
+          "p05_points": -2.400000000000002,
+          "p95_points": 4.799999999999994,
+          "share_ahead": 0.624,
+          "share_tied": 0.074
+        },
+        "BELT-H(0) + cap minus cap": {
+          "mean_points": 0.7895999999999992,
+          "p05_points": -1.6000000000000014,
+          "p95_points": 3.599999999999992,
+          "share_ahead": 0.638,
+          "share_tied": 0.104
+        }
+      },
+      "0.4": {
+        "BELT-H": {
+          "test_accuracy": 0.743272,
+          "test_saving": 0.408812447952807,
+          "splits": 500
+        },
+        "cap": {
+          "test_accuracy": 0.794856,
+          "test_saving": 0.42418799265004226,
+          "splits": 500
+        },
+        "BELT-H(0) + cap": {
+          "test_accuracy": 0.8178,
+          "test_saving": 0.4154282860896228,
+          "splits": 500
+        },
+        "BELT-H + cap": {
+          "test_accuracy": 0.815856,
+          "test_saving": 0.40987206254728825,
+          "splits": 500
+        },
+        "BELT-H + cap minus BELT-H": {
+          "mean_points": 7.258400000000001,
+          "p05_points": 1.5999999999999903,
+          "p95_points": 13.600000000000001,
+          "share_ahead": 0.976,
+          "share_tied": 0.008
+        },
+        "BELT-H + cap minus cap": {
+          "mean_points": 2.0999999999999983,
+          "p05_points": -0.40000000000000036,
+          "p95_points": 4.799999999999994,
+          "share_ahead": 0.9,
+          "share_tied": 0.046
+        },
+        "BELT-H(0) + cap minus BELT-H": {
+          "mean_points": 7.452800000000001,
+          "p05_points": 1.6000000000000014,
+          "p95_points": 13.200000000000001,
+          "share_ahead": 0.988,
+          "share_tied": 0.002
+        },
+        "BELT-H(0) + cap minus cap": {
+          "mean_points": 2.2943999999999978,
+          "p05_points": 0.0,
+          "p95_points": 4.800000000000004,
+          "share_ahead": 0.914,
+          "share_tied": 0.04
+        }
+      }
+    },
+    "minerva": {
+      "0.2": {
+        "BELT-H": {
+          "test_accuracy": 0.4134117647058823,
+          "test_saving": 0.237358188263075,
+          "splits": 500
+        },
+        "cap": {
+          "test_accuracy": 0.4041617647058824,
+          "test_saving": 0.2805077749330196,
+          "splits": 500
+        },
+        "BELT-H(0) + cap": {
+          "test_accuracy": 0.40329411764705886,
+          "test_saving": 0.29038837671433937,
+          "splits": 500
+        },
+        "BELT-H + cap": {
+          "test_accuracy": 0.39975,
+          "test_saving": 0.2636098618408222,
+          "splits": 500
+        },
+        "BELT-H + cap minus BELT-H": {
+          "mean_points": -1.3661764705882353,
+          "p05_points": -4.411764705882354,
+          "p95_points": 0.7352941176470618,
+          "share_ahead": 0.078,
+          "share_tied": 0.28
+        },
+        "BELT-H + cap minus cap": {
+          "mean_points": -0.4411764705882354,
+          "p05_points": -2.941176470588236,
+          "p95_points": 2.205882352941174,
+          "share_ahead": 0.162,
+          "share_tied": 0.384
+        },
+        "BELT-H(0) + cap minus BELT-H": {
+          "mean_points": -1.011764705882353,
+          "p05_points": -2.941176470588236,
+          "p95_points": 1.470588235294118,
+          "share_ahead": 0.082,
+          "share_tied": 0.256
+        },
+        "BELT-H(0) + cap minus cap": {
+          "mean_points": -0.08676470588235319,
+          "p05_points": -2.941176470588236,
+          "p95_points": 3.676470588235292,
+          "share_ahead": 0.352,
+          "share_tied": 0.15
+        }
+      },
+      "0.3": {
+        "BELT-H": {
+          "test_accuracy": 0.3834558823529412,
+          "test_saving": 0.3342545017474589,
+          "splits": 500
+        },
+        "cap": {
+          "test_accuracy": 0.3952794117647059,
+          "test_saving": 0.3708079682360409,
+          "splits": 500
+        },
+        "BELT-H(0) + cap": {
+          "test_accuracy": 0.3955882352941177,
+          "test_saving": 0.35176040588137975,
+          "splits": 500
+        },
+        "BELT-H + cap": {
+          "test_accuracy": 0.3867794117647059,
+          "test_saving": 0.35989968373005604,
+          "splits": 500
+        },
+        "BELT-H + cap minus BELT-H": {
+          "mean_points": 0.33235294117647074,
+          "p05_points": -3.676470588235292,
+          "p95_points": 4.411764705882354,
+          "share_ahead": 0.462,
+          "share_tied": 0.17
+        },
+        "BELT-H + cap minus cap": {
+          "mean_points": -0.8500000000000001,
+          "p05_points": -2.941176470588236,
+          "p95_points": 0.7352941176470562,
+          "share_ahead": 0.06,
+          "share_tied": 0.474
+        },
+        "BELT-H(0) + cap minus BELT-H": {
+          "mean_points": 1.2132352941176472,
+          "p05_points": -2.205882352941174,
+          "p95_points": 5.882352941176467,
+          "share_ahead": 0.64,
+          "share_tied": 0.138
+        },
+        "BELT-H(0) + cap minus cap": {
+          "mean_points": 0.03088235294117626,
+          "p05_points": -2.941176470588236,
+          "p95_points": 2.941176470588236,
+          "share_ahead": 0.376,
+          "share_tied": 0.18
+        }
+      },
+      "0.4": {
+        "BELT-H": {
+          "test_accuracy": 0.3656470588235294,
+          "test_saving": 0.43647463661087266,
+          "splits": 500
+        },
+        "cap": {
+          "test_accuracy": 0.38822058823529415,
+          "test_saving": 0.4289087655997433,
+          "splits": 500
+        },
+        "BELT-H(0) + cap": {
+          "test_accuracy": 0.3846470588235294,
+          "test_saving": 0.4382192708827074,
+          "splits": 500
+        },
+        "BELT-H + cap": {
+          "test_accuracy": 0.37686764705882353,
+          "test_saving": 0.43439155867143,
+          "splits": 500
+        },
+        "BELT-H + cap minus BELT-H": {
+          "mean_points": 1.1220588235294116,
+          "p05_points": -2.94117647058823,
+          "p95_points": 5.14705882352941,
+          "share_ahead": 0.628,
+          "share_tied": 0.116
+        },
+        "BELT-H + cap minus cap": {
+          "mean_points": -1.1352941176470588,
+          "p05_points": -4.448529411764705,
+          "p95_points": 1.470588235294118,
+          "share_ahead": 0.09,
+          "share_tied": 0.392
+        },
+        "BELT-H(0) + cap minus BELT-H": {
+          "mean_points": 1.8999999999999997,
+          "p05_points": -1.470588235294118,
+          "p95_points": 5.882352941176472,
+          "share_ahead": 0.764,
+          "share_tied": 0.092
+        },
+        "BELT-H(0) + cap minus cap": {
+          "mean_points": -0.3573529411764709,
+          "p05_points": -2.941176470588236,
+          "p95_points": 3.676470588235292,
+          "share_ahead": 0.302,
+          "share_tied": 0.146
+        }
+      }
+    }
+  },
+  "transfer": {
+    "math500->minerva": {
+      "0.2": {
+        "BELT-H": {
+          "threshold": -1.0,
+          "cap": null,
+          "source_accuracy": 0.864,
+          "source_saving": 0.20316901811139787,
+          "target_accuracy": 0.4007352941176471,
+          "target_saving": 0.28352757379958304
+        },
+        "cap": {
+          "threshold": null,
+          "cap": 4900.0,
+          "source_accuracy": 0.854,
+          "source_saving": 0.2016689475871165,
+          "target_accuracy": 0.43014705882352944,
+          "target_saving": 0.16710032824007792
+        },
+        "BELT-H(0) + cap": {
+          "threshold": 0.0,
+          "cap": 7200.0,
+          "source_accuracy": 0.864,
+          "source_saving": 0.2030565604736182,
+          "target_accuracy": 0.41544117647058826,
+          "target_saving": 0.25674035284447516
+        },
+        "BELT-H + cap": {
+          "threshold": -1.0,
+          "cap": 8500.0,
+          "source_accuracy": 0.864,
+          "source_saving": 0.21038155542255477,
+          "target_accuracy": 0.4007352941176471,
+          "target_saving": 0.28352757379958304
+        }
+      },
+      "0.3": {
+        "BELT-H": {
+          "threshold": -5.0,
+          "cap": null,
+          "source_accuracy": 0.828,
+          "source_saving": 0.3007371375782597,
+          "target_accuracy": 0.375,
+          "target_saving": 0.41911032241558566
+        },
+        "cap": {
+          "threshold": null,
+          "cap": 3900.0,
+          "source_accuracy": 0.83,
+          "source_saving": 0.3085500843114607,
+          "target_accuracy": 0.4117647058823529,
+          "target_saving": 0.2757243872035361
+        },
+        "BELT-H(0) + cap": {
+          "threshold": 0.0,
+          "cap": 5200.0,
+          "source_accuracy": 0.838,
+          "source_saving": 0.3028122033691546,
+          "target_accuracy": 0.4007352941176471,
+          "target_saving": 0.30102736059776347
+        },
+        "BELT-H + cap": {
+          "threshold": -1.0,
+          "cap": 5600.0,
+          "source_accuracy": 0.846,
+          "source_saving": 0.30410133640336334,
+          "target_accuracy": 0.39338235294117646,
+          "target_saving": 0.3072465030365382
+        }
+      },
+      "0.4": {
+        "BELT-H": {
+          "threshold": -7.5,
+          "cap": null,
+          "source_accuracy": 0.746,
+          "source_saving": 0.40591933801207936,
+          "target_accuracy": 0.34558823529411764,
+          "target_saving": 0.48994594653442713
+        },
+        "cap": {
+          "threshold": null,
+          "cap": 2900.0,
+          "source_accuracy": 0.8,
+          "source_saving": 0.4158283172144053,
+          "target_accuracy": 0.38235294117647056,
+          "target_saving": 0.4411281733049548
+        },
+        "BELT-H(0) + cap": {
+          "threshold": 0.0,
+          "cap": 4100.0,
+          "source_accuracy": 0.828,
+          "source_saving": 0.40088669988296777,
+          "target_accuracy": 0.39705882352941174,
+          "target_saving": 0.3806559721005006
+        },
+        "BELT-H + cap": {
+          "threshold": -1.0,
+          "cap": 4200.0,
+          "source_accuracy": 0.828,
+          "source_saving": 0.4040139117086826,
+          "target_accuracy": 0.38235294117647056,
+          "target_saving": 0.3959194078977212
+        }
+      }
+    },
+    "minerva->math500": {
+      "0.2": {
+        "BELT-H": {
+          "threshold": 1.0,
+          "cap": null,
+          "source_accuracy": 0.4227941176470588,
+          "source_saving": 0.21851462745930572,
+          "target_accuracy": 0.87,
+          "target_saving": 0.16683312938473605
+        },
+        "cap": {
+          "threshold": null,
+          "cap": 4300.0,
+          "source_accuracy": 0.41911764705882354,
+          "source_saving": 0.2339404595361091,
+          "target_accuracy": 0.846,
+          "target_saving": 0.24460997531014805
+        },
+        "BELT-H(0) + cap": {
+          "threshold": 0.0,
+          "cap": 6700.0,
+          "source_accuracy": 0.41544117647058826,
+          "source_saving": 0.2588959593265363,
+          "target_accuracy": 0.856,
+          "target_saving": 0.22279001681146382
+        },
+        "BELT-H + cap": {
+          "threshold": 1.0,
+          "cap": 6700.0,
+          "source_accuracy": 0.4227941176470588,
+          "source_saving": 0.2338615295007811,
+          "target_accuracy": 0.86,
+          "target_saving": 0.20784458735671185
+        }
+      },
+      "0.3": {
+        "BELT-H": {
+          "threshold": -1.5,
+          "cap": null,
+          "source_accuracy": 0.39705882352941174,
+          "source_saving": 0.3019990165499047,
+          "target_accuracy": 0.862,
+          "target_saving": 0.22341838180448126
+        },
+        "cap": {
+          "threshold": null,
+          "cap": 3500.0,
+          "source_accuracy": 0.40808823529411764,
+          "source_saving": 0.3453606376821061,
+          "target_accuracy": 0.822,
+          "target_saving": 0.3418928208823032
+        },
+        "BELT-H(0) + cap": {
+          "threshold": 0.0,
+          "cap": 4900.0,
+          "source_accuracy": 0.40808823529411764,
+          "source_saving": 0.32365397072512203,
+          "target_accuracy": 0.836,
+          "target_saving": 0.34059860501700845
+        },
+        "BELT-H + cap": {
+          "threshold": 1.0,
+          "cap": 4900.0,
+          "source_accuracy": 0.4117647058823529,
+          "source_saving": 0.31277069826771253,
+          "target_accuracy": 0.84,
+          "target_saving": 0.3296692474741506
+        }
+      },
+      "0.4": {
+        "BELT-H": {
+          "threshold": -6.0,
+          "cap": null,
+          "source_accuracy": 0.375,
+          "source_saving": 0.4346477452319908,
+          "target_accuracy": 0.798,
+          "target_saving": 0.3454978188301102
+        },
+        "cap": {
+          "threshold": null,
+          "cap": 3200.0,
+          "source_accuracy": 0.40441176470588236,
+          "source_saving": 0.4008366583744768,
+          "target_accuracy": 0.812,
+          "target_saving": 0.3746955066502491
+        },
+        "BELT-H(0) + cap": {
+          "threshold": 0.0,
+          "cap": 3500.0,
+          "source_accuracy": 0.39338235294117646,
+          "source_saving": 0.43514582097216403,
+          "target_accuracy": 0.81,
+          "target_saving": 0.4496691712316844
+        },
+        "BELT-H + cap": {
+          "threshold": null,
+          "cap": 3200.0,
+          "source_accuracy": 0.40441176470588236,
+          "source_saving": 0.4008366583744768,
+          "target_accuracy": 0.812,
+          "target_saving": 0.3746955066502491
+        }
+      }
+    }
+  }
+}

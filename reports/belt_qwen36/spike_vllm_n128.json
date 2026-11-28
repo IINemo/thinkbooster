@@ -1,0 +1,29 @@
+{
+  "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+  "revision": "c653bba46dfa06e9658dcc0b0dc87fe4685f14a2",
+  "n": 128,
+  "generate": {
+    "seconds": 1504.990056830924,
+    "generated_tokens": 1259643,
+    "tokens_per_second": 836.9776227309075,
+    "mean_tokens": 9840.9609375,
+    "median_tokens": 12192,
+    "hit_budget": 55,
+    "accuracy": 0.5
+  },
+  "forced": {
+    "answers": 1199,
+    "per_chain": 9.3671875,
+    "seconds": 127.11687704082578,
+    "seconds_per_answer": 0.10601908010077213,
+    "prompt_tokens": 9010784,
+    "prefix_cache": null
+  },
+  "prefill": {
+    "seconds": 90.62339189485647,
+    "tokens": 1272856,
+    "tokens_per_second": 14045.55681911354
+  },
+  "gpu": "NVIDIA RTX 6000 Ada Generation",
+  "vllm": "0.31.0"
+}
