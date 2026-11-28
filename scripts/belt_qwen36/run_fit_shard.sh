@@ -34,14 +34,15 @@ PYTHONPATH="$PWD:$BELT_DIR" setsid $PY -m rl_controller.scripts.single_cot_probe
 pid=$!
 # vLLM's engine process can keep the interpreter alive after the shard is
 # written: shards 0 and 1 of fit64 sat 40+ minutes on idle GPUs past their
-# summary.json. summary.json is the last file written, so once it exists the
-# process gets 5 minutes to exit on its own before its group is killed.
+# summary.json, and every shard since has hung the same way. summary.json is
+# the last file written, so once it exists the process gets 1 minute to exit
+# on its own before its group is killed.
 killed=0
 while kill -0 $pid 2>/dev/null; do
   if [ -s $OUT/summary.json ]; then
-    for _ in $(seq 30); do kill -0 $pid 2>/dev/null || break; sleep 10; done
+    for _ in $(seq 6); do kill -0 $pid 2>/dev/null || break; sleep 10; done
     if kill -0 $pid 2>/dev/null; then
-      echo "summary.json written, process still alive after 5 min: killing it"
+      echo "summary.json written, process still alive after 1 min: killing it"
       kill -- -$pid; sleep 15; kill -9 -- -$pid 2>/dev/null; killed=1
     fi
     break
