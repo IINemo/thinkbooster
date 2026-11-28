@@ -27,8 +27,15 @@ for s in "$@"; do
   fi
   rm -rf $dir/shard$s
   echo "shard $s/$count start $(hostname) gpu$gpu $(date -Is)"
+  t0=$(date +%s)
   ./run_fit_shard.sh $gpu $s $count > logs/$dir/shard$s.log 2>&1
   rc=$?
-  echo "shard $s/$count end $(date -Is) exit $rc $(tail -1 logs/$dir/shard$s.log)"
+  last=$(tail -1 logs/$dir/shard$s.log)
+  echo "shard $s/$count end $(date -Is) exit $rc $last"
+  # A shard that fails within 10 minutes (bad environment, no GPU memory) would
+  # fail the same way for every shard after it: stop instead of burning the list.
+  if [ "$last" != "EXIT=0" ] && [ $(( $(date +%s) - t0 )) -lt 600 ]; then
+    echo "shard $s/$count failed fast; stopping this queue"; exit 1
+  fi
 done
 echo QUEUE_DONE

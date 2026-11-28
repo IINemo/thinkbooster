@@ -30,10 +30,19 @@ against the exact text it replaces, so a moved line fails loudly:
    and log progress (``BELT_LOG_EVERY_CHAINS``). Uncapped, a 1,074-chain shard
    holds about 5M tokens of context against a 300k-token KV cache, so every
    round re-reads every chain from scratch. Unset, BELT's schedule is unchanged.
+9. With ``BELT_ONE_REQUEST_CHAINS=1``, ``run_chain_batch`` samples each chain in
+   one vLLM request and replays its tokens through ``draw_steps``, so block ends,
+   query points and results are what the block-by-block loop records for those
+   tokens. The always-continue policy never acts at a block end, so BELT's
+   per-block requests only re-read the context: on Qwen3.6 (hybrid attention,
+   1,056-token cache blocks) that kept the GPU busy re-reading, at about 175
+   tokens/s per RTX 5880. Unset, BELT's loop is unchanged.
 
     python scripts/belt_qwen36/apply_belt_patch.py /path/to/BELT
+    python scripts/belt_qwen36/apply_belt_patch.py --add-one-request /path/to/BELT
 
-It refuses a checkout that is not at ``BELT_COMMIT`` or is already patched.
+It refuses a checkout that is not at ``BELT_COMMIT`` or is already patched;
+``--add-one-request`` adds only edit 9 to a checkout that has edits 1 to 8.
 """
 
 import argparse
@@ -222,6 +231,137 @@ PROBE_CALL_NEW = """        import os as _os
                                  log_every=int(_os.environ.get("BELT_LOG_EVERY_CHAINS") or 0))
 """
 
+ONE_REQUEST_MARK = "# --- One request per chain (thinkbooster apply_belt_patch.py edit 9)"
+ONE_REQUEST_SIG_OLD = """                    block_cap: int = 0, max_active: int = 0, log_every: int = 0):
+"""
+ONE_REQUEST_SIG_NEW = """                    block_cap: int = 0, max_active: int = 0, log_every: int = 0,
+                    one_request: bool = False, decode=None):
+"""
+ONE_REQUEST_DISPATCH_OLD = """    limit = max_active if max_active > 0 else len(specs)
+"""
+ONE_REQUEST_DISPATCH_NEW = """    if one_request:
+        return run_chain_batch_one_request(engine, specs, encode=encode, decode=decode,
+                                           budget=budget, query_stride=query_stride,
+                                           block_cap=block_cap)
+    limit = max_active if max_active > 0 else len(specs)
+"""
+ONE_REQUEST_FN = ONE_REQUEST_MARK + '''
+# With the always-continue policy, draw_steps never acts at a block end: its
+# per-block requests (at most block_cap tokens each) exist only to record where
+# blocks end, and each one re-reads the whole context. Here each chain is one
+# vLLM request instead, which samples from the same distribution (prompts are
+# token ids, so nothing is re-tokenised). Its tokens are then replayed through
+# draw_steps, so block ends, query points and the result are exactly what the
+# block-by-block loop records for those tokens. Per-request seeds differ, so the
+# chains are new draws, not the ones the block-by-block loop would sample.
+
+
+class _ReplayPastEnd(RuntimeError):
+    pass
+
+
+class _RecordedChainEngine:
+    """Serve draw_steps' requests from one chain's recorded tokens, stopping as
+    vLLM does: at the first token whose text completes a stop string (text cut
+    after it, token kept), on an end-of-sequence token (its text not shown), or
+    at max_tokens."""
+
+    def __init__(self, decode, prompt_len, ids, eos_ids):
+        self.decode, self.prompt_len = decode, prompt_len
+        self.ids, self.eos_ids = list(ids), set(eos_ids)
+
+    def generate_batch(self, requests):
+        return [self._one(r) for r in requests]
+
+    def _one(self, req):
+        from types import SimpleNamespace
+
+        start = len(req.prompt_ids) - self.prompt_len
+        ids = self.ids
+        if start >= len(ids):
+            raise _ReplayPastEnd(f"asked for token {start} of a {len(ids)}-token chain")
+        taken = []
+        for i in range(start, min(len(ids), start + req.max_tokens)):
+            taken.append(ids[i])
+            if i == len(ids) - 1 and ids[i] in self.eos_ids:
+                return SimpleNamespace(token_ids=taken, text=self.decode(taken[:-1]),
+                                       finish_reason="stop", stop_reason=ids[i], hit_eos=True)
+            text = self.decode(taken)
+            hits = [text.find(s) + len(s) for s in req.stop if s in text]
+            if hits:
+                return SimpleNamespace(token_ids=taken, text=text[:min(hits)],
+                                       finish_reason="stop", stop_reason=None, hit_eos=False)
+        return SimpleNamespace(token_ids=taken, text=self.decode(taken), finish_reason="length",
+                               stop_reason=None, hit_eos=False)
+
+
+def run_chain_batch_one_request(engine, specs, *, encode, decode, budget: int,
+                                query_stride: int, block_cap: int):
+    import functools
+    import json as _json
+    import sys as _sys
+    import time as _time
+
+    from rl_controller.rollout_contract import CLOSE_TAG, block_stop_strings, sampling_config
+
+    # Stop once thinking has closed and the next block has ended, which is
+    # where draw_steps stops too; a chain that closes thinking without a blank
+    # line after it runs on to end-of-sequence, which only costs tokens.
+    stops = [CLOSE_TAG + s for s in block_stop_strings()]
+    requests = [GenRequest(prompt_ids=list(s["prompt_ids"]), stop=stops,
+                           include_stop_str_in_output=True, max_tokens=budget,
+                           seed_key=(s["seed_key"], "one-request")) for s in specs]
+    t0 = _time.time()
+    llm = getattr(engine, "_llm", None)
+    if llm is not None:
+        from tqdm import tqdm
+        from vllm import TokensPrompt
+
+        prompts = [TokensPrompt(prompt_token_ids=r.prompt_ids) for r in requests]
+        params = [engine._params(stop=r.stop, include_stop_str_in_output=True,
+                                 max_tokens=r.max_tokens, seed_key=r.seed_key) for r in requests]
+        bar = functools.partial(tqdm, mininterval=300, file=_sys.stdout, ascii=True)
+        outs = [engine._wrap(o.outputs[0]) for o in llm.generate(prompts, params, use_tqdm=bar)]
+    else:
+        outs = engine.generate_batch(requests)
+    gen_s = _time.time() - t0
+
+    sampling = getattr(engine, "_sampling", None) or sampling_config()
+    eos_ids = sampling["eos_token_id"]
+    eos_ids = [eos_ids] if isinstance(eos_ids, int) else list(eos_ids)
+    t1 = _time.time()
+    played, redo = [], []
+    for k, (spec, out) in enumerate(zip(specs, outs)):
+        recorded = _RecordedChainEngine(decode, len(spec["prompt_ids"]), out.token_ids, eos_ids)
+        try:
+            played.append(run_chain_batch(recorded, [spec], encode=encode, budget=budget,
+                                          query_stride=query_stride, block_cap=block_cap)[0])
+        except _ReplayPastEnd:
+            played.append(None)
+            redo.append(k)
+    replay_s = _time.time() - t1
+    if redo:
+        # The replay needed tokens past the recorded end; sample these chains
+        # block by block, as BELT does.
+        again = run_chain_batch(engine, [specs[k] for k in redo], encode=encode, budget=budget,
+                                query_stride=query_stride, block_cap=block_cap, max_active=32)
+        for k, entry in zip(redo, again):
+            played[k] = entry
+    generated = sum(len(o.token_ids) for o in outs)
+    print(_json.dumps({"one_request": {
+        "chains": len(specs), "generated_tokens": generated, "gen_s": round(gen_s, 1),
+        "tokens_per_s": round(generated / max(gen_s, 1e-9), 1),
+        "replay_s": round(replay_s, 1), "block_by_block_fallback": len(redo),
+        "kept_tokens": sum(len(a["result"].completion_ids) for a in played)}}), flush=True)
+    return played
+'''
+PROBE_ONE_REQUEST_OLD = """                                 log_every=int(_os.environ.get("BELT_LOG_EVERY_CHAINS") or 0))
+"""
+PROBE_ONE_REQUEST_NEW = """                                 log_every=int(_os.environ.get("BELT_LOG_EVERY_CHAINS") or 0),
+                                 one_request=_os.environ.get("BELT_ONE_REQUEST_CHAINS") == "1",
+                                 decode=decode)
+"""
+
 LOAD_BACKEND_OLD = """    llm = LLM(model=(args.model_path or args.model),"""
 LOAD_BACKEND_NEW = """    from rl_controller.rollout_contract import active_prompt_contract as _contract
     if _contract() == "qwen3.6-35b-a3b-fp8-native-thinking-v1":
@@ -323,11 +463,35 @@ def replace_once(path: Path, old: str, new: str) -> None:
     path.write_text(text.replace(old, new))
 
 
+def apply_one_request(root: Path) -> None:
+    """Edit 9 on a checkout that already has edits 1 to 8."""
+    for package in PACKAGES:
+        pkg = root / package
+        chain = pkg / "single_cot.py"
+        replace_once(chain, ONE_REQUEST_SIG_OLD, ONE_REQUEST_SIG_NEW)
+        replace_once(chain, ONE_REQUEST_DISPATCH_OLD, ONE_REQUEST_DISPATCH_NEW)
+        chain.write_text(chain.read_text().rstrip("\n") + "\n\n\n" + ONE_REQUEST_FN)
+        probe = pkg / "scripts" / "single_cot_probe.py"
+        if probe.exists():
+            replace_once(probe, PROBE_ONE_REQUEST_OLD, PROBE_ONE_REQUEST_NEW)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("belt_root", type=Path)
+    parser.add_argument("--add-one-request", action="store_true",
+                        help="apply only edit 9 to a checkout patched with edits 1 to 8")
     args = parser.parse_args()
     root = args.belt_root.resolve()
+    if args.add_one_request:
+        chain = root / PACKAGES[0] / "single_cot.py"
+        if MARK not in (root / PACKAGES[0] / "rollout_contract.py").read_text():
+            raise SystemExit("this checkout does not have edits 1 to 8")
+        if ONE_REQUEST_MARK in chain.read_text():
+            raise SystemExit("this checkout already has edit 9")
+        apply_one_request(root)
+        print("added edit 9 to", root)
+        return 0
 
     head = subprocess.run(
         ["git", "-C", str(root), "rev-parse", "HEAD"],
@@ -357,6 +521,7 @@ def main() -> int:
             replace_once(pkg / "rollout_runner.py", old, new)
         for old, new in BATCH_EDITS:
             replace_once(pkg / "rollout_batch.py", old, new)
+    apply_one_request(root)
 
     fallback = root / "rl_controller/scripts/belt_natural_fallback.py"
     for old, new in FALLBACK_EDITS:
